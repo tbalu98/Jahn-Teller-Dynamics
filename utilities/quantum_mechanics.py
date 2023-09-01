@@ -15,7 +15,14 @@ Jahn_Teller_Pars = collections.namedtuple('Jahn_Teller_Pars',  'E_JT E_b hwpG hw
 
 class eigen_state:
      def from_vals_vects(vals, vecs):
-          return [eigen_state( val, vec ) for val, vec in zip( vals, vecs )]
+          res = []
+          for i in range(0,len(vecs)):
+               eig_state = eigen_state( vals[i], vecs[:,i] )
+               res.append( eig_state)
+          
+          return sorted(res, key=lambda x: x.eig_val)
+          #return 
+          #return [eigen_state( val, vec ) for val, vec in zip( vals, vecs )]
      
      def __init__(self, eig_val,coeffs):
           self.eig_val = eig_val
@@ -84,7 +91,10 @@ class AbsCoupledHarmOscEigStates:
      def __init__(self, dim,order):
           self._states = []
           self.create_oscillators(dim,order, [])
-          self._states.sort(key = lambda x: x.get_order())
+          #self._states.sort(key = lambda x: x.get_order())
+          #self._states = sorted(self._states, key=lambda x: (x.get_order(), x._coeffs[1]))
+          self._states = sorted(self._states, key=lambda x: (x.get_order(), *x._coeffs) )
+          #print('sort states')
 
 
      def create_oscillators(self, dim, order, curr_osc_coeffs: list):
@@ -237,6 +247,16 @@ class MatrixOperator:
      def interaction_with(self, other):
           return MatrixOperator(np.kron( self.matrix, other.matrix ) )
 
+     def multiply(self, other):
+          matrix1 = self.matrix
+          matrix2 = other.matrix
+          return MatrixOperator(np.matmul(matrix1,matrix2,dtype=np.complex64))
+
+     def truncate_matrix(self, trunc_num):
+          dim = len(self.matrix)
+          self.matrix = self.matrix[0:dim-trunc_num, 0: dim-trunc_num]
+          return self
+
 class SpinAngMomOp(MatrixOperator):
      def __init__(self, dim, Ps1: np.array, Ps2: np.array):
           Lz = np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
@@ -290,14 +310,16 @@ class AbsCoupledHarmOscOperator:
      def __init__(self,  dim,order):
           self.dim = dim
           self.order = order
-          self.eig_states = AbsCoupledHarmOscEigStates(self.dim,self.order)
+          self.calc_order = order+1
+          self.trunc_num = self.calc_order +1
+          self.eig_states = AbsCoupledHarmOscEigStates(self.dim,self.calc_order)
           self.op_builder = AbsOperator_builder(self.eig_states)
           self.build_creator_ops()
           self.build_annil_ops()
           self.build_H_i_ops()
           self.build_whole_sys_op()
-          print(self.int_op)
-          self.create_pos_i_ops()
+          print(self.over_est_int_op)
+          self.over_est_pos_i_ops()
           self.create_pos_i_sq_ops()
 
           
@@ -319,20 +341,44 @@ class AbsCoupledHarmOscOperator:
           for i in range(0, self.dim):
                H_i = np.matmul(self.creator_ops[i].matrix, self.annil_ops[i].matrix)
                self.H_i_ops.append(MatrixOperator(H_i))
-               np.savetxt('H_osc_'+str(i)+'_new.csv', H_i)
+               #np.savetxt('H_osc_'+str(i)+'_new.csv', H_i)
 
 
      def build_whole_sys_op(self):
                
           int_op = np.matrix( np.round( sum( [x.matrix for x in self.H_i_ops ] ) ), dtype=np.int16 )
           
-          self.int_op = MatrixOperator(int_op)
+          self.over_est_int_op = MatrixOperator(int_op)
+     
+     def get_ham_op(self):
+          return MatrixOperator(self.over_est_int_op.matrix).truncate_matrix(self.trunc_num)
 
-     def create_pos_i_ops(self):
+     def over_est_pos_i_ops(self):
           self.pos_i_ops = []
           for i in range(0,self.dim):
-               pos_i_mat = (self.creator_ops[i].matrix + self.annil_ops[i].matrix)/(2**0.5)
-               self.pos_i_ops.append( MatrixOperator( pos_i_mat ) )
+               self.pos_i_ops.append( self.over_est_pos_i_op(i))
+
+     def over_est_pos_i_op(self, i):
+          pos_i_mat = (self.creator_ops[i].matrix + self.annil_ops[i].matrix)/(2**0.5)
+          return MatrixOperator( pos_i_mat )
+
+     def over_est_pos_i_j_op(self, i,j):
+          pos_i_op = self.over_est_pos_i_op(i)
+          pos_j_op = self.over_est_pos_i_op(j)
+          return pos_i_op.multiply(pos_j_op)
+
+     def get_pos_i_op(self, i):
+          return self.over_est_pos_i_op(i).truncate_matrix(self.trunc_num)
+
+     def get_pos_i_j_op(self, i,j):
+          return self.over_est_pos_i_j_op(i,j).truncate_matrix(self.trunc_num)
+
+     def over_est_pos_i_i_op(self, i):
+          return self.over_est_pos_i_j_op(i,i)
+     
+     def get_pos_i_i_op(self, i):
+          return self.over_est_pos_i_i_op(i).truncate_matrix(self.trunc_num)
+
 
      def create_pos_i_sq_ops(self):
           self.pos_i_sq_ops = []
@@ -344,6 +390,7 @@ class AbsCoupledHarmOscOperator:
 
 class CoupledHarmOscOperator:
      def __init__(self, order):
+          self.order = order
           eig_states = CoupledHarmOscEigStates(order)
           op_builder = Operator_builder(eig_states)
 
@@ -357,9 +404,9 @@ class CoupledHarmOscOperator:
 
           H_osc_y = np.matmul(self.creator_y,self.annil_y)
 
-          K = np.matrix(np.round(H_osc_x + H_osc_y, 0))
+          self.K = np.matrix(np.round(H_osc_x + H_osc_y, 0))
 
-          self.int_op = MatrixOperator(K)
+          self.int_op = MatrixOperator(self.K)
           self.create_essention_operators()
      
      def __len__(self):
@@ -387,8 +434,18 @@ class CoupledHarmOscOperator:
           YY = np.matmul(Y,Y)
           self.YY  =MatrixOperator(YY)
 
+          self.trunc()
+          print('fin')
 
+     def trunc(self):
+          self.int_op.truncate_matrix(self.order+1)
+          self.X.truncate_matrix(self.order+1)
+          self.Y.truncate_matrix(self.order+1)
+          self.XX.truncate_matrix(self.order+1)
+          self.YY.truncate_matrix(self.order+1)
 
+          self.XY.truncate_matrix(self.order+1)
+          self.YX.truncate_matrix(self.order+1)
 
 class Jahn_Teller_Theory:
 
@@ -459,19 +516,39 @@ class Jahn_Teller_interaction:
      def create_hamiltonian_op(self):
           
           
-          X = self.fonon_system.pos_i_ops[0].matrix
-          Y = self.fonon_system.pos_i_ops[1].matrix
-          XX = self.fonon_system.pos_i_sq_ops[0].matrix
-          YY = self.fonon_system.pos_i_sq_ops[1].matrix     
-          XY = np.matmul(X,Y)
-          K = self.fonon_system.int_op.matrix          
-          """
+          #X = self.fonon_system.pos_i_ops[0].matrix
+          X = self.fonon_system.get_pos_i_op(0).matrix
+          np.savetxt('Xpy.csv', X)
+          Y = self.fonon_system.get_pos_i_op(1).matrix
+          np.savetxt('Ypy.csv', Y)
 
+
+
+          #Y = self.fonon_system.pos_i_ops[1].matrix
+          #XX = self.fonon_system.pos_i_sq_ops[0].matrix
+          XX = self.fonon_system.get_pos_i_i_op(0).matrix
+          np.savetxt('XXpy.csv', XX)
+
+          XY = self.fonon_system.get_pos_i_j_op(0,1).matrix
+          np.savetxt('XYpy.csv', XY)
+          
+          YY = self.fonon_system.get_pos_i_i_op(1).matrix
+          np.savetxt('YYpy.csv', YY)
+          
+          #np.savetxt('XX_python.csv', XX)
+          #YY = self.fonon_system.pos_i_sq_ops[1].matrix     
+          #XY = np.matmul(X,Y)
+          #YX = np.matmul(Y,X)
+
+          K = self.fonon_system.get_ham_op().matrix    
+          
+          """
           X = self.fonon_system.X.matrix
           Y = self.fonon_system.Y.matrix
           XX = self.fonon_system.XX.matrix
           YY = self.fonon_system.YY.matrix
           XY = self.fonon_system.XY.matrix
+          YX = self.fonon_system.YX.matrix
           K = self.fonon_system.int_op.matrix
           """
 

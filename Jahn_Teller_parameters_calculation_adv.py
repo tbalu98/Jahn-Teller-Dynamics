@@ -5,6 +5,7 @@ import utilities.quantum_mechanics as qm
 import numpy as np
 import scipy as sc
 from scipy.sparse.linalg import eigs
+from numpy import linalg as LA
 control_file_path = 'data/'
 
 control_data = pd.read_csv( control_file_path + 'control.csv' , index_col='case')
@@ -60,15 +61,16 @@ for case_name in control_data.index:
 
     print(JT_theory)
 
-    #JT_theory.E_b = 21.6
-    #JT_theory.calc_E_b = 1.6
-    #JT_theory.quantum = 78.8
+    JT_theory.E_b = 21.6
+    JT_theory.calc_E_b = 1.6
+    JT_theory.quantum = 78.8
 
     #el_states = qm.symmetric_electron_system()
 
 
-    fonon_sys = qm.CoupledHarmOscOperator(4)
+    fonon_sys = qm.CoupledHarmOscOperator(5)
     fonon_sys = qm.AbsCoupledHarmOscOperator(2,4)
+    print(fonon_sys.eig_states._states)
     
 
     JT_int = qm.Jahn_Teller_interaction(JT_theory.JT_pars,el_states,fonon_sys)
@@ -78,30 +80,34 @@ for case_name in control_data.index:
 
 
 
+    #vals, vecs = LA.eig(JT_int.H_int.matrix,)
     vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=30)
 
     JT_eigen_states = qm.eigen_state.from_vals_vects(vals, vecs)
 
-    JT_eigen_states.sort(key=lambda x:x.eig_val)
+    
 
-    print('JT eigen states:')
-    print(JT_eigen_states)
+    print(vals)
+
+    print(sorted(vals))
 
 
-    print('spin_ang_mom')
+
     
     Lz_op = qm.MatrixOperator.create_Lz_op()
 
-    id_op = qm.MatrixOperator.create_id_op(len(fonon_sys.int_op))
+    id_op = qm.MatrixOperator.create_id_op(len(fonon_sys.get_ham_op()))
 
     pert_ham = id_op.interaction_with(Lz_op)
+    print(pert_ham.matrix)
 
     Lz_perturbation = qm.FirstOrderPerturbation([ JT_eigen_states[0], JT_eigen_states[1] ], pert_ham)
     print('eigen_state 0: ' + str(JT_eigen_states[0]))
     print('eigen_state 1: ' + str(JT_eigen_states[1]))
 
     print(Lz_perturbation.pert_op.matrix)
-    
+    np.savetxt('LzFULL_python.csv', pert_ham.matrix,delimiter=',')
+
     print(Lz_perturbation.pert_op.eigen_vals)
 
     print(Lz_perturbation.get_reduction_factor())
