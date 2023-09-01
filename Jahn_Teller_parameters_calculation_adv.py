@@ -19,7 +19,7 @@ def read_lattice(control, symm_type):
     return latt
 
 # Create the symm electron system
-
+#Symmetry operations
 sz = np.matrix([[1,0],[0,-1]], dtype= np.float64)
 sx = np.matrix([[0,1],[1,0]], dtype= np.float64)
 s0 = np.matrix([[1,0],[0,1]], dtype= np.float64)
@@ -35,80 +35,57 @@ symm_ops['s0'] = qm.MatrixOperator(s0, name = 's0')
 el_states = qm.symmetric_electron_system(symm_ops)
 
 
+#Geometries:
 symm_types = ['symm_geom', 'less_symm_geom_1','less_symm_geom_2']
 
 
-"""
-[[ 0.        +6.09296912e-18j  0.01573528-1.18673920e-01j]
- [-0.01573528+1.18673920e-01j  0.        -9.31775486e-19j]]
-[ 0.11867392+0.01573528j -0.11867392-0.01573528j]
-0.11867391966166024
-
-"""
-
-
+# Read cases from control file
 for case_name in control_data.index:
 
     control = control_data.loc[case_name]
 
+    # Read geometries
     symm_lattice = read_lattice(control, 'symm_geom')
 
     less_symm_lattice_1 = read_lattice(control, 'less_symm_geom_1')
 
     less_symm_lattice_2 = read_lattice(control, 'less_symm_geom_2')
 
+    #Calculate the parameters of Jahn-Teller theory
     JT_theory = qm.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
 
     print(JT_theory)
 
-    JT_theory.E_b = 21.6
-    JT_theory.calc_E_b = 1.6
-    JT_theory.quantum = 78.8
-
-    #el_states = qm.symmetric_electron_system()
-
-
-    fonon_sys = qm.CoupledHarmOscOperator(5)
-    fonon_sys = qm.AbsCoupledHarmOscOperator(2,4)
+    #Create the phonon system
+    fonon_sys = qm.n_dim_harm_osc(2,4)
+    print('Eigen states of the phonon system')
     print(fonon_sys.eig_states._states)
     
-
+    #Calculate the fonon electron interaction's hamiltonian
     JT_int = qm.Jahn_Teller_interaction(JT_theory.JT_pars,el_states,fonon_sys)
 
 
-    np.savetxt('Hpy.csv',JT_int.H_int.matrix)
-
-
-
-    #vals, vecs = LA.eig(JT_int.H_int.matrix,)
     vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=30)
 
-    JT_eigen_states = qm.eigen_state.from_vals_vects(vals, vecs)
+    JT_eigen_states = qm.eigen_vect.from_vals_vects(vals, vecs)
 
-    
-
-    print(vals)
-
+    print('Eigen values of the Jahn-Teller interaction')
     print(sorted(vals))
 
 
 
-    
+    #Add the spin orbit coupling interaction
     Lz_op = qm.MatrixOperator.create_Lz_op()
 
     id_op = qm.MatrixOperator.create_id_op(len(fonon_sys.get_ham_op()))
 
     pert_ham = id_op.interaction_with(Lz_op)
-    print(pert_ham.matrix)
 
     Lz_perturbation = qm.FirstOrderPerturbation([ JT_eigen_states[0], JT_eigen_states[1] ], pert_ham)
-    print('eigen_state 0: ' + str(JT_eigen_states[0]))
-    print('eigen_state 1: ' + str(JT_eigen_states[1]))
 
     print(Lz_perturbation.pert_op.matrix)
-    np.savetxt('LzFULL_python.csv', pert_ham.matrix,delimiter=',')
-
+    print('Eigen values of the perturbation')
     print(Lz_perturbation.pert_op.eigen_vals)
-
+    print('reduction factor:')
     print(Lz_perturbation.get_reduction_factor())
 

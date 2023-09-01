@@ -13,16 +13,14 @@ Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
 Jahn_Teller_Pars = collections.namedtuple('Jahn_Teller_Pars',  'E_JT E_b hwpG hwmG hw F G ' )
 
 
-class eigen_state:
+class eigen_vect:
      def from_vals_vects(vals, vecs):
           res = []
           for i in range(0,len(vecs)):
-               eig_state = eigen_state( vals[i], vecs[:,i] )
+               eig_state = eigen_vect( vals[i], vecs[:,i] )
                res.append( eig_state)
           
           return sorted(res, key=lambda x: x.eig_val)
-          #return 
-          #return [eigen_state( val, vec ) for val, vec in zip( vals, vecs )]
      
      def __init__(self, eig_val,coeffs):
           self.eig_val = eig_val
@@ -42,7 +40,7 @@ class eigen_state:
 
 
      
-class abs_coupled_harm_ocs_eigen_states:
+class harm_osc_eigen_vect:
      def __init__(self,coeffs):
           self._coeffs = coeffs
      
@@ -87,14 +85,11 @@ class abs_coupled_harm_ocs_eigen_states:
      def get_order(self):
           return sum(self)
 
-class AbsCoupledHarmOscEigStates:
+class harm_osc_eigen_vects:
      def __init__(self, dim,order):
           self._states = []
           self.create_oscillators(dim,order, [])
-          #self._states.sort(key = lambda x: x.get_order())
-          #self._states = sorted(self._states, key=lambda x: (x.get_order(), x._coeffs[1]))
           self._states = sorted(self._states, key=lambda x: (x.get_order(), *x._coeffs) )
-          #print('sort states')
 
 
      def create_oscillators(self, dim, order, curr_osc_coeffs: list):
@@ -108,7 +103,7 @@ class AbsCoupledHarmOscEigStates:
                     else:
                          self.create_oscillators(dim, order,temp_curr_osc_coeffs )
           elif len(curr_osc_coeffs) == dim and sum(curr_osc_coeffs)<=order:
-               return self._states.append( abs_coupled_harm_ocs_eigen_states( curr_osc_coeffs))
+               return self._states.append( harm_osc_eigen_vect( curr_osc_coeffs))
           else:
                return
 
@@ -124,22 +119,6 @@ class AbsCoupledHarmOscEigStates:
 
 
 
-class CoupledHarmOscEigStates:
-     def __init__(self, order):
-          self._states = []
-          for E in range(0, order+1):
-               for y_fonon in range(0,E+1):
-                    x_fonon = E-y_fonon
-                    self._states.append(Eigen_state_2D(x_fonon, y_fonon))
-          print(self._states)
-     def __len__(self):
-          return len(self._states)
-     
-     def __getitem__(self, position):
-          return self._states[position]
-
-#Create operators
-
 class AbsOperator_builder:
      def __init__(self, eig_states):
           self.eig_states = eig_states
@@ -154,51 +133,6 @@ class AbsOperator_builder:
      
 
 
-class Operator_builder:
-     def __init__(self, eig_states: CoupledHarmOscEigStates):
-          self.eig_states = eig_states
-
-     def create_operator(self, sandwich_fun):
-          dim = len(self.eig_states)
-          operator = np.zeros((dim, dim), dtype = np.float64)
-          for i in range(0,len(self.eig_states)):
-               for j in range(0,len(self.eig_states)):
-                    operator[i][j] = sandwich_fun(self.eig_states[i], self.eig_states[j])
-          return operator
-
-
-
-#Sandwich functions:
-#<x_fonon', y_fonon'|ax-|x_fonon, y_fononon>
-def annil_x_sandwich(eigen_state_1:Eigen_state_2D, eigen_state_2:Eigen_state_2D):
-     if (eigen_state_1.x_fonon == eigen_state_2.x_fonon-1  and
-         eigen_state_1.y_fonon==eigen_state_2.y_fonon ) is True:
-          return (eigen_state_2.x_fonon)**0.5
-     else:
-          return 0
-
-
-#<x_fonon', y_fonon'|ax+|x_fonon, y_fononon>
-def creator_x_sandwich(eigen_state_1: Eigen_state_2D, eigen_state_2:Eigen_state_2D):
-     if (eigen_state_1.x_fonon == eigen_state_2.x_fonon+1 and
-         eigen_state_1.y_fonon==eigen_state_2.y_fonon )  is True:
-          return (eigen_state_2.x_fonon+1)**0.5
-     else:
-          return 0
-
-def annil_y_sandwich(eigen_state_1:Eigen_state_2D, eigen_state_2:Eigen_state_2D):
-     if (eigen_state_1.y_fonon == eigen_state_2.y_fonon-1  and
-         eigen_state_1.x_fonon==eigen_state_2.x_fonon ) is True:
-          return (eigen_state_2.y_fonon)**0.5
-     else:
-          return 0
-
-def creator_y_sandwich(eigen_state_1: Eigen_state_2D, eigen_state_2:Eigen_state_2D):
-     if (eigen_state_1.y_fonon == eigen_state_2.y_fonon+1 and
-         eigen_state_1.x_fonon==eigen_state_2.x_fonon )  is True:
-          return (eigen_state_2.y_fonon+1)**0.5
-     else:
-          return 0
 
 
 
@@ -257,32 +191,11 @@ class MatrixOperator:
           self.matrix = self.matrix[0:dim-trunc_num, 0: dim-trunc_num]
           return self
 
-class SpinAngMomOp(MatrixOperator):
-     def __init__(self, dim, Ps1: np.array, Ps2: np.array):
-          Lz = np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
-     
-          LzFull = np.kron(np.eye(dim), Lz )
-     
-          left = np.matrix( [ Ps1.flatten() , Ps2.flatten()] )
-          right = np.transpose(left)
 
-          mat= np.matmul( left,  np.matmul( LzFull, right ))
-
-          super().__init__(mat)
-
-def buildSpinAngIntMO(dim, Ps1: np.array, Ps2: np.array):
-     Lz = np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
-     
-     LzFull = np.kron(np.eye(dim), Lz )
-     
-     left = np.matrix( [ Ps1.flatten() , Ps2.flatten()] )
-     right = np.transpose(left)
-
-     return np.matmul( left,  np.matmul( LzFull, right ))
 
 class FirstOrderPerturbation:
      
-     def __init__(self,deg_eigen_vecs: list[eigen_state], ham_comma: MatrixOperator):
+     def __init__(self,deg_eigen_vecs: list[eigen_vect], ham_comma: MatrixOperator):
           self.deg_eigen_vecs = deg_eigen_vecs
           self.ham_comma = ham_comma
           self.create_pert_op()
@@ -306,13 +219,13 @@ class FirstOrderPerturbation:
           return abs( (self.pert_eigen_vals[1] - self.pert_eigen_vals[0]).real/2 )
 
 
-class AbsCoupledHarmOscOperator:
+class n_dim_harm_osc:
      def __init__(self,  dim,order):
           self.dim = dim
           self.order = order
           self.calc_order = order+1
           self.trunc_num = self.calc_order +1
-          self.eig_states = AbsCoupledHarmOscEigStates(self.dim,self.calc_order)
+          self.eig_states = harm_osc_eigen_vects(self.dim,self.calc_order)
           self.op_builder = AbsOperator_builder(self.eig_states)
           self.build_creator_ops()
           self.build_annil_ops()
@@ -388,65 +301,6 @@ class AbsCoupledHarmOscOperator:
 
 
 
-class CoupledHarmOscOperator:
-     def __init__(self, order):
-          self.order = order
-          eig_states = CoupledHarmOscEigStates(order)
-          op_builder = Operator_builder(eig_states)
-
-          self.creator_x = op_builder.create_operator(creator_x_sandwich)
-          self.annil_x = op_builder.create_operator(annil_x_sandwich)
-  
-          self.creator_y = op_builder.create_operator(creator_y_sandwich)
-          self.annil_y = op_builder.create_operator(annil_y_sandwich)
-
-          H_osc_x = np.matmul(self.creator_x,self.annil_x)
-
-          H_osc_y = np.matmul(self.creator_y,self.annil_y)
-
-          self.K = np.matrix(np.round(H_osc_x + H_osc_y, 0))
-
-          self.int_op = MatrixOperator(self.K)
-          self.create_essention_operators()
-     
-     def __len__(self):
-          return len(self.int_op.matrix)
-
-     def create_essention_operators(self):
-
-          X = (self.creator_x + self.annil_x)/(2**0.5)
-          self.X = MatrixOperator(X)
-          Y = (self.creator_y + self.annil_y)/(2**0.5)
-          self.Y = MatrixOperator(Y)
-
-          XY = np.matmul(X,Y)
-          #XY = np.matmul(Y,X)
-          
-          self.XY=MatrixOperator(XY)
-          
-
-          YX =  np.matmul(Y,X)
-          self.YX = MatrixOperator(YX)
-
-          
-          XX = np.matmul(X,X)
-          self.XX = MatrixOperator(XX)
-          YY = np.matmul(Y,Y)
-          self.YY  =MatrixOperator(YY)
-
-          self.trunc()
-          print('fin')
-
-     def trunc(self):
-          self.int_op.truncate_matrix(self.order+1)
-          self.X.truncate_matrix(self.order+1)
-          self.Y.truncate_matrix(self.order+1)
-          self.XX.truncate_matrix(self.order+1)
-          self.YY.truncate_matrix(self.order+1)
-
-          self.XY.truncate_matrix(self.order+1)
-          self.YX.truncate_matrix(self.order+1)
-
 class Jahn_Teller_Theory:
 
 
@@ -477,9 +331,6 @@ class Jahn_Teller_Theory:
           self.calc_E_JT()
           self.calc_E_b()
           self.delta = self.E_JT - self.E_b
-          #self.E_JT = abs(self.JT_lattice.energy - self.symm_lattice.energy)*1000
-          
-          #self.E_b = abs( self.JT_lattice.energy - self.barrier_lattice.energy)*1000
 
           self.quantum_mG = c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5
 
@@ -499,15 +350,10 @@ class Jahn_Teller_Theory:
 class symmetric_electron_system:
      def __init__(self, symm_ops: dict):
           self.symm_ops = symm_ops
-          """
-     def __init__(self):
-          self.sz = np.matrix([[1,0],[0,-1]], dtype= np.float64)
-          self.sx = np.matrix([[0,1],[1,0]], dtype= np.float64)
-          self.s0 = np.matrix([[1,0],[0,1]], dtype= np.float64)
-"""
+         
 
 class Jahn_Teller_interaction:
-     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: symmetric_electron_system, fonon_system: AbsCoupledHarmOscOperator):
+     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: symmetric_electron_system, fonon_system: n_dim_harm_osc):
           self.JT_pars = Jahn_Teller_pars
           self.el_states = el_states
           self.fonon_system = fonon_system
@@ -516,41 +362,21 @@ class Jahn_Teller_interaction:
      def create_hamiltonian_op(self):
           
           
-          #X = self.fonon_system.pos_i_ops[0].matrix
           X = self.fonon_system.get_pos_i_op(0).matrix
-          np.savetxt('Xpy.csv', X)
           Y = self.fonon_system.get_pos_i_op(1).matrix
-          np.savetxt('Ypy.csv', Y)
 
 
 
-          #Y = self.fonon_system.pos_i_ops[1].matrix
-          #XX = self.fonon_system.pos_i_sq_ops[0].matrix
           XX = self.fonon_system.get_pos_i_i_op(0).matrix
-          np.savetxt('XXpy.csv', XX)
 
           XY = self.fonon_system.get_pos_i_j_op(0,1).matrix
-          np.savetxt('XYpy.csv', XY)
           
           YY = self.fonon_system.get_pos_i_i_op(1).matrix
-          np.savetxt('YYpy.csv', YY)
           
-          #np.savetxt('XX_python.csv', XX)
-          #YY = self.fonon_system.pos_i_sq_ops[1].matrix     
-          #XY = np.matmul(X,Y)
-          #YX = np.matmul(Y,X)
 
           K = self.fonon_system.get_ham_op().matrix    
           
-          """
-          X = self.fonon_system.X.matrix
-          Y = self.fonon_system.Y.matrix
-          XX = self.fonon_system.XX.matrix
-          YY = self.fonon_system.YY.matrix
-          XY = self.fonon_system.XY.matrix
-          YX = self.fonon_system.YX.matrix
-          K = self.fonon_system.int_op.matrix
-          """
+
 
           H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(2*XY , self.el_states.symm_ops['sx'].matrix))
 
