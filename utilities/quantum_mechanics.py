@@ -41,8 +41,9 @@ class eigen_vect:
 
      
 class harm_osc_eigen_vect:
-     def __init__(self,coeffs):
+     def __init__(self,coeffs, energy = None):
           self._coeffs = coeffs
+          self.energy = energy
      
      def __getitem__(self,key):
           return self._coeffs[key]
@@ -89,7 +90,10 @@ class harm_osc_eigen_vects:
      def __init__(self, dim,order):
           self._states = []
           self.create_oscillators(dim,order, [])
-          self._states = sorted(self._states, key=lambda x: (x.get_order(), *x._coeffs) )
+          #self._states = sorted(self._states, key=lambda x: (x.get_order(), *x._coeffs) )
+          self._states = sorted(self._states, key=lambda x: x.get_order() )
+
+          #self._states = sorted(self._states, key=lambda x: (x.get_order(),x._coeffs[1]) )
 
 
      def create_oscillators(self, dim, order, curr_osc_coeffs: list):
@@ -119,7 +123,7 @@ class harm_osc_eigen_vects:
 
 
 
-class AbsOperator_builder:
+class operator_builder:
      def __init__(self, eig_states):
           self.eig_states = eig_states
 
@@ -141,7 +145,8 @@ class AbsOperator_builder:
 #Quantummechanical operator:
 class MatrixOperator:
 
-     
+     def from_sandwich_fun(self, states, sandwich_fun):
+          pass
 
      def __init__(self, matrix, name = ""):
           self.name = name
@@ -220,17 +225,19 @@ class FirstOrderPerturbation:
 
 
 class n_dim_harm_osc:
-     def __init__(self,  dim,order):
+     def __init__(self,  dim,order, energy = None):
           self.dim = dim
           self.order = order
+          self.energy = energy
           self.calc_order = order+1
-          self.trunc_num = self.calc_order +1
+          #self.trunc_num = self.calc_order +1
           self.eig_states = harm_osc_eigen_vects(self.dim,self.calc_order)
-          self.op_builder = AbsOperator_builder(self.eig_states)
+          self.op_builder = operator_builder(self.eig_states)
           self.build_creator_ops()
           self.build_annil_ops()
           self.build_H_i_ops()
           self.build_whole_sys_op()
+          self.calc_trunc_num()
           print(self.over_est_int_op)
           self.over_est_pos_i_ops()
           self.create_pos_i_sq_ops()
@@ -256,6 +263,8 @@ class n_dim_harm_osc:
                self.H_i_ops.append(MatrixOperator(H_i))
                #np.savetxt('H_osc_'+str(i)+'_new.csv', H_i)
 
+     def calc_trunc_num(self):
+          self.trunc_num = np.count_nonzero(self.over_est_int_op.matrix == self.calc_order)
 
      def build_whole_sys_op(self):
                
@@ -370,6 +379,7 @@ class Jahn_Teller_interaction:
           XX = self.fonon_system.get_pos_i_i_op(0).matrix
 
           XY = self.fonon_system.get_pos_i_j_op(0,1).matrix
+          YX = self.fonon_system.get_pos_i_j_op(1,0).matrix
           
           YY = self.fonon_system.get_pos_i_i_op(1).matrix
           
@@ -378,14 +388,14 @@ class Jahn_Teller_interaction:
           
 
 
-          H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(2*XY , self.el_states.symm_ops['sx'].matrix))
+          H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
 
           np.savetxt('H_int.csv', H_int_mat)
 
 
           self.H_int = MatrixOperator(H_int_mat)
 
-
-
-
-
+class fast_multimode_fonon_sys:
+     def __init__(self,harm_osc_syss:dict[str,n_dim_harm_osc]):
+          self.harm_osc_syss =harm_osc_syss
+     
