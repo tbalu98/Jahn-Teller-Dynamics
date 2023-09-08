@@ -6,6 +6,7 @@ import numpy as np
 import scipy as sc
 from scipy.sparse.linalg import eigs
 from numpy import linalg as LA
+import matplotlib.pyplot as plt
 control_file_path = 'data/'
 
 control_data = pd.read_csv( control_file_path + 'control.csv' , index_col='case')
@@ -56,16 +57,26 @@ for case_name in control_data.index:
 
     print(JT_theory)
 
+    sec_fonon_modes = np.linspace(60, 80, 21)
+    #sec_fonon_modes = [78.8]
+    lowest_eig_energies = []
+
+    mode = 78.79527995410929
+
+    print(mode)
     #Create the phonon system
-    fonon_sys = qm.n_dim_harm_osc(2,4)
-    print('Eigen states of the phonon system')
-    print(fonon_sys.eig_states._states)
+    fonon_sys78 = qm.n_dim_harm_osc(2,4,energy = 78.79527995410929)
     
+    #Create the phonon system
+    fonon_sys781 = qm.n_dim_harm_osc(2,4,energy = mode)
+
+    mm_fon_sys = qm.fast_multimode_fonon_sys({ 78.79527995410929: fonon_sys78, mode: fonon_sys781 })
+
     #Calculate the fonon electron interaction's hamiltonian
-    JT_int = qm.Exe_JT_int(JT_theory.JT_pars,el_states,fonon_sys)
+    JT_int = qm.multi_mode_Exe_jt_int(JT_theory.JT_pars,el_states,mm_fon_sys)
 
 
-    vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=30)
+    vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=len(JT_int.H_int))
 
     JT_eigen_states = qm.eigen_vect.from_vals_vects(vals, vecs)
 
@@ -74,18 +85,5 @@ for case_name in control_data.index:
 
 
 
-    #Add the spin orbit coupling interaction
-    Lz_op = qm.MatrixOperator.create_Lz_op()
-
-    id_op = qm.MatrixOperator.create_id_op(len(fonon_sys.get_ham_op()))
-
-    pert_ham = id_op.interaction_with(Lz_op)
-
-    Lz_perturbation = qm.FirstOrderPerturbation([ JT_eigen_states[0], JT_eigen_states[1] ], pert_ham)
-
-    print(Lz_perturbation.pert_op.matrix)
-    print('Eigen values of the perturbation')
-    print(Lz_perturbation.pert_op.eigen_vals)
-    print('reduction factor:')
-    print(Lz_perturbation.get_reduction_factor())
-
+    
+    

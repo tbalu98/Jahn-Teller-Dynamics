@@ -6,7 +6,7 @@ import utilities.VASP as VASP
 import collections
 import copy
 from scipy.sparse.linalg import eigs
-
+import itertools
 #Data structures
 Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
 
@@ -92,7 +92,7 @@ class harm_osc_eigen_vects:
           self.create_oscillators(dim,order, [])
           #self._states = sorted(self._states, key=lambda x: (x.get_order(), *x._coeffs) )
           self._states = sorted(self._states, key=lambda x: x.get_order() )
-
+          self.h_space_dim = len(self)
           #self._states = sorted(self._states, key=lambda x: (x.get_order(),x._coeffs[1]) )
 
 
@@ -195,6 +195,9 @@ class MatrixOperator:
           dim = len(self.matrix)
           self.matrix = self.matrix[0:dim-trunc_num, 0: dim-trunc_num]
           return self
+     
+     def get_dim(self):
+          return len(self.matrix)
 
 
 
@@ -226,12 +229,12 @@ class FirstOrderPerturbation:
 
 class n_dim_harm_osc:
      def __init__(self,  dim,order, energy = None):
-          self.dim = dim
+          self.spatial_dim = dim
           self.order = order
           self.energy = energy
           self.calc_order = order+1
           #self.trunc_num = self.calc_order +1
-          self.eig_states = harm_osc_eigen_vects(self.dim,self.calc_order)
+          self.eig_states = harm_osc_eigen_vects(self.spatial_dim,self.calc_order)
           self.op_builder = operator_builder(self.eig_states)
           self.build_creator_ops()
           self.build_annil_ops()
@@ -241,24 +244,27 @@ class n_dim_harm_osc:
           print(self.over_est_int_op)
           self.over_est_pos_i_ops()
           self.create_pos_i_sq_ops()
+     
+     def get_h_space_dim(self):
+          return self.eig_states.h_space_dim
 
           
      def build_creator_ops(self):
           self.creator_ops = []
-          for i in range(0,self.dim):
+          for i in range(0,self.spatial_dim):
                creator_i_op = self.op_builder.create_operator( lambda x,y: x.creator_i_sandwich(y,i) )
                self.creator_ops.append(creator_i_op)
      
      def build_annil_ops(self):
 
           self.annil_ops = []
-          for i in range(0,self.dim):
+          for i in range(0,self.spatial_dim):
                annil_i_op = self.op_builder.create_operator( lambda x,y: x.annil_i_sandwich(y,i) )
                self.annil_ops.append(annil_i_op)
      
      def build_H_i_ops(self):
           self.H_i_ops = []
-          for i in range(0, self.dim):
+          for i in range(0, self.spatial_dim):
                H_i = np.matmul(self.creator_ops[i].matrix, self.annil_ops[i].matrix)
                self.H_i_ops.append(MatrixOperator(H_i))
                #np.savetxt('H_osc_'+str(i)+'_new.csv', H_i)
@@ -277,7 +283,7 @@ class n_dim_harm_osc:
 
      def over_est_pos_i_ops(self):
           self.pos_i_ops = []
-          for i in range(0,self.dim):
+          for i in range(0,self.spatial_dim):
                self.pos_i_ops.append( self.over_est_pos_i_op(i))
 
      def over_est_pos_i_op(self, i):
@@ -304,7 +310,7 @@ class n_dim_harm_osc:
 
      def create_pos_i_sq_ops(self):
           self.pos_i_sq_ops = []
-          for i in range(0,self.dim):
+          for i in range(0,self.spatial_dim):
                pos_i_sq_op = np.matmul(self.pos_i_ops[i].matrix, self.pos_i_ops[i].matrix)
                self.pos_i_sq_ops.append( MatrixOperator(pos_i_sq_op))
 
@@ -361,7 +367,8 @@ class symmetric_electron_system:
           self.symm_ops = symm_ops
          
 
-class Jahn_Teller_interaction:
+
+class Exe_JT_int:
      def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: symmetric_electron_system, fonon_system: n_dim_harm_osc):
           self.JT_pars = Jahn_Teller_pars
           self.el_states = el_states
@@ -396,6 +403,92 @@ class Jahn_Teller_interaction:
           self.H_int = MatrixOperator(H_int_mat)
 
 class fast_multimode_fonon_sys:
-     def __init__(self,harm_osc_syss:dict[str,n_dim_harm_osc]):
-          self.harm_osc_syss =harm_osc_syss
+     def __init__(self,harm_osc_syss:dict[float,n_dim_harm_osc]):
+          self.fonon_syss = harm_osc_syss
      
+     def calc_pos_operator(self,energy, i:int ):
+
+          #init res
+          j = 0
+          for el_energy in self.fonon_syss.keys():
+               
+               if j == 0:
+                    op_dim = self.fonon_syss[el_energy].get_h_space_dim()
+                    res = self.fonon_syss[el_energy].pos_i_ops[i].matrix if energy==el_energy else np.identity(op_dim)
+               else:
+               
+                    if el_energy != energy:
+
+                         res = np.kron(res,  self.fonon_syss[el_energy].pos_i_ops[i].matrix)
+               
+                    else:
+                         res = np.kron(res, np.identity( self.fonon_syss[el_energy].spatial_dim ))
+               j=j+1
+          return MatrixOperator(res)
+     
+     def get_pos_op(h_osc: n_dim_harm_osc) -> MatrixOperator:
+          return h_osc.get_pos_i_op()
+
+
+     def calc_multi_mode_op(self, energy, op_getter):
+          ops_to_kron = []
+          
+
+
+          for el_energy in self.fonon_syss.keys():
+               if el_energy == energy:
+                    ops_to_kron.append( op_getter(self.fonon_syss[energy]).matrix)
+               else:
+                    ops_to_kron.append(np.identity(self.fonon_syss[energy].get_h_space_dim()))
+
+          return list(itertools.accumulate(ops_to_kron,np.kron))[-1]
+
+
+     
+
+class multi_mode_Exe_jt_int:
+     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: symmetric_electron_system, fonon_systems: fast_multimode_fonon_sys):
+          self.JT_pars = Jahn_Teller_pars
+          self.el_states = el_states
+          self.fonon_systems = fonon_systems
+          
+          Hs = []
+
+          for mode in fonon_systems.fonon_syss.keys():
+               Hs.append( self.create_ham_op_one_mode(mode))
+          all_mode_ham = sum(Hs)
+          
+          self.H_int = MatrixOperator(all_mode_ham)
+
+     
+     def create_ham_op_one_mode(self,mode):
+          
+          fonon_system = self.fonon_systems
+
+     
+
+          X = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_op(0) )
+          Y = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_op(1) )
+
+          #Y = fonon_system.calc_pos_operator(mode, 1)
+
+          XX = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(0,0) )
+          YY = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(1,1) )
+
+          XY = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(0,1) )
+          YX = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(1,0) )
+
+          
+
+
+          K = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_ham_op())
+
+          hw = mode
+
+          H_int_mat = hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
+
+          np.savetxt('H_int.csv', H_int_mat)
+
+
+          #self.H_int = MatrixOperator(H_int_mat)
+          return H_int_mat
