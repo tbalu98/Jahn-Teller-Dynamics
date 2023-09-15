@@ -90,10 +90,8 @@ class harm_osc_eigen_vects:
      def __init__(self, dim,order):
           self._states = []
           self.create_oscillators(dim,order, [])
-          #self._states = sorted(self._states, key=lambda x: (x.get_order(), *x._coeffs) )
           self._states = sorted(self._states, key=lambda x: x.get_order() )
           self.h_space_dim = len(self)
-          #self._states = sorted(self._states, key=lambda x: (x.get_order(),x._coeffs[1]) )
 
 
      def create_oscillators(self, dim, order, curr_osc_coeffs: list):
@@ -165,7 +163,7 @@ class MatrixOperator:
      def create_id_op(n:int):
           return MatrixOperator(np.eye(n))
 
-     def __get_item__(self,key):
+     def __getitem__(self,key):
           return self.matrix[key]
 
      def calc_eigen_vals_vects(self):
@@ -233,7 +231,6 @@ class n_dim_harm_osc:
           self.order = order
           self.energy = energy
           self.calc_order = order+1
-          #self.trunc_num = self.calc_order +1
           self.eig_states = harm_osc_eigen_vects(self.spatial_dim,self.calc_order)
           self.op_builder = operator_builder(self.eig_states)
           self.build_creator_ops()
@@ -328,7 +325,7 @@ class Jahn_Teller_Theory:
 
 
      def __repr__(self) -> str:
-          return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' + 'Barrier energy: '  + str(self.E_b) + '\n' + 'hw+G: ' + str(self.quantum_pG) + '\n' + 'hw-G: ' + str(self.quantum_mG) + '\n' + 'hw: '+ str(self.quantum) 
+          return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' + 'Barrier energy: '  + str(self.E_b) + '\n' + 'hw+G: ' + str(self.hw_pG) + '\n' + 'hw-G: ' + str(self.hw_mG) + '\n' + 'hw: '+ str(self.hw) 
 
      def calc_dists(self):
           self.JT_dist = self.symm_lattice.calc_dist(self.JT_lattice)
@@ -347,17 +344,24 @@ class Jahn_Teller_Theory:
           self.calc_E_b()
           self.delta = self.E_JT - self.E_b
 
-          self.quantum_mG = c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5
+          self.hw_mG = c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5
 
-          self.quantum_pG = c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5
-          self.quantum = (self.quantum_mG + self.quantum_pG)/2
+          self.hw_pG = c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5
+          self.hw = (self.hw_mG + self.hw_pG)/2
           self.calc_Taylor_coeffs()
-          self.JT_pars= Jahn_Teller_Pars(self.E_JT, self.E_b, self.quantum_pG, self.quantum_mG, self.quantum, self.F, self.G)
+          self.repr_JT_pars()
 
+     def repr_JT_pars(self):
+          self.JT_pars= Jahn_Teller_Pars(self.E_JT, self.E_b, self.hw_pG, self.hw_mG, self.hw, self.F, self.G)
+
+     def set_quantum(self, hw):
+          self.hw = hw
+          self.calc_Taylor_coeffs()
+          self.repr_JT_pars()
      
      def calc_Taylor_coeffs(self):
-          self.F = ( 2*self.E_JT*self.quantum*(1-self.delta/(2*self.E_JT-self.delta)) )**0.5
-          self.G = self.quantum*self.delta/(4*self.E_JT - 2*self.delta)
+          self.F =  (( 2*self.E_JT*self.hw*(1-self.delta/(2*self.E_JT-self.delta)) )**0.5)#/(2**0.5)
+          self.G = self.hw*self.delta/(4*self.E_JT - 2*self.delta)
 
 
 
@@ -447,8 +451,10 @@ class fast_multimode_fonon_sys:
      
 
 class multi_mode_Exe_jt_int:
-     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: symmetric_electron_system, fonon_systems: fast_multimode_fonon_sys):
-          self.JT_pars = Jahn_Teller_pars
+     def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: symmetric_electron_system, fonon_systems: fast_multimode_fonon_sys):
+          self.JT_theory = JT_theory
+          #self.JT_pars = JT_theory.JT_pars
+
           self.el_states = el_states
           self.fonon_systems = fonon_systems
           
@@ -483,9 +489,9 @@ class multi_mode_Exe_jt_int:
 
           K = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_ham_op())
 
-          hw = mode
+          self.JT_theory.set_quantum(mode)
 
-          H_int_mat = hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
+          H_int_mat = self.JT_theory.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_theory.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_theory.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
 
           np.savetxt('H_int.csv', H_int_mat)
 

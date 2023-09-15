@@ -61,7 +61,7 @@ for case_name in control_data.index:
     #sec_fonon_modes = [78.8]
     lowest_eig_energies = []
 
-    mode = 78.79527995410929
+    mode = 78.79527995410930
 
     print(mode)
     #Create the phonon system
@@ -73,7 +73,7 @@ for case_name in control_data.index:
     mm_fon_sys = qm.fast_multimode_fonon_sys({ 78.79527995410929: fonon_sys78, mode: fonon_sys781 })
 
     #Calculate the fonon electron interaction's hamiltonian
-    JT_int = qm.multi_mode_Exe_jt_int(JT_theory.JT_pars,el_states,mm_fon_sys)
+    JT_int = qm.multi_mode_Exe_jt_int(JT_theory,el_states,mm_fon_sys)
 
 
     vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=len(JT_int.H_int))
