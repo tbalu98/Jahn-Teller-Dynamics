@@ -7,6 +7,7 @@ import collections
 import copy
 from scipy.sparse.linalg import eigs
 import itertools
+import utilities.maths as maths
 #Data structures
 Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
 
@@ -29,6 +30,7 @@ class eigen_vect:
 
      def __getitem__(self,key):
           return self._coeffs[key]
+
      def __len__(self):
           return len(self._coeffs)
      
@@ -124,6 +126,7 @@ class harm_osc_eigen_vects:
 class operator_builder:
      def __init__(self, eig_states):
           self.eig_states = eig_states
+          #self.mxtype = mxtype
 
      def create_operator(self, sandwich_fun):
           dim = len(self.eig_states)
@@ -131,10 +134,15 @@ class operator_builder:
           for i in range(0,len(self.eig_states)):
                for j in range(0,len(self.eig_states)):
                     operator[i][j] = sandwich_fun(self.eig_states[i], self.eig_states[j])
-          return MatrixOperator(operator)
-     
+          #if self.mxtype == 'ordinary':
+          return MatrixOperator(maths.Matrix(operator))
+          #elif self.mxtype == 'sparse':
+          #     return MatrixOperator( maths.SparseMatrix( operator ) )
 
 
+class QuantumState:
+    def __init__(self, matrix :maths.Matrix):
+        self.matrix = matrix
 
 
 
@@ -142,14 +150,43 @@ class operator_builder:
 
 #Quantummechanical operator:
 class MatrixOperator:
+     #matrix:maths.SparseMatrix
+     def round(self, dig):
+          return MatrixOperator(self.matrix.round(dig))
+     def change_type(self, dtype):
+          return MatrixOperator(self.matrix.change_type(dtype))
+     def __add__(self,other):
+          return MatrixOperator(self.matrix+ other.matrix)
+     
+     def __radd__(self, other):
+          if type(other)==int:
+               return self #+ MatrixOperator(maths.Matrix.create_eye(self.dim))
+          else:
+               return self + other
+          #return MatrixOperator(self.matrix + other)
+     
+     def __sub__(self, other):
+          return MatrixOperator(self.matrix-other.matrix)
+     
+     def __mul__(self, other):
+          return MatrixOperator(self.matrix.__mul__(other.matrix))
+     
+     def __truediv__(self, other):
+          return MatrixOperator(self.matrix.__truediv__(other))
+     
+     def __pow__(self, other):
+          return MatrixOperator(self.matrix**other.matrix)
+     
+     def __repr__(self):
+          return self.matrix.__repr__()
 
      def from_sandwich_fun(self, states, sandwich_fun):
           pass
 
-     def __init__(self, matrix, name = ""):
+     def __init__(self, matrix:maths.Matrix, name = ""):
           self.name = name
           self.matrix = matrix
-     
+          self.dim = self.matrix.dim
           self.calc_eigen_vals_vects()
 
      def __len__(self):
@@ -166,33 +203,41 @@ class MatrixOperator:
      def __getitem__(self,key):
           return self.matrix[key]
 
-     def calc_eigen_vals_vects(self):
-          self.eigen_vals, self.eigen_vects =  eigs(self.matrix, k = len(self.matrix), which = 'SM') #LA.eig(self.matrix)
+     def calc_eigen_vals_vects(self, num_of_vals = None, ordering_type = None):
+        #self.eigen_vals, self.eigen_vects =  eigs(self.matrix, k = len(self.matrix), which = 'SM')
+        self.eigen_vals, self.eigen_vects =  self.matrix.get_eig_vals(num_of_vals, ordering_type)
+
           
 
      def get_eigen_vect(self, i):
-          return np.array(self.eigen_vects[i])
+        #return np.array(self.eigen_vects[i])
+        return np.array(self.eigen_vects[:,i])
      
      def get_eigen_val(self, i):
-          return self.eigen_vals[i]
+        return self.eigen_vals[i]
      
-     def calc_sandwich(self, Phi1: np.array, Phi2: np.array):
-          Phi1_tr = np.transpose(Phi1)
+     def calc_sandwich(self, Phi1: QuantumState, Phi2: QuantumState):
+        #Phi1_tr = np.transpose(Phi1)
           
-          return complex(np.matmul( Phi2, np.matmul( self.matrix, Phi1_tr ) ))
+        #return complex(np.matmul( Phi2, np.matmul( self.matrix, Phi1_tr ) ))
+        Phi1_tr_matrix = Phi1.matrix.transpose()
+        Phi2_matrix = Phi2.matrix
+
+        return complex( Phi2_matrix.multiply( self.matrix.multiply(Phi1_tr_matrix) ) )
      
      def interaction_with(self, other):
-          return MatrixOperator(np.kron( self.matrix, other.matrix ) )
+          return MatrixOperator( self.matrix.kron(other.matrix) )
+          #return MatrixOperator(np.kron( self.matrix, other.matrix ) )
 
      def multiply(self, other):
-          matrix1 = self.matrix
-          matrix2 = other.matrix
-          return MatrixOperator(np.matmul(matrix1,matrix2,dtype=np.complex64))
+          #return MatrixOperator(np.matmul(matrix1,matrix2,dtype=np.complex64))
+        return MatrixOperator(self.matrix.multiply(other.matrix))
 
      def truncate_matrix(self, trunc_num):
           dim = len(self.matrix)
-          self.matrix = self.matrix[0:dim-trunc_num, 0: dim-trunc_num]
-          return self
+          #self.matrix = self.matrix[0:dim-trunc_num, 0: dim-trunc_num]
+          #return MatrixOperator(self.matrix.truncate(trunc_num, trunc_num))
+          return MatrixOperator(maths.Matrix(self.matrix[0:dim-trunc_num, 0: dim-trunc_num]))
      
      def get_dim(self):
           return len(self.matrix)
@@ -240,7 +285,7 @@ class n_dim_harm_osc:
           self.calc_trunc_num()
           print(self.over_est_int_op)
           self.over_est_pos_i_ops()
-          self.create_pos_i_sq_ops()
+          #self.create_pos_i_sq_ops()
      
      def get_h_space_dim(self):
           return self.eig_states.h_space_dim
@@ -251,7 +296,7 @@ class n_dim_harm_osc:
           for i in range(0,self.spatial_dim):
                creator_i_op = self.op_builder.create_operator( lambda x,y: x.creator_i_sandwich(y,i) )
                self.creator_ops.append(creator_i_op)
-     
+
      def build_annil_ops(self):
 
           self.annil_ops = []
@@ -262,22 +307,34 @@ class n_dim_harm_osc:
      def build_H_i_ops(self):
           self.H_i_ops = []
           for i in range(0, self.spatial_dim):
-               H_i = np.matmul(self.creator_ops[i].matrix, self.annil_ops[i].matrix)
-               self.H_i_ops.append(MatrixOperator(H_i))
-               #np.savetxt('H_osc_'+str(i)+'_new.csv', H_i)
+               
+               op_ov = self.creator_ops[i]*self.annil_ops[i]
+               print(op_ov)
+               
+               self.H_i_ops.append(op_ov)
+               #H_i = np.matmul(self.creator_ops[i].matrix, self.annil_ops[i].matrix)
+               
+               #self.H_i_ops.append( MatrixOperator( maths.Matrix(H_i)))
+               
 
      def calc_trunc_num(self):
-          self.trunc_num = np.count_nonzero(self.over_est_int_op.matrix == self.calc_order)
+          #self.trunc_num = np.count_nonzero(self.over_est_int_op.matrix == self.calc_order)
+          self.trunc_num = self.over_est_int_op.matrix.count_occurrences(self.calc_order)
           print('calc trunc num')
 
      def build_whole_sys_op(self):
                
-          int_op = np.matrix( np.round( sum( [x.matrix for x in self.H_i_ops ] ) ), dtype=np.int16 )
-          
-          self.over_est_int_op = MatrixOperator(int_op)
+          #int_op_raw_matrix = sum( [ x.matrix.matrix for x in self.H_i_ops ] )
+          #int_op_matrix = maths.Matrix(int_op_raw_matrix).round(0).change_type(np.int16)
+          #self.over_est_int_op = MatrixOperator(int_op_matrix)
+
+          int_op = sum(self.H_i_ops)
+          self.over_est_int_op = int_op.round(0).change_type(np.int16)
+
      
      def get_ham_op(self):
-          return MatrixOperator(self.over_est_int_op.matrix).truncate_matrix(self.trunc_num)
+          #return MatrixOperator(self.over_est_int_op.matrix).truncate_matrix(self.trunc_num)
+          return self.over_est_int_op.truncate_matrix(self.trunc_num)
 
      def over_est_pos_i_ops(self):
           self.pos_i_ops = []
@@ -285,13 +342,15 @@ class n_dim_harm_osc:
                self.pos_i_ops.append( self.over_est_pos_i_op(i))
 
      def over_est_pos_i_op(self, i):
-          pos_i_mat = (self.creator_ops[i].matrix + self.annil_ops[i].matrix)/(2**0.5)
-          return MatrixOperator( pos_i_mat )
-
+          #pos_i_mat = (self.creator_ops[i].matrix + self.annil_ops[i].matrix)/(2**0.5)
+          #return MatrixOperator( maths.Matrix(pos_i_mat))
+          return (self.creator_ops[i] + self.annil_ops[i])/(2**0.5)
+     
      def over_est_pos_i_j_op(self, i,j):
           pos_i_op = self.over_est_pos_i_op(i)
           pos_j_op = self.over_est_pos_i_op(j)
-          return pos_i_op.multiply(pos_j_op)
+          
+          return pos_i_op*(pos_j_op)
 
      def get_pos_i_op(self, i):
           return self.over_est_pos_i_op(i).truncate_matrix(self.trunc_num)
@@ -309,8 +368,8 @@ class n_dim_harm_osc:
      def create_pos_i_sq_ops(self):
           self.pos_i_sq_ops = []
           for i in range(0,self.spatial_dim):
-               pos_i_sq_op = np.matmul(self.pos_i_ops[i].matrix, self.pos_i_ops[i].matrix)
-               self.pos_i_sq_ops.append( MatrixOperator(pos_i_sq_op))
+
+               self.pos_i_sq_ops.append(self.pos_i_sq_ops[i]* self.pos_i_sq_ops[i])
 
 
 
@@ -349,6 +408,7 @@ class Jahn_Teller_Theory:
 
           self.hw_pG = c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5
           self.hw = (self.hw_mG + self.hw_pG)/2
+          self.hw = float(self.hw)
           self.calc_Taylor_coeffs()
           self.repr_JT_pars()
 
@@ -361,14 +421,14 @@ class Jahn_Teller_Theory:
           self.repr_JT_pars()
      
      def calc_Taylor_coeffs(self):
-          self.F =  (( 2*self.E_JT*self.hw*(1-self.delta/(2*self.E_JT-self.delta)) )**0.5)#/(2**0.5)
-          self.G = self.hw*self.delta/(4*self.E_JT - 2*self.delta)
+          self.F =  float((( 2*self.E_JT*self.hw*(1-self.delta/(2*self.E_JT-self.delta)) )**0.5))#/(2**0.5)
+          self.G = float(self.hw*self.delta/(4*self.E_JT - 2*self.delta))
 
 
 
 
 class symmetric_electron_system:
-     def __init__(self, symm_ops: dict):
+     def __init__(self, symm_ops: dict[str,maths.Matrix]):
           self.symm_ops = symm_ops
          
 
@@ -398,14 +458,18 @@ class Exe_JT_int:
 
           K = self.fonon_system.get_ham_op().matrix    
           
+          s0 = self.el_states.symm_ops['s0'].matrix
+          sz = self.el_states.symm_ops['sz'].matrix
+          sx = self.el_states.symm_ops['sx'].matrix
+
+          #H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
+          
+          H_int_mat = self.JT_pars.hw * (K**s0) +self.JT_pars.F*( X**sz + Y**sx ) + self.JT_pars.G * ( (XX-YY)**sz - (XY + YX) ** sx) 
+
+          #np.savetxt('new_H_int.csv', H_int_mat.matrix)
 
 
-          H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
-
-          np.savetxt('old_H_int.csv', H_int_mat)
-
-
-          self.H_int = MatrixOperator(H_int_mat)
+          self.H_int = MatrixOperator(maths.Matrix(H_int_mat))
 
 class fast_multimode_fonon_sys:
      def __init__(self,harm_osc_syss:dict[float,n_dim_harm_osc]):
@@ -494,8 +558,4 @@ class multi_mode_Exe_jt_int:
 
           H_int_mat = self.JT_theory.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_theory.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_theory.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
 
-          np.savetxt('H_int.csv', H_int_mat)
-
-
-          #self.H_int = MatrixOperator(H_int_mat)
           return H_int_mat
