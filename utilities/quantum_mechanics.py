@@ -143,6 +143,9 @@ class operator_builder:
 #Quantummechanical operator:
 class MatrixOperator:
 
+     def save_txt(self, filename):
+          self.matrix.save_text(filename)
+
      def from_sandwich_fun(self, states, sandwich_fun):
           pass
 
@@ -422,7 +425,7 @@ class fast_multimode_fonon_sys:
                     res = self.fonon_syss[el_energy].pos_i_ops[i].matrix if energy==el_energy else np.identity(op_dim)
                else:
                
-                    if el_energy != energy:
+                    if el_energy == energy:
 
                          res = np.kron(res,  self.fonon_syss[el_energy].pos_i_ops[i].matrix)
                

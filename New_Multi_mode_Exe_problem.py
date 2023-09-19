@@ -1,7 +1,9 @@
 import pandas as pd
 import utilities.VASP as VASP
 import math
-import utilities.quantum_mechanics as qm
+import utilities.jahn_teller_theory as jt
+import utilities.maths as  maths
+import utilities.new_quantum_mechanics as qm
 import numpy as np
 import scipy as sc
 from scipy.sparse.linalg import eigs
@@ -27,9 +29,9 @@ s0 = np.matrix([[1,0],[0,1]], dtype= np.float64)
 
 symm_ops = {}
 
-symm_ops['sz'] = qm.MatrixOperator(sz, name = 'sz')
-symm_ops['sx'] = qm.MatrixOperator(sx, name = 'sx')
-symm_ops['s0'] = qm.MatrixOperator(s0, name = 's0')
+symm_ops['sz'] = qm.MatrixOperator(maths.Matrix(sz), name = 'sz')
+symm_ops['sx'] = qm.MatrixOperator(maths.Matrix(sx), name = 'sx')
+symm_ops['s0'] = qm.MatrixOperator(maths.Matrix(s0), name = 's0')
 
 
 
@@ -53,7 +55,7 @@ for case_name in control_data.index:
     less_symm_lattice_2 = read_lattice(control, 'less_symm_geom_2')
 
     #Calculate the parameters of Jahn-Teller theory
-    JT_theory = qm.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
+    JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
 
     print(JT_theory)
 
@@ -73,10 +75,10 @@ for case_name in control_data.index:
     mm_fon_sys = qm.fast_multimode_fonon_sys({ 78.79527995410929: fonon_sys78, mode: fonon_sys781 })
 
     #Calculate the fonon electron interaction's hamiltonian
-    JT_int = qm.multi_mode_Exe_jt_int(JT_theory,el_states,mm_fon_sys)
+    JT_int = jt.multi_mode_Exe_jt_int(JT_theory,el_states,mm_fon_sys)
 
 
-    vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=len(JT_int.H_int))
+    vals, vecs = eigs(JT_int.H_int.matrix.matrix, which='SM', k=len(JT_int.H_int))
 
     JT_eigen_states = qm.eigen_vect.from_vals_vects(vals, vecs)
 

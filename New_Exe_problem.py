@@ -8,6 +8,7 @@ from scipy.sparse.linalg import eigs
 from numpy import linalg as LA
 import utilities.maths as maths
 from utilities.maths import Matrix
+import utilities.jahn_teller_theory as jt
 control_file_path = 'data/'
 
 control_data = pd.read_csv( control_file_path + 'control.csv' , index_col='case')
@@ -58,7 +59,7 @@ for case_name in control_data.index:
     less_symm_lattice_2 = read_lattice(control, 'less_symm_geom_2')
 
     #Calculate the parameters of Jahn-Teller theory
-    JT_theory = qm.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
+    JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
 
     print(JT_theory)
 
@@ -68,9 +69,9 @@ for case_name in control_data.index:
     print(fonon_sys.eig_states._states)
     
     #Calculate the fonon electron interaction's hamiltonian
-    JT_int = qm.Exe_JT_int(JT_theory.JT_pars,el_states,fonon_sys)
+    JT_int = jt.Exe_JT_int(JT_theory.JT_pars,el_states,fonon_sys)
 
-    vals, vecs = JT_int.H_int.matrix.get_eig_vals(42, 'SM')
+    vals, vecs = JT_int.H_int.matrix.get_eig_vals(30, 'SM')
     #vals, vecs = eigs(JT_int.H_int.matrix, which='SM', k=30)
 
     JT_eigen_states = qm.eigen_vect.from_vals_vects(vals, vecs)
@@ -79,20 +80,28 @@ for case_name in control_data.index:
     print(sorted(vals))
 
 
-    """
+    
     #Add the spin orbit coupling interaction
-    Lz_op = qm.MatrixOperator.create_Lz_op()
+    Lz_op = qm.MatrixOperator.create_Lz_op(maths.Matrix)
 
-    id_op = qm.MatrixOperator.create_id_op(len(fonon_sys.get_ham_op()))
+    id_op = qm.MatrixOperator.create_id_matrix_op( len(fonon_sys.get_ham_op()),maths.Matrix )
 
-    pert_ham = id_op.interaction_with(Lz_op)
+    pert_ham = id_op**(Lz_op)
+
+    pert_ham.save('pert_ham_new.csv')
+
+    print('-----------------')
+    print(JT_eigen_states[0])
+    print(JT_eigen_states[1])
+    print('-----------------')
+
 
     Lz_perturbation = qm.FirstOrderPerturbation([ JT_eigen_states[0], JT_eigen_states[1] ], pert_ham)
 
-    print(Lz_perturbation.pert_op.matrix)
+    print(Lz_perturbation.pert_op.matrix.matrix)
     print('Eigen values of the perturbation')
     print(Lz_perturbation.pert_op.eigen_vals)
     print('reduction factor:')
     print(Lz_perturbation.get_reduction_factor())
-    """
+
 

@@ -6,12 +6,20 @@ import collections
 
 class Matrix:
     
+    def create_Lz_mx():
+        raw_mx =  np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
+        return Matrix(raw_mx)
+
     def create_eye(dim):
         return Matrix(np.eye(dim))
+
+    def save(self,filename):
+        np.savetxt(filename,self.matrix)
 
     def __init__(self, matrix:np.matrix):
         self.matrix = matrix
         self.dim = self.matrix.shape[0]
+
 
     def multiply(self, other):
         return Matrix(np.matmul(self.matrix, other.matrix))
@@ -22,7 +30,7 @@ class Matrix:
         #else:
         return Matrix(np.matmul(self.matrix,other.matrix))
     def __rmul__(self,  other):
-        return self.matrix*other
+        return Matrix(self.matrix*other)
 
     def __truediv__(self, other):
         return Matrix(self.matrix/other)

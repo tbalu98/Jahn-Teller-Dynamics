@@ -8,10 +8,8 @@ import copy
 from scipy.sparse.linalg import eigs
 import itertools
 import utilities.maths as maths
+#import utilities.jahn_teller_theory as  jt
 #Data structures
-Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
-
-Jahn_Teller_Pars = collections.namedtuple('Jahn_Teller_Pars',  'E_JT E_b hwpG hwmG hw F G ' )
 
 
 class eigen_vect:
@@ -130,7 +128,7 @@ class operator_builder:
 
      def create_operator(self, sandwich_fun):
           dim = len(self.eig_states)
-          operator = np.zeros((dim, dim), dtype = np.float64)
+          operator = np.zeros((dim, dim), dtype = np.complex64)
           for i in range(0,len(self.eig_states)):
                for j in range(0,len(self.eig_states)):
                     operator[i][j] = sandwich_fun(self.eig_states[i], self.eig_states[j])
@@ -150,6 +148,8 @@ class QuantumState:
 
 #Quantummechanical operator:
 class MatrixOperator:
+     def save(self,filename):
+          self.matrix.save(filename)
      #matrix:maths.SparseMatrix
      def round(self, dig):
           return MatrixOperator(self.matrix.round(dig))
@@ -171,6 +171,10 @@ class MatrixOperator:
      def __mul__(self, other):
           return MatrixOperator(self.matrix.__mul__(other.matrix))
      
+     def __rmul__(self, other):
+          return MatrixOperator(self.matrix.__rmul__(other))
+     
+
      def __truediv__(self, other):
           return MatrixOperator(self.matrix.__truediv__(other))
      
@@ -186,19 +190,23 @@ class MatrixOperator:
      def __init__(self, matrix:maths.Matrix, name = ""):
           self.name = name
           self.matrix = matrix
-          self.dim = self.matrix.dim
+          #self.dim = self.matrix.dim
           self.calc_eigen_vals_vects()
+          self.matrix_class = type(matrix)
+     
+     def create_id_matrix_op(dim, matrix_class=maths.Matrix):
+          return MatrixOperator(matrix_class.create_eye(dim))
 
      def __len__(self):
           return len(self.matrix)
 
-     def create_Lz_op():
-          Lz_mat = np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
+     def create_Lz_op(matrix_class:maths.Matrix):
+          #Lz_mat = np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
 
-          return MatrixOperator(Lz_mat)
+          return MatrixOperator(matrix_class.create_Lz_mx())
 
-     def create_id_op(n:int):
-          return MatrixOperator(np.eye(n))
+     #def create_id_op(n:int):
+     #     return MatrixOperator(maths.Matrix(np.eye(n)))
 
      def __getitem__(self,key):
           return self.matrix[key]
@@ -256,11 +264,12 @@ class FirstOrderPerturbation:
           left = np.matrix( [ x._coeffs.flatten() for x in self.deg_eigen_vecs] )
           right = np.transpose(left)
 
-          raw_pert_mat = np.matmul(left, np.matmul( self.ham_comma.matrix, right ))
+          raw_pert_mat = np.matmul(left, np.matmul( self.ham_comma.matrix.matrix, right ))
 
 
 
-          self.pert_op = MatrixOperator(raw_pert_mat)
+          self.pert_op = MatrixOperator(maths.Matrix(raw_pert_mat))
+
 
           self.pert_eigen_vals = self.pert_op.eigen_vals
 
@@ -373,57 +382,6 @@ class n_dim_harm_osc:
 
 
 
-class Jahn_Teller_Theory:
-
-
-     def __init__(self, symm_lattice: VASP.Lattice, less_symm_lattice_1: VASP.Lattice, less_symm_lattice_2:VASP.Lattice):
-          self.symm_lattice = symm_lattice
-          self.JT_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy< less_symm_lattice_2.energy else less_symm_lattice_2
-          self.barrier_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy> less_symm_lattice_2.energy else less_symm_lattice_2
-          self.calc_paramters()
-
-
-
-     def __repr__(self) -> str:
-          return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' + 'Barrier energy: '  + str(self.E_b) + '\n' + 'hw+G: ' + str(self.hw_pG) + '\n' + 'hw-G: ' + str(self.hw_mG) + '\n' + 'hw: '+ str(self.hw) 
-
-     def calc_dists(self):
-          self.JT_dist = self.symm_lattice.calc_dist(self.JT_lattice)
-          self.barrier_dist = self.symm_lattice.calc_dist(self.barrier_lattice)
-
-     def calc_E_JT(self):
-          self.E_JT = abs(self.JT_lattice.energy - self.symm_lattice.energy)*1000
-     def calc_E_b(self):
-          self.E_b = abs( self.JT_lattice.energy - self.barrier_lattice.energy)*1000
-
-
-     def calc_paramters(self):
-          self.calc_dists()
-          c = 64.654148236
-          self.calc_E_JT()
-          self.calc_E_b()
-          self.delta = self.E_JT - self.E_b
-
-          self.hw_mG = c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5
-
-          self.hw_pG = c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5
-          self.hw = (self.hw_mG + self.hw_pG)/2
-          self.hw = float(self.hw)
-          self.calc_Taylor_coeffs()
-          self.repr_JT_pars()
-
-     def repr_JT_pars(self):
-          self.JT_pars= Jahn_Teller_Pars(self.E_JT, self.E_b, self.hw_pG, self.hw_mG, self.hw, self.F, self.G)
-
-     def set_quantum(self, hw):
-          self.hw = hw
-          self.calc_Taylor_coeffs()
-          self.repr_JT_pars()
-     
-     def calc_Taylor_coeffs(self):
-          self.F =  float((( 2*self.E_JT*self.hw*(1-self.delta/(2*self.E_JT-self.delta)) )**0.5))#/(2**0.5)
-          self.G = float(self.hw*self.delta/(4*self.E_JT - 2*self.delta))
-
 
 
 
@@ -432,44 +390,6 @@ class symmetric_electron_system:
           self.symm_ops = symm_ops
          
 
-
-class Exe_JT_int:
-     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: symmetric_electron_system, fonon_system: n_dim_harm_osc):
-          self.JT_pars = Jahn_Teller_pars
-          self.el_states = el_states
-          self.fonon_system = fonon_system
-          self.create_hamiltonian_op()
-     
-     def create_hamiltonian_op(self):
-          
-          
-          X = self.fonon_system.get_pos_i_op(0).matrix
-          Y = self.fonon_system.get_pos_i_op(1).matrix
-
-
-
-          XX = self.fonon_system.get_pos_i_i_op(0).matrix
-
-          XY = self.fonon_system.get_pos_i_j_op(0,1).matrix
-          YX = self.fonon_system.get_pos_i_j_op(1,0).matrix
-          
-          YY = self.fonon_system.get_pos_i_i_op(1).matrix
-          
-
-          K = self.fonon_system.get_ham_op().matrix    
-          
-          s0 = self.el_states.symm_ops['s0'].matrix
-          sz = self.el_states.symm_ops['sz'].matrix
-          sx = self.el_states.symm_ops['sx'].matrix
-
-          #H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
-          
-          H_int_mat = self.JT_pars.hw * (K**s0) +self.JT_pars.F*( X**sz + Y**sx ) + self.JT_pars.G * ( (XX-YY)**sz - (XY + YX) ** sx) 
-
-          #np.savetxt('new_H_int.csv', H_int_mat.matrix)
-
-
-          self.H_int = MatrixOperator(maths.Matrix(H_int_mat))
 
 class fast_multimode_fonon_sys:
      def __init__(self,harm_osc_syss:dict[float,n_dim_harm_osc]):
@@ -483,17 +403,23 @@ class fast_multimode_fonon_sys:
                
                if j == 0:
                     op_dim = self.fonon_syss[el_energy].get_h_space_dim()
-                    res = self.fonon_syss[el_energy].pos_i_ops[i].matrix if energy==el_energy else np.identity(op_dim)
+                    res = self.fonon_syss[el_energy].pos_i_ops[i] if energy==el_energy else MatrixOperator.create_id_matrix_op(op_dim)
                else:
                
-                    if el_energy != energy:
+                    if el_energy == energy:
 
-                         res = np.kron(res,  self.fonon_syss[el_energy].pos_i_ops[i].matrix)
+                         res = res**self.fonon_syss[el_energy].pos_i_ops[i]
+                         #res = np.kron(res,  self.fonon_syss[el_energy].pos_i_ops[i].matrix)
                
                     else:
-                         res = np.kron(res, np.identity( self.fonon_syss[el_energy].spatial_dim ))
+                         res = res**MatrixOperator.create_id_matrix_op(self.fonon_syss[el_energy].spatial_dim)
+                         #res = np.kron(res, np.identity( self.fonon_syss[el_energy].spatial_dim ))
                j=j+1
-          return MatrixOperator(res)
+          return res
+          #return MatrixOperator(res)
+     
+
+
      
      def get_pos_op(h_osc: n_dim_harm_osc) -> MatrixOperator:
           return h_osc.get_pos_i_op()
@@ -506,56 +432,11 @@ class fast_multimode_fonon_sys:
 
           for el_energy in self.fonon_syss.keys():
                if el_energy == energy:
-                    ops_to_kron.append( op_getter(self.fonon_syss[energy]).matrix)
+                    ops_to_kron.append( op_getter(self.fonon_syss[energy]))
                else:
-                    ops_to_kron.append(np.identity(self.fonon_syss[energy].get_h_space_dim()))
+                    ops_to_kron.append(MatrixOperator.create_id_matrix_op(self.fonon_syss[energy].get_h_space_dim()))
 
-          return list(itertools.accumulate(ops_to_kron,np.kron))[-1]
+          return list(itertools.accumulate(ops_to_kron,lambda x,y: x**y))[-1]
 
 
      
-
-class multi_mode_Exe_jt_int:
-     def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: symmetric_electron_system, fonon_systems: fast_multimode_fonon_sys):
-          self.JT_theory = JT_theory
-          #self.JT_pars = JT_theory.JT_pars
-
-          self.el_states = el_states
-          self.fonon_systems = fonon_systems
-          
-          Hs = []
-
-          for mode in fonon_systems.fonon_syss.keys():
-               Hs.append( self.create_ham_op_one_mode(mode))
-          all_mode_ham = sum(Hs)
-          
-          self.H_int = MatrixOperator(all_mode_ham)
-
-     
-     def create_ham_op_one_mode(self,mode):
-          
-          fonon_system = self.fonon_systems
-
-     
-
-          X = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_op(0) )
-          Y = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_op(1) )
-
-          #Y = fonon_system.calc_pos_operator(mode, 1)
-
-          XX = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(0,0) )
-          YY = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(1,1) )
-
-          XY = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(0,1) )
-          YX = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(1,0) )
-
-          
-
-
-          K = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_ham_op())
-
-          self.JT_theory.set_quantum(mode)
-
-          H_int_mat = self.JT_theory.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_theory.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_theory.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
-
-          return H_int_mat
