@@ -4,8 +4,56 @@ from scipy.sparse.linalg import eigs
 from scipy import sparse
 import collections
 
+
+
+
+
+
+class col_vector:
+    def __init__(self,coeffs:np.matrix):
+        if coeffs.shape[1]==1:
+            self.coeffs = coeffs
+        else:
+            return None
+
+    def __repr__(self):
+        return str(self.coeffs)
+
+    def __str__(self):
+        return str(self.coeffs)
+
+
+class row_vector:
+    def __init__(self,coeffs:np.matrix):
+        if coeffs.shape[0]==1:
+            self.coeffs = coeffs
+        else:
+            return None
+        
+    def __mul__(self, other:col_vector):
+        if type(other) is col_vector:
+            return complex(np.matmul(self.coeffs,other.coeffs))
+        elif type(other) is Matrix:
+            return row_vector(np.matmul( self.coeffs, other.matrix ))
+
+
+    def __rmul__(self, other: col_vector):
+        return Matrix(np.matmul(other.coeffs,self.coeffs))
+    
+    def __repr__(self):
+        return str(self.coeffs)
+
+    def __str__(self):
+        return str(self.coeffs)
+
 class Matrix:
     
+    def __str__(self):
+        return str(self.matrix)
+    
+    def __repr__(self):
+        return str(self.matrix)
+
     def create_Lz_mx():
         raw_mx =  np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
         return Matrix(raw_mx)
@@ -25,10 +73,11 @@ class Matrix:
         return Matrix(np.matmul(self.matrix, other.matrix))
     
     def __mul__(self, other):
-        #if ( hasattr(other, '__getitem__') ):
-        #    return Matrix(np.matmul(self.matrix, other.matrix))
-        #else:
-        return Matrix(np.matmul(self.matrix,other.matrix))
+        if type(other) is Matrix:
+            return Matrix(np.matmul(self.matrix,other.matrix))
+        elif type(other) is col_vector:
+            return col_vector(np.matmul(self.matrix,other.coeffs))
+        
     def __rmul__(self,  other):
         return Matrix(self.matrix*other)
 

@@ -1,17 +1,34 @@
+
 import numpy as np
-import collections
-from numpy import linalg as LA
-import math
-import utilities.VASP as VASP
-import collections
-import copy
-from scipy.sparse.linalg import eigs
 import itertools
-import utilities.maths as maths
+import  utilities.maths as  maths
+import copy
 #import utilities.jahn_teller_theory as  jt
 #Data structures
 
 
+class ket_vector:
+     def __init__(self, qm_nums:maths.col_vector):
+          self.vector = qm_nums
+     
+     def __repr__(self):
+          return str(self.vector)
+
+class bra_vector:
+     def __init__(self, qm_nums:maths.row_vector):
+          self.vector = qm_nums
+     
+     def __mul__(self, other:ket_vector):
+          if type(other) is ket_vector:
+               return complex(self.vector*other.vector)
+          elif type(other) is MatrixOperator:
+               return bra_vector(self.vector*other.matrix)
+
+
+     def __rmul__(self, other:ket_vector):
+          return MatrixOperator(other.vector*self.vector)
+     def __repr__(self):
+          return str(self.vector)
 class eigen_vect:
      def from_vals_vects(vals, vecs):
           res = []
@@ -148,6 +165,7 @@ class QuantumState:
 
 #Quantummechanical operator:
 class MatrixOperator:
+
      def save(self,filename):
           self.matrix.save(filename)
      #matrix:maths.SparseMatrix
@@ -169,7 +187,10 @@ class MatrixOperator:
           return MatrixOperator(self.matrix-other.matrix)
      
      def __mul__(self, other):
-          return MatrixOperator(self.matrix.__mul__(other.matrix))
+          if type(other) is MatrixOperator:
+               return MatrixOperator(self.matrix.__mul__(other.matrix))
+          elif type(other) is ket_vector:
+               return ket_vector(self.matrix.__mul__(other.vector))
      
      def __rmul__(self, other):
           return MatrixOperator(self.matrix.__rmul__(other))
@@ -191,7 +212,7 @@ class MatrixOperator:
           self.name = name
           self.matrix = matrix
           #self.dim = self.matrix.dim
-          self.calc_eigen_vals_vects()
+          #self.calc_eigen_vals_vects() !!!
           self.matrix_class = type(matrix)
      
      def create_id_matrix_op(dim, matrix_class=maths.Matrix):
@@ -270,7 +291,7 @@ class FirstOrderPerturbation:
 
           self.pert_op = MatrixOperator(maths.Matrix(raw_pert_mat))
 
-
+          self.pert_op.calc_eigen_vals_vects()
           self.pert_eigen_vals = self.pert_op.eigen_vals
 
           return self.pert_op

@@ -3,7 +3,7 @@ import utilities.VASP as VASP
 import math
 import utilities.jahn_teller_theory as jt
 import utilities.maths as  maths
-import utilities.new_quantum_mechanics as qm
+import utilities.matrix_quantum_mechanics as qm
 import numpy as np
 import scipy as sc
 from scipy.sparse.linalg import eigs
@@ -78,12 +78,13 @@ for case_name in control_data.index:
     JT_int = jt.multi_mode_Exe_jt_int(JT_theory,el_states,mm_fon_sys)
 
 
-    vals, vecs = eigs(JT_int.H_int.matrix.matrix, which='SM', k=len(JT_int.H_int))
+    
+    JT_int.H_int.calc_eigen_vals_vects()
 
-    JT_eigen_states = qm.eigen_vect.from_vals_vects(vals, vecs)
+    JT_eigen_states = qm.eigen_vect.from_vals_vects( JT_int.H_int.eigen_vals, JT_int.H_int.eigen_vects)
 
     print('Eigen values of the Jahn-Teller interaction')
-    print(sorted(vals))
+    print(sorted(JT_int.H_int.eigen_vals))
 
 
 
