@@ -16,14 +16,61 @@ class col_vector:
         else:
             return None
 
+    def get_coeffs_list(self):
+        coeffs_list = []
+        for coeff in self.coeffs:
+            coeffs_list.append(complex(coeff))
+        return coeffs_list
+
     def __repr__(self):
         return str(self.coeffs)
 
     def __str__(self):
         return str(self.coeffs)
 
+    def __getitem__(self, key):
+        return self.coeffs[key][0]
+    
+    def set_val(self, index, val):
+        self.coeffs[index, 0] = val
+    def to_row_vector(self):
+        return row_vector(np.transpose(self.coeffs))
+
+    def __mul__(self, other):
+        if type(other) is row_vector:
+            return Matrix(np.matmul(self.coeffs,other.coeffs))
+
+        elif (type(other) is complex) or (type(other) is float):
+            return col_vector(self.coeffs* other)
+
+
+    def __rmul__(self, other):
+        return self*other
+
+    def __truediv__(self, other):
+        return col_vector(self.coeffs/other)
+
+    def __add__(self, other):
+        return col_vector(self.coeffs + other.coeffs)
+
+    def __radd__(self, other):
+        return self+ other
+
+    def __sub__(self, other):
+        return col_vector(self.coeffs-other.coeffs)
+
+    def __rsub__(self, other):
+        return self-other
+    
+    def __abs__(self):
+        magnitude = 0.0
+        for coeff in self.coeffs:
+            magnitude+=abs(coeff)**2
+        return float(magnitude)
 
 class row_vector:
+    def set_val(self, index, val):
+        self.coeffs[0, index] = val
     def __init__(self,coeffs:np.matrix):
         if coeffs.shape[0]==1:
             self.coeffs = coeffs
@@ -35,16 +82,22 @@ class row_vector:
             return complex(np.matmul(self.coeffs,other.coeffs))
         elif type(other) is Matrix:
             return row_vector(np.matmul( self.coeffs, other.matrix ))
+        elif (type(other) is complex) or (type(other) is float):
+            return row_vector(self.coeffs* other)
 
 
     def __rmul__(self, other: col_vector):
         return Matrix(np.matmul(other.coeffs,self.coeffs))
-    
+
+
+
     def __repr__(self):
         return str(self.coeffs)
 
     def __str__(self):
         return str(self.coeffs)
+    def __getitem__(self, key):
+        return self.coeffs[0][key]
 
 class Matrix:
     
@@ -99,6 +152,8 @@ class Matrix:
 
     def __pow__(self, other):
         return Matrix(np.kron(self.matrix, other.matrix))
+    def __rpow__(self, other):
+        return self**other
     
     def __radd__(self, other):
         return self+other
@@ -151,7 +206,8 @@ class Matrix:
     def change_type(self, type):
         matrix = np.matrix( self.matrix, dtype = type )
         return Matrix(matrix)
-    
+    def save_text(self, filename):
+        np.savetxt(filename, self.matrix)
 
 """
 class SparseMatrix:

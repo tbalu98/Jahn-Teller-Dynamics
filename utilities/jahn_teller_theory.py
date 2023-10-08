@@ -8,7 +8,7 @@ import copy
 from scipy.sparse.linalg import eigs
 import itertools
 import utilities.maths as maths
-import utilities.matrix_quantum_mechanics as qm
+import utilities.matrix_formalism as mf
 
 
 Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
@@ -70,93 +70,51 @@ class Jahn_Teller_Theory:
 
 class Exe_JT_int:
      
-     H_int:qm.MatrixOperator
-     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: qm.symmetric_electron_system, fonon_system: qm.n_dim_harm_osc):
+     H_int:mf.MatrixOperator
+     def __init__(self,Jahn_Teller_pars: Jahn_Teller_Pars, el_states: mf.symmetric_electron_system, fonon_system: mf.n_dim_harm_osc):
           self.JT_pars = Jahn_Teller_pars
           self.el_states = el_states
           self.fonon_system = fonon_system
           self.create_hamiltonian_op()
      
      def create_hamiltonian_op(self):
-          
-          
           X = self.fonon_system.get_pos_i_op(0)
           Y = self.fonon_system.get_pos_i_op(1)
-
-
-
           XX = self.fonon_system.get_pos_i_i_op(0)
-
           XY = self.fonon_system.get_pos_i_j_op(0,1)
           YX = self.fonon_system.get_pos_i_j_op(1,0)
-          
           YY = self.fonon_system.get_pos_i_i_op(1)
-          
-
-          K = self.fonon_system.get_ham_op()    
-          
+          K = self.fonon_system.get_ham_op()       
           s0 = self.el_states.symm_ops['s0']
           sz = self.el_states.symm_ops['sz']
           sx = self.el_states.symm_ops['sx']
 
-          #H_int_mat = self.JT_pars.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_pars.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_pars.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
-          
           self.H_int = self.JT_pars.hw * (K**s0) +self.JT_pars.F*( X**sz + Y**sx ) + self.JT_pars.G * ( (XX-YY)**sz - (XY + YX) ** sx) 
 
-          #np.savetxt('new_H_int.csv', H_int_mat.matrix)
-
-
-          #self.H_int = qm.MatrixOperator(maths.Matrix(H_int_mat))
-"""
-class multi_mode_Exe_jt_int:
-     def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: qm.symmetric_electron_system, fonon_systems: qm.fast_multimode_fonon_sys):
+class multi_mode_Exe_jt_int2:
+     H_int:mf.MatrixOperator
+     def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: mf.symmetric_electron_system, fonon_systems: mf.fast_multimode_fonon_sys):
           self.JT_theory = JT_theory
-          #self.JT_pars = JT_theory.JT_pars
 
           self.el_states = el_states
           self.fonon_systems = fonon_systems
           
-          Hs = []
+          JT_pars = JT_theory.JT_pars
 
-          for mode in fonon_systems.fonon_syss.keys():
-               Hs.append( self.create_ham_op_one_mode(mode))
-          all_mode_ham = sum(Hs)
+          #Hs = [self.create_ham_op_one_mode(mode) for mode in self.fonon_systems.fonon_syss.keys()]
+          Hs = [ Exe_JT_int( JT_pars,el_states,fonon_systems.fonon_syss[mode]).H_int for mode in self.fonon_systems.fonon_syss.keys()  ]
+          #for mode in fonon_systems.fonon_syss.keys():
+          #     Hs.append( self.create_ham_op_one_mode(mode))
+          self.H_int = sum(Hs)
           
-          self.H_int = qm.MatrixOperator(all_mode_ham)
-
-     
-     def create_ham_op_one_mode(self,mode):
           
-          fonon_system = self.fonon_systems
-
-     
-
-          X = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_op(0) )
-          Y = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_op(1) )
-
-          #Y = fonon_system.calc_pos_operator(mode, 1)
-
-          XX = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(0,0) )
-          YY = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(1,1) )
-
-          XY = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(0,1) )
-          YX = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_pos_i_j_op(1,0) )
-
-          
+          #self.H_int = MatrixOperator(all_mode_ham)
 
 
-          K = fonon_system.calc_multi_mode_op(mode, lambda x: x.get_ham_op())
-
-          self.JT_theory.set_quantum(mode)
-
-          H_int_mat = self.JT_theory.hw * np.kron(K, self.el_states.symm_ops['s0'].matrix) + self.JT_theory.F*( np.kron(X,self.el_states.symm_ops['sz'].matrix) + np.kron(Y, self.el_states.symm_ops['sx'].matrix)) + 1.0*self.JT_theory.G*(np.kron((XX-YY) ,self.el_states.symm_ops['sz'].matrix) - np.kron(XY + YX, self.el_states.symm_ops['sx'].matrix))
-
-          return H_int_mat
-"""
 
 class multi_mode_Exe_jt_int:
-     H_int:qm.MatrixOperator
-     def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: qm.symmetric_electron_system, fonon_systems: qm.fast_multimode_fonon_sys):
+     H_int:mf.MatrixOperator
+     def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: mf.symmetric_electron_system, fonon_systems: mf.fast_multimode_fonon_sys):
           self.JT_theory = JT_theory
 
           self.el_states = el_states
@@ -207,3 +165,35 @@ class multi_mode_Exe_jt_int:
 
           #self.H_int = MatrixOperator(H_int_mat)
           return H_int_mat
+class Tet_JT_int:
+     H_int:mf.MatrixOperator
+     def __init__(self,F_T, F_E,omega, el_states: mf.symmetric_electron_system, fonon_system: mf.n_dim_harm_osc):
+          self.F_T = F_T
+          self.F_E = F_E
+          self.omega = omega
+          self.el_states = el_states
+          self.fonon_system = fonon_system
+          self.create_hamiltonian_op()
+
+     def create_hamiltonian_op(self):
+          K = self.fonon_system.get_ham_op()
+
+
+          X =  self.fonon_system.get_pos_i_op(0)
+          Y =  self.fonon_system.get_pos_i_op(1)
+          Z =  self.fonon_system.get_pos_i_op(2)
+          V =  self.fonon_system.get_pos_i_op(3)
+          W =  self.fonon_system.get_pos_i_op(4)
+
+          O0 = self.el_states.symm_ops['O0']
+          Ox = self.el_states.symm_ops['Ox']
+          Oy = self.el_states.symm_ops['Oy']
+          Oz = self.el_states.symm_ops['Oz']
+
+          Ov = self.el_states.symm_ops['Ov']
+          Ow = self.el_states.symm_ops['Ow']
+          omega = self.omega
+          
+          self.H_int = omega* K**  O0- self.F_T* ( X**Ox  + Y **Oy  + Z** Oz) + self.F_E* (  V **Ov  + W **Ow )  
+
+
