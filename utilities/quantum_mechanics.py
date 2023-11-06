@@ -153,7 +153,7 @@ class MatrixOperator:
           self.name = name
           self.matrix = matrix
      
-          self.calc_eigen_vals_vects()
+          #self.calc_eigen_vals_vects()
 
      def __len__(self):
           return len(self.matrix)

@@ -2,7 +2,18 @@ import math
 import copy
 import itertools
 from collections import namedtuple
+import numpy as np
 quantum_subsystem_signature = namedtuple('quantum_subsystem_signature','name dim qm_nums_names' )
+
+
+class leaf_system_signature:
+    def __init__(self, name:str, dim:int, qm_nums_names:list[str]):
+        self.name = name
+        self.dim = dim
+        self.qm_nums_names = qm_nums_names
+
+    def __pow__(self, other):
+        pass
 
 
 class quantum_state:
@@ -117,6 +128,15 @@ class ket_state:
     
     def __repr__(self):
         return str(self.qm_state)
+    
+    def __eq__(self, other):
+        return self.qm_state == other.qm_state
+    
+    def to_bra_state(self):
+        new_qm_state = copy.deepcopy(self.qm_state)
+        new_qm_state.amplitude = np.conj(self.qm_state.amplitude)
+
+        return bra_state(self.qm_state)
 
 class operator:
     def __init__(self, fun):
@@ -133,6 +153,16 @@ class creator_operator(operator):
         new_state =  math.sqrt( qm_state[self.raise_index] +1)* qm_state.increase_qm_num(self.raise_index)
         return bra_state(qm_state=new_state)
 
+class raise_index_operator(operator):
+    def __init__(self, raise_index, name = ''):
+        self.raise_index = raise_index
+        self.name = name
+    def operate(self, other: bra_state):
+        qm_state = other.qm_state
+        new_state = qm_state.increase_qm_num(self.raise_index)
+        return bra_state(qm_state=new_state)
+
+
 class annil_operator(operator):
     def __init__(self, raise_index, name = ''):
         self.raise_index = raise_index
@@ -147,7 +177,7 @@ class hilber_space_bases:
     def kron_hilber_spaces(hilber_spaces:list):
           return list( itertools.accumulate(hilber_spaces , lambda x,y: x**y) )[-1]
 
-        
+    
        
 #        self._names = { name:num for name,num in zip(names, range(0, len(names))) }
 #
@@ -183,8 +213,8 @@ class hilber_space_bases:
         self._ket_states = []
 
         self.create_hosc_eigen_states(dim, order, curr_osc_coeffs)
-        self._bra_states = sorted(self._bra_states,key=lambda x:x.calc_order())
-        self._ket_states = sorted(self._ket_states,key=lambda x:x.calc_order())
+        self._bra_states = sorted(self._bra_states,key=lambda x:(x.calc_order(), *x.qm_state.qm_nums))
+        self._ket_states = sorted(self._ket_states,key=lambda x:(x.calc_order() , *x.qm_state.qm_nums ))
         self.dim = len(self._bra_states)
         return self
 
@@ -201,6 +231,15 @@ class hilber_space_bases:
     def __init__(self, bra_states, ket_states, names = None):
         self._bra_states = bra_states
         self._ket_states = ket_states
+        self.qm_names = names
+
+    def get_ket_state_index(self, ks:ket_state):
+
+        exam_ket_states = np.array(self._ket_states)
+
+        return int(np.where(exam_ket_states == ks)[0])
+
+        #return list(filter( lambda x: x==ks, self._ket_states))
 
     
     def filter_sub_syss_by_order(self,order ):
@@ -400,4 +439,7 @@ class multi_mode_harm_osc:
     def __init__(self, one_mode_harm_oscs:list):
         self.one_mode_harm_oscs = one_mode_harm_oscs
     
-    
+
+
+
+   

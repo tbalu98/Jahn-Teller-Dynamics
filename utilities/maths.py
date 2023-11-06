@@ -6,10 +6,54 @@ import collections
 
 
 
+precision = 0.0000001
+
+def equal_matrix(a:np.matrix, b:np.matrix):
+    if a.shape != b.shape:
+        return False
+    else:
+        for i in range(a.shape[0]):
+            for j in range(a.shape[1]):
+                if (abs(a[i, j] - b[i, j]) > precision) == True:
+                    return False
+        
+        return True
 
 
 
 class col_vector:
+
+    def from_file(file_name):
+        coeffs = np.loadtxt(file_name)
+        return col_vector(np.transpose(np.matrix(coeffs)))
+
+
+
+
+    def map(self, func):
+        raw_mx = list(map( func, self.coeffs))
+        return col_vector(np.matrix(np.reshape(raw_mx, (len(raw_mx), 1))))
+
+    def round(self, dig):
+        return col_vector(np.round(self.coeffs,dig))
+
+    def tolist(self):
+        return self.coeffs.tolist()
+
+    def zeros(dim):
+        matrix = np.matrix(np.zeros(shape=( dim, 1 )), dtype=np.complex128)
+
+        return col_vector(matrix)
+
+
+    def set_item(self, index, item):
+        self.coeffs.itemset((index, 0), item)
+        print('itemset')
+
+    def __eq__(self,other):
+        #return np.array_equal(self.coeffs , other.coeffs)
+        return equal_matrix(self.coeffs, other.coeffs)
+
     def __init__(self,coeffs:np.matrix):
         if coeffs.shape[1]==1:
             self.coeffs = coeffs
@@ -67,6 +111,8 @@ class col_vector:
         for coeff in self.coeffs:
             magnitude+=abs(coeff)**2
         return float(magnitude)
+    
+    
 
 class row_vector:
     def set_val(self, index, val):
@@ -101,6 +147,33 @@ class row_vector:
 
 class Matrix:
     
+    def calc_inverse(self):
+        return Matrix(np.linalg.inv(self.matrix))
+
+    def from_col_vectors( bases:list[col_vector]):
+        raw_matrix = []
+        for base in bases:
+            base_trp = base.coeffs.transpose().tolist()[0]
+            raw_matrix.append(base_trp)
+        
+        matrix = np.matrix(raw_matrix)
+
+        return Matrix(matrix.transpose())
+    
+    def from_row_vectors(bases: list[row_vector]):
+        raw_matrix = []
+        for base in bases:
+            raw_matrix.append(base.coeffs.tolist()[0])
+        matrix = np.matrix(raw_matrix)
+        return Matrix(matrix)
+    
+    def to_new_bases(self, bases: list[col_vector]):
+        V = Matrix.from_col_vectors(bases)
+        V_inv = V.calc_inverse()
+
+        return V_inv*self*V
+
+
     def __str__(self):
         return str(self.matrix)
     
@@ -108,7 +181,7 @@ class Matrix:
         return str(self.matrix)
 
     def create_Lz_mx():
-        raw_mx =  np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
+        raw_mx =  np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex128)
         return Matrix(raw_mx)
 
     def create_eye(dim):
@@ -184,7 +257,7 @@ class Matrix:
         return Matrix(csr_matrix(self.matrix))
 
     def transpose(self):
-        return np.transpose(self.matrix)
+        return Matrix(np.transpose(self.matrix))
     
     def get_eig_vals(self, num_of_vals=None, ordering_type=None):
         if num_of_vals == None:

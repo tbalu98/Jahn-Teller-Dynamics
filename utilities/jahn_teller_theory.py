@@ -67,7 +67,7 @@ class Jahn_Teller_Theory:
           self.F =  float((( 2*self.E_JT*self.hw*(1-self.delta/(2*self.E_JT-self.delta)) )**0.5))#/(2**0.5)
           self.G = float(self.hw*self.delta/(4*self.E_JT - 2*self.delta))
 
-
+"""
 class Exe_JT_int:
      
      H_int:mf.MatrixOperator
@@ -90,7 +90,8 @@ class Exe_JT_int:
           sx = self.el_states.symm_ops['sx']
 
           self.H_int = self.JT_pars.hw * (K**s0) +self.JT_pars.F*( X**sz + Y**sx ) + self.JT_pars.G * ( (XX-YY)**sz - (XY + YX) ** sx) 
-
+"""
+"""
 class multi_mode_Exe_jt_int2:
      H_int:mf.MatrixOperator
      def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: mf.symmetric_electron_system, fonon_systems: mf.fast_multimode_fonon_sys):
@@ -110,8 +111,8 @@ class multi_mode_Exe_jt_int2:
           
           #self.H_int = MatrixOperator(all_mode_ham)
 
-
-
+"""
+"""
 class multi_mode_Exe_jt_int:
      H_int:mf.MatrixOperator
      def __init__(self,JT_theory: Jahn_Teller_Theory, el_states: mf.symmetric_electron_system, fonon_systems: mf.fast_multimode_fonon_sys):
@@ -165,6 +166,10 @@ class multi_mode_Exe_jt_int:
 
           #self.H_int = MatrixOperator(H_int_mat)
           return H_int_mat
+
+"""
+"""
+          
 class Tet_JT_int:
      H_int:mf.MatrixOperator
      def __init__(self,F_T, F_E,omega, el_states: mf.symmetric_electron_system, fonon_system: mf.n_dim_harm_osc):
@@ -197,3 +202,4 @@ class Tet_JT_int:
           self.H_int = omega* K**  O0- self.F_T* ( X**Ox  + Y **Oy  + Z** Oz) + self.F_E* (  V **Ov  + W **Ow )  
 
 
+"""
