@@ -6,7 +6,10 @@ import collections
 
 
 
+#precision = 0.0000001
 precision = 0.0000001
+
+complex_number_typ = np.complex128
 
 def equal_matrix(a:np.matrix, b:np.matrix):
     if a.shape != b.shape:
@@ -41,7 +44,7 @@ class col_vector:
         return self.coeffs.tolist()
 
     def zeros(dim):
-        matrix = np.matrix(np.zeros(shape=( dim, 1 )), dtype=np.complex128)
+        matrix = np.matrix(np.zeros(shape=( dim, 1 )), dtype=complex_number_typ)
 
         return col_vector(matrix)
 
@@ -181,11 +184,11 @@ class Matrix:
         return str(self.matrix)
 
     def create_Lz_mx():
-        raw_mx =  np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex128)
+        raw_mx =  np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=complex_number_typ)
         return Matrix(raw_mx)
 
     def create_eye(dim):
-        return Matrix(np.eye(dim))
+        return Matrix(np.eye(dim,dtype= complex_number_typ))
 
     def save(self,filename):
         np.savetxt(filename,self.matrix)

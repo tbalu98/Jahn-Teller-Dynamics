@@ -6,6 +6,7 @@ from collections import namedtuple
 import numpy as np
 import utilities.jahn_teller_theory as  jt
 import utilities.maths as maths
+import utilities.quantum_system as qs
 phonon_sys_data = namedtuple('phonon_sys_data', 'mode dim order qm_nums_names')
 
 mode1data = phonon_sys_data(78, 2,5, [ 'mode_1_x, mode_1_y' ])
@@ -14,7 +15,7 @@ mode1data = phonon_sys_data(78, 2,5, [ 'mode_1_x, mode_1_y' ])
 
 round_precision_dig = 7
 
-class one_mode_phonon_sys:
+class one_mode_phonon_sys(qs.quantum_system_node):
 
     def create_complex_basis_gen_op(self):
 
@@ -22,9 +23,9 @@ class one_mode_phonon_sys:
 
         raise_y_op = bf.raise_index_operator(1)
 
-        raise_x_mx_op = self.mx_op_builder.create_MatrixOperator(raise_x_op)
+        raise_x_mx_op = self.mx_op_builder.create_MatrixOperator(raise_x_op).truncate_matrix(self.trunc_num)
         
-        raise_y_mx_op = self.mx_op_builder.create_MatrixOperator(raise_y_op)
+        raise_y_mx_op = self.mx_op_builder.create_MatrixOperator(raise_y_op).truncate_matrix(self.trunc_num)
 
 
 
@@ -37,29 +38,40 @@ class one_mode_phonon_sys:
     def create_complex_basis_trf(self):
         generator_ops = self.create_complex_basis_gen_op()
 
+        #bases_trf = self.mx_op_builder.create_basis_trf(generator_ops, self.calc_order).truncate_matrix(self.trunc_num)
         bases_trf = self.mx_op_builder.create_basis_trf(generator_ops, self.calc_order).truncate_matrix(self.trunc_num)
 
         return bases_trf
-
-
+    
+    def generate_new_bases(self):
+        generator_ops = self.create_complex_basis_gen_op()
+        return self.mx_op_builder.create_new_basis(generator_ops, self.calc_order-1)
+        
 
     # Braket quantum mechanics
-    def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = ''):
+    def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = ''):
         self.phonon_sys_name = phonon_sys_name
         self.mode = mode
         self.spatial_dim = spatial_dim
         self.order = order
         self.calc_order = order +1 
         self.qm_nums_names = qm_nums_names
+        
+        self.id = id
+        self.children = []
+        self.operators = {}
 
-        self.phonon_states = bf.hilber_space_bases([],[]).harm_osc_sys(self.spatial_dim,self.calc_order)
+        self.calculation_bases = mf.hilber_space_bases().harm_osc_sys(self.spatial_dim,self.calc_order,qm_nums_names)
 
-        self.calc_h_space_dim = self.phonon_states.dim
+        self.hilbert_space_bases = self.calculation_bases
+        
+
+        self.calc_h_space_dim = self.calculation_bases.dim
 
         #Aggregation
 
         self.names_dict = { name:num for name,num in zip(self.qm_nums_names , range(0, len(self.qm_nums_names))) }
-        self.mx_op_builder = mf.braket_to_matrix_formalism(self.phonon_states)
+        self.mx_op_builder = mf.braket_to_matrix_formalism(self.calculation_bases)
 
         self.def_braket_create_qm_ops()
         self.def_braket_annil_qm_ops()
@@ -72,7 +84,25 @@ class one_mode_phonon_sys:
         self.over_est_H_op()
         self.trunc_num = self.calc_trunc_num()
         self.h_sp_dim = self.calc_h_space_dim-self.trunc_num
-        
+        self.mx_op_builder.used_dimension = self.h_sp_dim
+        self.base_states = self.calculation_bases.reduce_space(self.h_sp_dim)
+
+        self.dim  = self.h_sp_dim
+        self.create_operators_dict()
+
+    def create_operators_dict(self):
+        self.operators['K'] = self.get_H_op()
+    
+        self.operators['X'] = self.calc_pos_i_op('x')
+        self.operators['Y'] = self.calc_pos_i_op('y')
+
+        self.operators['XX'] = self.calc_pos_i_j_op('x','x')
+    
+        self.operators['YY'] = self.calc_pos_i_j_op('y','y')
+
+        self.operators['XY'] = self.calc_pos_i_j_op('x','y')
+
+        self.operators['YX'] = self.calc_pos_i_j_op('y','x')
 
         
 
@@ -126,8 +156,8 @@ class one_mode_phonon_sys:
         H.subsys_name = self.phonon_sys_name
         self.over_est_H = H.round(0).change_type(np.int16)
 
-    def get_H_op(self,qm_sys_sign:bf.quantum_system_signature == None ) -> mf.MatrixOperator:
-        return self.mode*self.over_est_H.truncate_matrix(self.trunc_num).as_part_of_a_system(qm_sys_sign)
+    def get_H_op(self ) -> mf.MatrixOperator:
+        return self.mode*self.over_est_H.truncate_matrix(self.trunc_num)
 
     def calc_trunc_num(self):
         return self.over_est_H.matrix.count_occurrences(self.calc_order)
@@ -146,170 +176,72 @@ class one_mode_phonon_sys:
         op.subsys_name = self.phonon_sys_name
         return op
 
-    def calc_pos_i_op(self, qm_num_name, qm_sys_sign:bf.quantum_system_signature == None) -> mf.MatrixOperator:
+    def calc_pos_i_op(self, qm_num_name) -> mf.MatrixOperator:
 
-        return self.over_est_pos_i_op(qm_num_name).truncate_matrix(self.trunc_num).as_part_of_a_system(qm_sys_sign)
+        return self.over_est_pos_i_op(qm_num_name).truncate_matrix(self.trunc_num)
             
 
 
-    def calc_pos_i_j_op(self, qm_num_name_1, qm_num_name_2, qm_sys_sign:bf.quantum_system_signature==None):
+    def calc_pos_i_j_op(self, qm_num_name_1, qm_num_name_2):
 
-        return self.over_est_pos_i_j_op(qm_num_name_1, qm_num_name_2).truncate_matrix(self.trunc_num).as_part_of_a_system(qm_sys_sign)
-
-class multi_mode_phonon_system:
-    
-    def __init__(self, one_mode_phonon_systems: list[one_mode_phonon_sys]):
-        self.one_mode_phonon_systems = one_mode_phonon_systems
-
-        self.multi_mode_phonon_bases = self.create_hilbert_space()
-        self.calc_signature()
-
-    def calc_signature(self):
-        self.signature =  bf.quantum_system_signature([ phonon_sys.get_signature() for phonon_sys in self.one_mode_phonon_systems ])
-
-    def create_hilbert_space(self):
-        h_spaces_to_kron = [ one_mode_phonon_system.phonon_states for one_mode_phonon_system in self.one_mode_phonon_systems ]
-        self.phonon_states = bf.hilber_space_bases.kron_hilber_spaces(h_spaces_to_kron)
-
-    def get_pos_i_j_op(self, sub_sys_name:str, qm_num_name_i:str, qm_num_name_j:str ):
-        
-        ph_sys = self.get_ph_sys(sub_sys_name)   
-        return ph_sys.calc_pos_i_j_op(qm_num_name_i,qm_num_name_j).as_part_of_a_system(self.signature)
-
-    def get_full_H_op(self) -> mf.MatrixOperator:
-        return sum( ph_sys.get_H_op(self.signature) for ph_sys in self.one_mode_phonon_systems )
-
-    def get_H_op(self, sub_sys_name:str):
-        ph_sys = self.get_ph_sys(sub_sys_name)
-        return ph_sys.get_H_op()
-
-    def calc_pos_i_op(self, qm_num_name:str)->mf.MatrixOperator:
-        Ops_to_add = [mf.MatrixOperator]
-        for one_mode_ph_sys in self.one_mode_phonon_systems:
-            Ops_to_add.append(one_mode_ph_sys.calc_pos_i_op(qm_num_name, self.signature))
-        return sum(Ops_to_add)
-
-    def get_pos_i_op_one_ph_sys(self, sub_sys_name:str, qm_num_name:str )->mf.MatrixOperator:
-        
-        ph_sys = self.get_ph_sys(sub_sys_name)   
-        return ph_sys.calc_pos_i_op(qm_num_name,self.signature)#.as_part_of_a_system(self.signature)
-
-    def get_ph_sys(self, sub_sys_name:str):
-        return list( filter( lambda x: x.phonon_sys_name==sub_sys_name ,self.one_mode_phonon_systems) )[0]
-
-
-    def get_pos_i_op_old(self, sub_sys_name:str, qm_num_name:str):
-
-        return self.calc_op( sub_sys_name, lambda x: x.calc_pos_i_op(qm_num_name) )
+        return self.over_est_pos_i_j_op(qm_num_name_1, qm_num_name_2).truncate_matrix(self.trunc_num)
 
 
 
-
-    def calc_op(self, subsys_name, subsys_op_getter ):
-        ops_to_kron = []
-        #ops_to_kron = [ subsys_op_getter(one_mode_phonon_system) if one_mode_phonon_system.phonon_sys_name == subsys_name 
-        #               else mf.MatrixOperator.create_id_matrix_op(one_mode_phonon_system.h_space_dim) 
-        #               for one_mode_phonon_system in self.one_mode_phonon_systems]
-
-        for one_mode_phonon_system in self.one_mode_phonon_systems:
-            if one_mode_phonon_system.phonon_sys_name == subsys_name:
-                ops_to_kron.append(subsys_op_getter( one_mode_phonon_system ))
-            else:
-                ops_to_kron.append(mf.MatrixOperator.create_id_matrix_op(one_mode_phonon_system.calc_h_space_dim))
-
-        return mf.MatrixOperator.accumulate_operators(ops_to_kron, lambda x,y: x**y)
-
-class electron_system:
-    def __init__(self, h_space_bases:bf.hilber_space_bases, symmetries:dict[str:MatrixOperator], complex_basis:list[mf.ket_vector] = None,name = '' ):
-        self.name = name
-        self.el_bases = h_space_bases
-        self.symmetries = symmetries
-        self.complex_basis = complex_basis
-        
-        self.complex_basis_trf_mx = MatrixOperator.from_ket_vectors(complex_basis)
-
-        self.matrix_formalism_builder = mf.braket_to_matrix_formalism(self.el_bases)
-
-    def create_signature(self):
-        self.signature = bf.quantum_subsystem_signature(self.name, self.el_bases.dim,self.el_bases.qm_names)
-
-class spin_system:
-    def __init__(self, h_space_bases:bf.hilber_space_bases, complex_basis:list[mf.ket_vector] = None, name = '' ):
-        self.h_space_bases = h_space_bases
-        self.complex_bases = complex_basis
-        self.signature  = bf.quantum_subsystem_signature(name, self.h_space_bases.dim, self.h_space_bases.qm_names)
-
-class orbital_spin_system:
-    def __init__(self, orbitals:electron_system, spins:spin_system, name = ''):
-        self.orbitals = orbitals
-        self.spins = spins
-
-
-
-class phonon_electron_system_one_modes:
-    def __init__(self,ph_syss:list[one_mode_phonon_sys], el_sys:electron_system):
-        self.ph_syss = ph_syss
-        self.el_sys = el_sys
-#        self.h_space_bases = bf.hilber_space_bases.kron_hilber_spaces([ph_syss.phonon_states,el_sys.el_bases])
-
-
-class Exe_phonon_electron_system:
-    def __init__(self, ph_sys:multi_mode_phonon_system,el_sys: electron_system, jt_theory:jt.Jahn_Teller_Theory):
-        self.ph_sys = ph_sys
-        self.el_sys = el_sys
-        self.h_space_bases = bf.hilber_space_bases.kron_hilber_spaces([ph_sys.phonon_states,el_sys.el_bases])
-        self.phonon_sys_sign = self.ph_sys.signature
+class Exe_tree:
+    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory):
+        self.system_tree = system_tree
         self.JT_theory = jt_theory
+        self.H_int:mf.MatrixOperator
+    
+    def create_multi_mode_hamiltonian(self):
 
-        self.create_Ham_op()
-        #self.system_sign =
+        hamiltons = []
 
-    def create_hamiltonian(self):
-        X = self.ph_sys.calc_pos_i_op('x')
-        Y = self.ph_sys.calc_pos_i_op('y')
+        nuclei = self.system_tree.find_subsystem('nuclei')[0]
 
-        XX = X*X
-        YY = Y*Y
-        XY = X*Y
-        YX = Y*X
+        for osc_mode in nuclei.children:
+            osc_mode_id = osc_mode.id
+            X = self.system_tree.create_operator('X', subsys_id= 'nuclei', operator_sys = osc_mode_id)
+            Y = self.system_tree.create_operator('Y', subsys_id= 'nuclei', operator_sys = osc_mode_id)
+            XX = self.system_tree.create_operator('XX', subsys_id= 'nuclei', operator_sys = osc_mode_id)
+            YY = self.system_tree.create_operator('YY', subsys_id= 'nuclei', operator_sys = osc_mode_id)
+            XY = self.system_tree.create_operator('XY', subsys_id= 'nuclei', operator_sys = osc_mode_id)
+            YX = self.system_tree.create_operator('YX', subsys_id= 'nuclei', operator_sys = osc_mode_id)
 
-        K = self.ph_sys.get_full_H_op()
+            K = self.system_tree.create_operator('K', subsys_id= 'nuclei', operator_sys = osc_mode_id)
 
-        s0 = self.el_sys.symmetries['s0']
-        sz = self.el_sys.symmetries['sz']
-        sx = self.el_sys.symmetries['sx']
+            self.JT_theory.set_quantum(osc_mode.mode)
 
-        return  K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+            s0 = self.system_tree.create_operator('s0', 'electron_system')
+            sz = self.system_tree.create_operator('sz', 'electron_system')
+            sx = self.system_tree.create_operator('sx', 'electron_system')
 
+            h =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+            hamiltons.append(h)
+        
+        self.H_int = sum(hamiltons)
+        return self.H_int
 
-    def create_one_mode_H(self, one_mode_ph_sys:one_mode_phonon_sys):
-        X = one_mode_ph_sys.calc_pos_i_op('x',self.phonon_sys_sign )
-        Y = one_mode_ph_sys.calc_pos_i_op('y',self.phonon_sys_sign )
+    def create_one_mode_hamiltonian(self, mode = 0.0):
+        X = self.system_tree.create_operator('X', 'nuclei' )
+        Y = self.system_tree.create_operator('Y', 'nuclei' )
 
-        XX = one_mode_ph_sys.calc_pos_i_j_op('x','x', self.phonon_sys_sign )
-        YY = one_mode_ph_sys.calc_pos_i_j_op('y','y', self.phonon_sys_sign )
+        #print('X dim' +str( X.dim))
+        XX = self.system_tree.create_operator('XX', 'nuclei' )
+        YY = self.system_tree.create_operator('YY', 'nuclei' )
+        XY = self.system_tree.create_operator('XY', 'nuclei' )
+        YX = self.system_tree.create_operator('YX', 'nuclei' )
 
-        XY = one_mode_ph_sys.calc_pos_i_j_op('x','y', self.phonon_sys_sign )
-        YX = one_mode_ph_sys.calc_pos_i_j_op('y','x', self.phonon_sys_sign )
+        K = self.system_tree.create_operator('K', 'nuclei')
 
-        K = one_mode_ph_sys.get_H_op(self.phonon_sys_sign)
+        self.JT_theory.set_quantum(77.6)
 
-        self.JT_theory.set_quantum(one_mode_ph_sys.mode)
+        s0 = self.system_tree.create_operator('s0', 'electron_system')
+        sz = self.system_tree.create_operator('sz', 'electron_system')
+        sx = self.system_tree.create_operator('sx', 'electron_system')
 
-        s0 = self.el_sys.symmetries['s0']
-        sz = self.el_sys.symmetries['sz']
-        sx = self.el_sys.symmetries['sx']
+        self.H_int =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
 
-        return K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
-
-
-    def create_Ham_op(self):
-        self.H_int:MatrixOperator = sum([ self.create_one_mode_H(one_mode_ph_sys) for one_mode_ph_sys in self.ph_sys.one_mode_phonon_systems ])
-
-
-class quantum_sys_signature:
-
-    def __init__(self, signatures:tuple[ str, int ]):
-        self.signatures = signatures
-
+        #return K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
 

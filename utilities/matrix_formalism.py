@@ -1,11 +1,11 @@
 import itertools
 import numpy as np
 import itertools
-from utilities.braket_formalism import hilber_space_bases, operator
+from utilities.braket_formalism import  operator
 import utilities.maths as  maths
 import copy
 import math
-
+import pandas as pd
 import utilities.braket_formalism as  bf
 #import utilities.jahn_teller_theory as  jt
 #Data structures
@@ -32,6 +32,18 @@ class ket_vector:
 
                self.coeffs = maths.col_vector(np.matrix( [  [num] for num in coeffs ] ))
                self.dim = len(self.coeffs.coeffs)
+     
+     def to_dataframe(self, bases):
+          ket_dict = {}
+          ket_dict['states'] = list( map( lambda x: str(x), bases._ket_states ) )
+
+          ket_dict['coefficients'] = self.coeffs.tolist()
+
+          ket_dataframe = pd.DataFrame.from_dict(ket_dict)
+
+          ket_dataframe = ket_dataframe.set_index('states')
+
+          return ket_dataframe
      
      def map(self, fun):
           return ket_vector(self.coeffs.map(fun))
@@ -92,6 +104,8 @@ class ket_vector:
      def round(self, dig):
           return ket_vector(coeffs=self.coeffs.round(dig), name = self.name, subsys_name = self.subsys_name, eigen_val = self.eigen_val)
 
+
+
 class bases_system:
      def __init__(self, bases_kets:list[ket_vector]):
           self.bases_kets = bases_kets
@@ -128,6 +142,151 @@ class bra_vector:
           
 
 
+class hilber_space_bases:
+
+
+    def create_trf_op(self, basis_name:str):
+         return MatrixOperator.basis_trf_matrix(self.base_vectors[basis_name])
+
+    def kron_hilber_spaces(hilber_spaces:list):
+          #new_hilber_spaces = hilber_spaces[::-1]
+        return list( itertools.accumulate(hilber_spaces , lambda x,y: x**y) )[-1]
+
+
+
+    def create_hosc_eigen_states(self, dim, order, curr_osc_coeffs: list):
+          if len(curr_osc_coeffs)<dim:
+
+               for i in range(0,order+1):
+                    temp_curr_osc_coeffs = copy.deepcopy(curr_osc_coeffs)
+                    temp_curr_osc_coeffs.append(i)
+                    if sum(temp_curr_osc_coeffs)>order:
+                         return
+                    else:
+                         self.create_hosc_eigen_states(dim, order,temp_curr_osc_coeffs )
+
+          elif len(curr_osc_coeffs) == dim and sum(curr_osc_coeffs)<=order:
+               
+               self._bra_states.append( bf.bra_state(qm_nums = curr_osc_coeffs))
+               self._ket_states.append( bf.ket_state(qm_nums =  curr_osc_coeffs))
+               return
+          
+          else:
+               return
+
+
+    def harm_osc_sys(self, dim,order, qm_nums_names:list):
+        curr_osc_coeffs = []
+        self._bra_states = []
+        self._ket_states = []
+
+        self.create_hosc_eigen_states(dim, order, curr_osc_coeffs)
+        self._bra_states = sorted(self._bra_states,key=lambda x:(x.calc_order(), *x.qm_state.qm_nums))
+        self._ket_states = sorted(self._ket_states,key=lambda x:(x.calc_order() , *x.qm_state.qm_nums ))
+        self.dim = len(self._bra_states)
+        self.qm_nums_names = qm_nums_names
+        return self
+
+
+    def from_qm_nums_list(self, qm_nums_list, qm_nums_names :list = None):
+
+        self._bra_states = []
+        self._ket_states = []
+        for qm_nums in qm_nums_list:
+            self._bra_states.append(bf.bra_state( qm_nums=qm_nums ))
+            self._ket_states.append(bf.ket_state( qm_nums=qm_nums ))
+        self.dim = len(self._bra_states)
+        self.qm_nums_names = qm_nums_names
+        return self
+
+
+
+    def __init__(self, bra_states = None, ket_states = None, names = None):
+        
+        self.base_vectors = {}
+
+        if bra_states == None:
+            self._bra_states = []
+        else:
+            self._bra_states = bra_states
+
+        if ket_states == None:
+            self._ket_states = []
+        else:
+            self._ket_states = ket_states
+        if names == None:
+            self.qm_nums_names = []
+        else:
+            self.qm_nums_names = names
+
+    def savetxt(self, filename):
+        txt = ''
+
+        #txt+='amplitude' + ' '
+
+        txt+=str(self.qm_nums_names) + "\n"
+
+        for ket in self._ket_states:
+            txt+= str(ket) + '\n'
+
+        text_file = open(filename, "w")
+
+        text_file.write(txt)
+        text_file.close()
+
+    def reduce_space(self, new_dim):
+        return hilber_space_bases(self._bra_states[0:new_dim], self._ket_states[0:new_dim],names = self.qm_nums_names)
+
+    def get_ket_state_index(self, ks:bf.ket_state):
+
+        exam_ket_states = np.array(self._ket_states)
+
+        return int(np.where(exam_ket_states == ks)[0])
+
+        #return list(filter( lambda x: x==ks, self._ket_states))
+
+    
+    def filter_sub_syss_by_order(self,order ):
+        state_indexes = []
+        for index in range(0, len(self._bra_states)):
+            ket = self._bra_states[index]
+
+    def __len__(self):
+        return len(self._ket_states)
+     
+    def __getitem__(self, position):
+        return self._ket_states[position]
+
+    def __pow__(self, other):
+        if isinstance(other, hilber_space_bases):
+            
+            """
+            new_bra_states = []
+            new_ket_states = []
+            for bra_a in other._bra_states:
+                for bra_b in self._bra_states:
+                    new_bra_states.append(bra_a**bra_b)
+
+            for ket_a in other._ket_states:
+                for ket_b in self._ket_states:
+                    new_ket_states.append(ket_a**ket_b)
+
+            """
+            new_bra_states = [ bra_a**bra_b for bra_a in self._bra_states 
+                                            for bra_b in other._bra_states ]
+            new_ket_states = [ ket_a**ket_b for ket_a in self._ket_states 
+                                            for ket_b in other._ket_states ]
+            
+            new_qm_nums_names = self.qm_nums_names + other.qm_nums_names
+            
+            #new_qm_nums_names = other.qm_nums_names + self.qm_nums_names
+            
+            return hilber_space_bases(new_bra_states, new_ket_states,names = new_qm_nums_names)
+        
+        else:
+            return None
+
+
 
 
 
@@ -151,6 +310,7 @@ class MatrixOperator:
 
 
 
+
      def from_ket_vectors(kets: list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]))
 
@@ -162,7 +322,7 @@ class MatrixOperator:
           new_bases_matrix = self.matrix.to_new_bases(list(map(lambda x: x.coeffs  ,bases )))
           return MatrixOperator(new_bases_matrix.transpose(), name  = self.name, subsys_name=self.subsys_name)
 
-
+     """
      def as_part_of_a_system(self, qm_sys_sign: bf.quantum_system_signature ):
           if qm_sys_sign ==None:
                return self
@@ -173,6 +333,7 @@ class MatrixOperator:
 
                return id_0**self**id_1
           
+     """
 
 
      def accumulate_operators(mx_ops, fun):
@@ -276,7 +437,18 @@ class MatrixOperator:
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
 
 
+     def create_eigen_kets_vals_table(self, bases:hilber_space_bases)->pd.DataFrame:
 
+          eigen_kets_dict = {}
+
+          eigen_kets_dict['states'] = list( map( lambda x: str(x), bases._ket_states ) )
+          for eigen_ket in self.eigen_kets:
+               eigen_kets_dict[str(eigen_ket.eigen_val)] = eigen_ket.coeffs.tolist()
+
+
+          eig_mx_df = pd.DataFrame.from_dict(eigen_kets_dict )
+          eig_mx_df = eig_mx_df.set_index('states')
+          return eig_mx_df
 
 
 
@@ -415,47 +587,50 @@ class degenerate_system_2D(degenerate_system):
 
 
 class braket_to_matrix_formalism:
-     def __init__(self, eig_states:hilber_space_bases):
+     def __init__(self, eig_states:hilber_space_bases, used_dimensions = None):
           self.eig_states = eig_states
-
+          self.calculation_dimension = self.eig_states.dim
+          self.used_dimension = used_dimensions
 
      def create_new_basis(self, gen_ops:list[MatrixOperator], generating_order:int)->list[ket_vector]:
+          """
+          raise_x_op = bf.raise_index_operator(0)
 
-        raise_x_op = bf.raise_index_operator(0)
+          raise_y_op = bf.raise_index_operator(1)
 
-        raise_y_op = bf.raise_index_operator(1)
-
-        raise_x_mx_op = self.create_MatrixOperator(raise_x_op)
+          raise_x_mx_op = self.create_MatrixOperator(raise_x_op)
         
-        raise_y_mx_op = self.create_MatrixOperator(raise_y_op)
+          raise_y_mx_op = self.create_MatrixOperator(raise_y_op)
 
 
-        #creator_x =  self.create_mx_ops[self.qm_nums_names[0]]#.truncate_matrix(self.trunc_num)
-        #creator_y = self.create_mx_ops[self.qm_nums_names[1]]#.truncate_matrix(self.trunc_num)
-        bases_vectors = []
+          bases_vectors = []
 
-        plus_gen_op = 1/2**0.5*(raise_x_mx_op+complex(0.0,1.0)*raise_y_mx_op)
-        minus_gen_op = 1/2**0.5*(raise_x_mx_op+complex(0.0,-1.0)*raise_y_mx_op)
+          plus_gen_op = 1/2**0.5*(raise_x_mx_op+complex(0.0,1.0)*raise_y_mx_op)
+          minus_gen_op = 1/2**0.5*(raise_x_mx_op+complex(0.0,-1.0)*raise_y_mx_op)
 
-        gen_ops = [plus_gen_op, minus_gen_op]
+          gen_ops = [plus_gen_op, minus_gen_op]
+          """
+          bases_vectors = []
+          #base_0 = ket_vector( maths.col_vector.zeros(self.eig_states.dim) )
+          base_0 = ket_vector( maths.col_vector.zeros(self.used_dimension) )
+          
+          base_0.set_item(0,complex(1.0,0.0))
 
-        base_0 = ket_vector( maths.col_vector.zeros(self.eig_states.dim) )
-        base_0.set_item(0,complex(1.0,0.0))
+          bases_vectors.append(base_0)
 
-        bases_vectors.append(base_0)
-
-        for i in range(0,generating_order):
-            new_bases_vectors = []
-            for base in bases_vectors:
+          for i in range(0,generating_order):
+               new_bases_vectors = []
+               for base in bases_vectors:
             
-                for gen_op in gen_ops:
+                    for gen_op in gen_ops:
             
-                    new_base = gen_op*base
+                         new_base = gen_op*base
 
-                    if (new_base not in bases_vectors) and (new_base not in new_bases_vectors) :
-                        new_bases_vectors.append(new_base)
-            bases_vectors+=new_bases_vectors
-        return [ base_vec.normalize() for base_vec in bases_vectors ]                
+                         if (new_base not in bases_vectors) and (new_base not in new_bases_vectors) :
+                              new_bases_vectors.append(new_base)
+               bases_vectors+=new_bases_vectors
+          
+          return [ base_vec.normalize() for base_vec in bases_vectors ]                
 
 
      def create_basis_trf(self, gen_ops:list[MatrixOperator], generation_order:int)->MatrixOperator:
@@ -466,7 +641,7 @@ class braket_to_matrix_formalism:
 
      def create_MatrixOperator(self, op: operator,name = '', subsys_name = ''):
           dim = len(self.eig_states)
-          mx_op = np.zeros((dim, dim), dtype = np.complex128)
+          mx_op = np.zeros((dim, dim), dtype = maths.complex_number_typ)
           for i in range(0,len(self.eig_states._ket_states)):
                for j in range(0,len(self.eig_states._bra_states)):
                     bra = self.eig_states._bra_states[j]
@@ -476,3 +651,5 @@ class braket_to_matrix_formalism:
                     mx_op[i][j] = bra*op*ket
           #if self.mxtype == 'ordinary':
           return MatrixOperator(maths.Matrix(mx_op), name = name,subsys_name=subsys_name)
+
+
