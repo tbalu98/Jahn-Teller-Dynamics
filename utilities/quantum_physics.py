@@ -46,7 +46,14 @@ class one_mode_phonon_sys(qs.quantum_system_node):
     def generate_new_bases(self):
         generator_ops = self.create_complex_basis_gen_op()
         return self.mx_op_builder.create_new_basis(generator_ops, self.calc_order-1)
-        
+    
+    def generate_new_hilbert_space_and_bases(self):
+        generator_ops = self.create_complex_basis_gen_op()
+
+        return self.mx_op_builder.create_new_basis2(generator_ops, self.calc_order-1)
+    
+        #return self.mx_op_builder.create_new_basis(generator_ops, self.calc_order-1)
+        #return self.mx_op_builder.tree_basis_generation(generator_ops,self.calc_order)
 
     # Braket quantum mechanics
     def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = ''):

@@ -1,7 +1,7 @@
-import utilities.quantum_mechanics as qm
+import utilities.matrix_formalism as mf
 import numpy as np
-
-
+import utilities.jahn_teller_theory as jt
+import utilities.maths as maths
 res_folder = 'hamiltonians/'
 
 # Parameters
@@ -16,7 +16,7 @@ F_E = 144.30
 dim = 5
 order = 5
 
-fonon_sys = qm.n_dim_harm_osc(dim, order)
+fonon_sys = mf.n_dim_harm_osc(dim, order)
 
 print(fonon_sys.over_est_int_op.matrix)
 
@@ -25,17 +25,17 @@ print(fonon_sys.over_est_int_op.matrix)
 # symmetrical operators
 #orbital operators
 
-O0= qm.MatrixOperator( np.matrix([[1, 0, 0 ], [0, 1 ,0],[0, 0, 1]  ]),'O0')
+O0= mf.MatrixOperator(maths.Matrix( np.matrix([[1, 0, 0 ], [0, 1 ,0],[0, 0, 1]  ],dtype= np.float64)),'O0')
 
-Ox=qm.MatrixOperator(np.matrix([[0, 0, 0 ], [0, 0 ,1],[0, 1, 0]  ]), 'Ox')
-Oy=qm.MatrixOperator(np.matrix([[0, 0, 1 ], [0, 0 ,0],[1, 0, 0]  ]),'Oy')
-Oz= qm.MatrixOperator( np.matrix([[0, 1, 0 ], [1, 0 ,0],[0, 0, 0]  ]), 'Oz')
+Ox=mf.MatrixOperator(maths.Matrix(np.matrix([[0, 0, 0 ], [0, 0 ,1],[0, 1, 0]  ],dtype= np.float64)), 'Ox')
+Oy=mf.MatrixOperator(maths.Matrix(np.matrix([[0, 0, 1 ], [0, 0 ,0],[1, 0, 0]  ],dtype= np.float64)),'Oy')
+Oz= mf.MatrixOperator(maths.Matrix( np.matrix([[0, 1, 0 ], [1, 0 ,0],[0, 0, 0]  ],dtype= np.float64)), 'Oz')
 
-Ov= qm.MatrixOperator(0.5* np.matrix([[1, 0, 0 ], [0, 1 ,0],[0, 0, -2]  ]), 'Ov')
+Ov= mf.MatrixOperator(maths.Matrix(0.5* np.matrix([[1, 0, 0 ], [0, 1 ,0],[0, 0, -2]  ],dtype= np.float64)), 'Ov')
 
-Ow= qm.MatrixOperator(((3**0.5)/2)* np.matrix([[-1, 0, 0 ], [0, 1 ,0],[0, 0, 0]  ]), 'Ow')
+Ow= mf.MatrixOperator(maths.Matrix(((3**0.5)/2)* np.matrix([[-1, 0, 0 ], [0, 1 ,0],[0, 0, 0]  ],dtype= np.float64)), 'Ow')
 
-symm_ops = {str:qm.MatrixOperator}
+symm_ops = {str:mf.MatrixOperator}
 
 symm_ops['O0'] = O0
 symm_ops['Ox'] = Ox
@@ -47,33 +47,11 @@ symm_ops['Ow'] = Ow
 
 
 
-el_sys = qm.symmetric_electron_system(symm_ops)
+el_sys = mf.symmetric_electron_system(symm_ops)
 
 
-#H=omega_T*kron(K+0*2.5*eye(l),O0)-F_T*(kron(X,Ox)+kron(Y,Oy)+kron(Z,Oz))  +F_E*(kron(V,Ov)+kron(W,Ow));
+tet_jt = jt.Tet_JT_int(F_T, F_E,omega_T, el_sys, fonon_sys)
 
-#H=omega_T*kron(K+0*2.5*eye(l),O0)-F_T*(kron(X,Ox)+kron(Y,Oy)+kron(Z,Oz))  +F_E*(kron(V,Ov)+kron(W,Ow));
-
-#np.savetxt('X_python.csv', fonon_sys.pos_i_ops[0].matrix)
-K = fonon_sys.get_ham_op().matrix
-K_over = fonon_sys.over_est_int_op.matrix
-
-
-X =  fonon_sys.get_pos_i_op(0).matrix
-Y =  fonon_sys.get_pos_i_op(1).matrix
-Z =  fonon_sys.get_pos_i_op(2).matrix
-V =  fonon_sys.get_pos_i_op(3).matrix
-W =  fonon_sys.get_pos_i_op(4).matrix
-
-
-H = omega_T* np.kron(K, el_sys.symm_ops['O0'].matrix) - F_T*  (np.kron( X, el_sys.symm_ops['Ox'].matrix ) + np.kron(Y , el_sys.symm_ops['Oy'].matrix)  + np.kron(Z, el_sys.symm_ops['Oz'].matrix )) + F_E* (  np.kron(V , el_sys.symm_ops['Ov'].matrix)  + np.kron(W , el_sys.symm_ops['Ow'].matrix ) ) 
-
-
-
-
-
-H = qm.MatrixOperator(H)
-H.eigen_vals.sort()
-np.savetxt('eig_val.csv', H.eigen_vals)
-print(H.eigen_vals)
-
+H = tet_jt.H_int
+H.calc_eigen_vals_vects()
+print(sorted( [  x.eigen_val for x in H.eigen_kets ] ))

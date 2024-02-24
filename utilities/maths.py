@@ -1,15 +1,16 @@
 import numpy as np
 from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import eigs
+#from scipy.sparse.linalg import eigs
+from scipy.linalg import eig as eigs
 from scipy import sparse
 import collections
 
 
 
-#precision = 0.0000001
 precision = 0.0000001
+#precision = 0.0000001
 
-complex_number_typ = np.complex128
+complex_number_typ = np.complex64
 
 def equal_matrix(a:np.matrix, b:np.matrix):
     if a.shape != b.shape:
@@ -51,7 +52,6 @@ class col_vector:
 
     def set_item(self, index, item):
         self.coeffs.itemset((index, 0), item)
-        print('itemset')
 
     def __eq__(self,other):
         #return np.array_equal(self.coeffs , other.coeffs)
@@ -267,7 +267,8 @@ class Matrix:
             num_of_vals = len(self.matrix)
         if ordering_type == None:
             ordering_type = 'SM'
-        return eigs(self.matrix, k = num_of_vals, which=ordering_type)
+        #return eigs(self.matrix, k = num_of_vals, which=ordering_type)
+        return eigs(self.matrix)
     
     def __getitem__(self,key):
         return self.matrix[key]

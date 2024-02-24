@@ -35,13 +35,14 @@ class ket_vector:
      
      def to_dataframe(self, bases):
           ket_dict = {}
-          ket_dict['states'] = list( map( lambda x: str(x), bases._ket_states ) )
+          index_col_name = str(bases.qm_nums_names)
+          ket_dict[index_col_name] = list( map( lambda x: str(x), bases._ket_states ) )
 
           ket_dict['coefficients'] = self.coeffs.tolist()
 
           ket_dataframe = pd.DataFrame.from_dict(ket_dict)
 
-          ket_dataframe = ket_dataframe.set_index('states')
+          ket_dataframe = ket_dataframe.set_index(index_col_name)
 
           return ket_dataframe
      
@@ -146,7 +147,8 @@ class hilber_space_bases:
 
 
     def create_trf_op(self, basis_name:str):
-         return MatrixOperator.basis_trf_matrix(self.base_vectors[basis_name])
+         return MatrixOperator.basis_trf_matrix(self.base_vectors[basis_name][0])
+
 
     def kron_hilber_spaces(hilber_spaces:list):
           #new_hilber_spaces = hilber_spaces[::-1]
@@ -440,14 +442,14 @@ class MatrixOperator:
      def create_eigen_kets_vals_table(self, bases:hilber_space_bases)->pd.DataFrame:
 
           eigen_kets_dict = {}
-
-          eigen_kets_dict['states'] = list( map( lambda x: str(x), bases._ket_states ) )
+          index_col_name = str(bases.qm_nums_names)
+          eigen_kets_dict[index_col_name] = list( map( lambda x: str(x), bases._ket_states ) )
           for eigen_ket in self.eigen_kets:
                eigen_kets_dict[str(eigen_ket.eigen_val)] = eigen_ket.coeffs.tolist()
 
 
           eig_mx_df = pd.DataFrame.from_dict(eigen_kets_dict )
-          eig_mx_df = eig_mx_df.set_index('states')
+          eig_mx_df = eig_mx_df.set_index(index_col_name)
           return eig_mx_df
 
 
@@ -593,6 +595,9 @@ class braket_to_matrix_formalism:
           self.used_dimension = used_dimensions
 
      def create_new_basis(self, gen_ops:list[MatrixOperator], generating_order:int)->list[ket_vector]:
+          bases_vectors_data = namedtuple('bases_vector_data', 'vector create_num annil_num')
+
+          basis_vector_datas = []
           """
           raise_x_op = bf.raise_index_operator(0)
 
@@ -616,25 +621,116 @@ class braket_to_matrix_formalism:
           
           base_0.set_item(0,complex(1.0,0.0))
 
+          
+
           bases_vectors.append(base_0)
+
+          op_1_count = 0
+          op_2_count = 0
 
           for i in range(0,generating_order):
                new_bases_vectors = []
                for base in bases_vectors:
-            
-                    for gen_op in gen_ops:
-            
-                         new_base = gen_op*base
+                    
+                    for j in range(0, len(gen_ops)):
+                    
+                    #for gen_op in gen_ops:
+
+
+
+                         new_base = gen_ops[j]*base
 
                          if (new_base not in bases_vectors) and (new_base not in new_bases_vectors) :
+                              """
+                              if j==0:
+                                   op_1_count += 1
+                              else:
+                                   op_2_count += 1
+                              basis_vector_datas.append(bases_vectors_data())
+                              """
                               new_bases_vectors.append(new_base)
                bases_vectors+=new_bases_vectors
           
           return [ base_vec.normalize() for base_vec in bases_vectors ]                
 
+     def create_new_basis2(self, gen_ops:list[MatrixOperator], generating_order:int):
+          bases_vectors_data = namedtuple('bases_vectors_data', 'vector create_num annil_num')
+
+          basis_vector_datas = []
+
+          bases_vectors = []
+          #base_0 = ket_vector( maths.col_vector.zeros(self.eig_states.dim) )
+          base_0 = ket_vector( maths.col_vector.zeros(self.used_dimension) )
+          
+          base_0.set_item(0,complex(1.0,0.0))
+
+          basis_vector_datas.append(bases_vectors_data(base_0,0,0))          
+
+          #bases_vectors.append(base_0)
+
+          op_1_count = 0
+          op_2_count = 0
+
+          for i in range(0,generating_order):
+               new_bases_vector_datas = []
+               for base_data in basis_vector_datas:
+                    
+                    for j in range(0, len(gen_ops)):
+                    
+
+                         if j==0:
+                              new_create_num = base_data.create_num+1
+                              new_annil_num = base_data.annil_num
+                         else:
+                              new_create_num = base_data.create_num
+                              new_annil_num = base_data.annil_num+1
+
+
+                         new_base = gen_ops[j]*base_data.vector
+
+                         new_base_data = bases_vectors_data(new_base, new_create_num, new_annil_num)
+
+                         if (new_base_data.vector not in [x.vector for x in basis_vector_datas]) and (new_base_data.vector not in [x.vector for x in new_bases_vector_datas]) :
+                              
+
+                              new_bases_vector_datas.append(bases_vectors_data(new_base,new_create_num, new_annil_num))
+
+                              #new_bases_vector_datas.append(new_base_data)
+               basis_vector_datas+=new_bases_vector_datas
+          
+          #return [ bases_vectors_data( base_vectors_data.vector.normalize(),base_vectors_data.create_num, base_vectors_data.annil_num) for base_vectors_data in basis_vector_datas ]                
+          new_hilbert_space = hilber_space_bases().from_qm_nums_list(qm_nums_list=[ [base_vectors_data.create_num, base_vectors_data.annil_num] for base_vectors_data in basis_vector_datas ], qm_nums_names=['+', '-'])
+          return [  base_vectors_data.vector.normalize() for base_vectors_data in basis_vector_datas ]   ,new_hilbert_space             
+
+
+
+     """
+     def tree_basis_generations_imp(self,parent_vector:ket_vector, gen_ops:list[MatrixOperator], curr_level:int,generating_order:int,bases_vectors:list[ket_vector]):
+          if curr_level<generating_order:
+               for gen_op in gen_ops:
+                    curr_level+=1
+                    new_parent_vector = gen_op*parent_vector
+                    bases_vectors.append(new_parent_vector)
+                    self.tree_basis_generations_imp(new_parent_vector,gen_ops, curr_level,generating_order,bases_vectors)
+
+     def tree_basis_generation(self,gen_ops:list[MatrixOperator], generating_order:int)->list[ket_vector]:
+          bases_vectors = []
+
+          base_0 = ket_vector( maths.col_vector.zeros(self.used_dimension) )
+          
+          base_0.set_item(0,complex(1.0,0.0))
+
+          bases_vectors.append(base_0)
+
+          self.tree_basis_generations_imp(base_0, gen_ops,0,generating_order,bases_vectors)
+
+          return [ base_vec.normalize() for base_vec in bases_vectors ]                
+     """
 
      def create_basis_trf(self, gen_ops:list[MatrixOperator], generation_order:int)->MatrixOperator:
           basis =  self.create_new_basis(gen_ops, generation_order)
+          
+          #basis = self.tree_basis_generation(gen_ops, generation_order)
           return MatrixOperator.basis_trf_matrix(basis)
 
 

@@ -140,7 +140,6 @@ class tree:
         parent_node = self.root_node.find_node(parent_node_id)[0]
         parent_node.add_child(new_child)
         #parent_node.children.append(new_child)
-        print('inserted')
 
 
 
@@ -211,9 +210,6 @@ class quantum_system_node(node):
         left_systems = []
 
         left_systems, system, right_systems = self.find_leaves_avoid(operator_system_id) 
-        print(left_systems)
-        print(system)
-        print(right_systems)
 
         op = system.operators[operator_id]
 
@@ -258,9 +254,10 @@ class quantum_system_tree(tree):
         leaf_systems:list[quantum_system_node] = self.root_node.find_leaves()
 
         basis_trf_matrixes = [ leaf_system.base_states.create_trf_op(basis_name) for leaf_system in leaf_systems]
-        print('basis_trf')
 
-        return list(itertools.accumulate( basis_trf_matrixes,lambda x, y: x**y ))[-1]
+        new_hilbert_space = [leaf_system.base_states.base_vectors[basis_name][1] for leaf_system in leaf_systems]
+
+        return list(itertools.accumulate( basis_trf_matrixes,lambda x, y: x**y ))[-1], list(itertools.accumulate( new_hilbert_space,lambda x, y: x**y ))[-1]
 
 
 

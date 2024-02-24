@@ -4,6 +4,7 @@ import sys
 import collections
 import math
 import collections
+import copy
 #Coordinate = collections.namedtuple('Coordinate', 'x y z')
 
 Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom', 'less_symm_geom_1', 'less_symm_geom_2', 'symm_geom_energy', 'less_symm' ])
@@ -15,6 +16,10 @@ class Vector:
         self.x = x
         self.y= y
         self.z = z
+    def from_str(txt:str):
+        nums = [  float(t) for t in txt.split() ]
+        return Vector(*nums[0:3])
+
     def add(self, other):
         return Vector(self.x+other.x, self.y+other.y, self.z+other.z)
     def norm(self  ):
@@ -32,7 +37,7 @@ class Vector:
         return Vector(self.x * c, self.y * c, self.z * c)
 
     def dist(self, vec2):
-        return self.subtract(vec2).length()
+        return self.subtract(vec2).push_to_unit_cell().length()
     
     def get_dists(self, vecs: list):
         return [self.dist(x) for x  in vecs]
@@ -41,13 +46,67 @@ class Vector:
         dxs = self.get_dists(vecs)
         min_dist =  np.min(dxs)
         index = np.where(dxs ==np.min(dxs) )[0][0]
-        return vecs[index], min_dist
+        return self.subtract(vecs[index]).push_to_unit_cell(), min_dist
+    
+    def push_to_unit_cell(self):
         
+        new_x = copy.deepcopy(self.x)
+        new_y = copy.deepcopy(self.y)
+        new_z = copy.deepcopy(self.z)
+
+        if new_x<-0.5:
+            new_x +=1.0
+        elif new_x>0.5:
+            new_x -= 1.0
+
+        if new_y<-0.5:
+            new_y +=1.0
+        elif new_y>0.5:
+            new_y -= 1.0
+
+        if new_z<-0.5:
+            new_z +=1.0
+        elif new_z>0.5:
+            new_z -= 1.0
+
+
+        return Vector(new_x,new_y,new_z)
+
+
+
+    def push_to_cell(self,cell_x:float, cell_y:float, cell_z:float):
+
+        new_x = copy.deepcopy(self.x)
+        new_y = copy.deepcopy(self.y)
+        new_z = copy.deepcopy(self.z)
+
+        if new_x<0:
+            new_x +=cell_x
+        elif new_x>cell_x:
+            new_x -= cell_x
+
+        if new_y<0:
+            new_y +=cell_y
+        elif new_y>cell_y:
+            new_y -= cell_y
+
+        if new_z<0:
+            new_z +=cell_z
+        elif new_z>cell_z:
+            new_z -= cell_z
+
+        return Vector(new_x,new_y,new_z)            
+
 class Ions:
-    def __init__(self, name,  vecs, m=None):
+
+    def __init__(self, name,  vecs, m=None, cell_x = None, cell_y = None, cell_z = None, basis_vecs = None):
         self.name = name
         self._vecs = vecs
         self.m = m
+        self.cell_x = cell_x
+        self.cell_y = cell_y
+        self.cell_z = cell_z
+        self.basis_vecs = basis_vecs
 
     def __getitem__(self,i):
         return self._vecs[i]
@@ -56,18 +115,80 @@ class Ions:
     
     def calc_dist_sq(self, ions2: list):
         dist_sq = 0.0
-        for vec in self._vecs:
+        for i,vec in zip(range(0,len(self._vecs)),self._vecs):
             dist = vec.get_min_dist_vec(ions2)[1]
-            dist_sq = dist_sq + dist**2
+            #dist_vec = dist_vec.push_to_cell(self.cell_x,self.cell_y,self.cell_z)
+            #dist_vec = dist_vec.push_to_unit_cell()
+            dist_sq = dist_sq + (dist)**2
         return dist_sq
     
     def __lt__(self, other):
         return len(self)<= len(other)
 
 class Lattice:
-    def __init__(self, energy = None):
+    def __init__(self, energy = None,cell_x=1.0, cell_y=1.0, cell_z=1.0):
         self.ions_arr = []
         self.energy = energy
+        self.cell_x = cell_x
+        self.cell_y = cell_y
+        self.cell_z = cell_z
+    
+    def push_vec_back_to_cell(self, vec:Vector):
+        return vec.push_to_cell(self.cell_x, self.cell_y, self.cell_z)
+
+
+    def push_to_cell(self):
+        for ion in self.ions_arr:
+            for vec in ion._vecs:
+                
+                if vec.x<0:
+                    vec.x+=self.cell_x
+                elif vec.x>self.cell_x:
+                    vec.x-=self.cell_x
+                
+                if vec.y < 0:
+                    vec.y+=self.cell_y
+                elif vec.y>self.cell_y:
+                    vec.y-=self.cell_y
+
+                if vec.z < 0:
+                    vec.z+=self.cell_z
+                elif vec.z>self.cell_z:
+                    vec.z-=self.cell_z
+
+
+    def to_unit_cell(self):
+        for ion in self.ions_arr:
+
+            for vec in ion._vecs:
+
+                vec.x/=self.cell_x
+                vec.y/=self.cell_y
+                vec.z/=self.cell_z
+        
+
+    def set_cell_size(self, cell_x, cell_y=None, cell_z = None):
+        if cell_y==None and cell_z == None :
+            self.cell_x = cell_x
+            self.cell_y = cell_x
+            self.cell_z = cell_x
+            for ion in self.ions_arr:
+                ion.cell_x = cell_x
+                ion.cell_y = cell_x
+                ion.cell_z = cell_x
+
+        else:
+            self.cell_x = cell_x
+            self.cell_y = cell_y
+            self.cell_z = cell_z
+
+            for ion in self.ions_arr:
+                ion.cell_x = cell_x
+                ion.cell_y = cell_y
+                ion.cell_z = cell_z
+
+
+
     def get_ions(self, name) -> Ions:
         found_ions = list(filter(  lambda x: x.name == name ,self.ions_arr ))
         
@@ -89,6 +210,7 @@ class Lattice:
     def same_type(self, other):
         return True
 
+    """
     def calc_dist(self, other_lattice):
         if self.same_type(other_lattice) == True:
             lattice_dist = 0.0
@@ -96,6 +218,16 @@ class Lattice:
                 other_ions = other_lattice.get_ions(ions.name)
                 lattice_dist = lattice_dist + ions.calc_dist_sq(other_ions)*ions.m
             return lattice_dist**0.5
+    """
+    def calc_dist(self, other_lattice):
+        if self.same_type(other_lattice) == True:
+            lattice_dist = 0.0
+            for i in range(len(self.ions_arr)):
+                self_ions = self.ions_arr[i]
+                other_ions = other_lattice.ions_arr[i]
+                lattice_dist = lattice_dist + self_ions.calc_dist_sq(other_ions)*(self_ions.m)
+            return ((lattice_dist)**0.5)*self.cell_x
+
 
 
 
