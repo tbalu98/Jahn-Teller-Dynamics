@@ -16,9 +16,6 @@ import utilities.quantum_system as qs
 import utilities.OUTCAR_parsing as parsing
 import utilities.xml_parser
 import sys
-control_file_path = 'data/'
-
-control_data = pd.read_csv( control_file_path + 'control.csv' , index_col='case')
 
 def read_lattice(control, symm_type):
     latt = VASP.POSCAR_data( control.data_folder + control[symm_type+'_path']).lattice
