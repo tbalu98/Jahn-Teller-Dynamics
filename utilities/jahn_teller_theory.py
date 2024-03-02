@@ -9,7 +9,7 @@ from scipy.sparse.linalg import eigs
 import itertools
 import utilities.maths as maths
 import utilities.matrix_formalism as mf
-
+import pandas as pd
 
 Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
 
@@ -19,16 +19,82 @@ Jahn_Teller_Pars = collections.namedtuple('Jahn_Teller_Pars',  'E_JT E_b hwpG hw
 class Jahn_Teller_Theory:
 
 
-     def __init__(self, symm_lattice: VASP.Lattice, less_symm_lattice_1: VASP.Lattice, less_symm_lattice_2:VASP.Lattice):
+     def from_df(self, theory_data:pd.DataFrame):
+          case_index = 0
+          print('in_from_df')
+          self.E_JT = theory_data['JT energy'][case_index]
+          self.E_b = theory_data['barrier energy'][case_index]
+          self.delta = self.E_b
+          
+          dop_atom_name = theory_data['dopant atom'][case_index]
+          maj_atom_name = theory_data['majority atom'][case_index]
+
+          dop_atom_mass = theory_data[ dop_atom_name+' mass'][case_index]
+
+          maj_atom_mass = theory_data[ maj_atom_name+' mass'][case_index]
+
+
+          symm_JT_dist_maj = theory_data['symm-JT distance ' + maj_atom_name + ' atoms'][case_index]
+          symm_JT_dist_dop = theory_data['symm-JT distance ' +dop_atom_name + ' atoms'][case_index]
+
+          self.JT_dist = ((symm_JT_dist_dop**2)*dop_atom_mass + (symm_JT_dist_maj**2)*maj_atom_mass)**0.5
+
+          symm_barrier_dist_maj = theory_data['symm-barrier distance ' + maj_atom_name + ' atoms'][case_index]
+          symm_barrier_dist_dop = theory_data['symm-barrier distance ' +dop_atom_name + ' atoms'][case_index]
+
+          self.barrier_dist = ((symm_barrier_dist_dop**2)*dop_atom_mass + (symm_barrier_dist_maj**2)*maj_atom_mass)**0.5
+          
+          self.order_flag = 2
+          c = 64.654148236
+
+
+          self.hw_mG = float(c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5)
+
+          self.hw_pG = float(c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5)
+          self.hw = (self.hw_mG + self.hw_pG)/2
+          self.hw = float(self.hw)
+          self.calc_Taylor_coeffs()
+
+          return self
+          #dopant_atom_mass = theor
+
+     def from_parameters(self, E_JT:float, delta:float,energy_quantum:float):
+          self.E_JT = E_JT
+          self.delta = delta
+          self.hw = energy_quantum
+          self.calc_Taylor_coeffs()
+          return self
+
+     def __init__(self, symm_lattice: VASP.Lattice=None, less_symm_lattice_1: VASP.Lattice=None, less_symm_lattice_2:VASP.Lattice=None):
           self.symm_lattice = symm_lattice
-          self.JT_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy< less_symm_lattice_2.energy else less_symm_lattice_2
-          self.barrier_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy> less_symm_lattice_2.energy else less_symm_lattice_2
-          self.calc_paramters()
+          
+          if less_symm_lattice_1!=None and less_symm_lattice_2!=None:
+               self.JT_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy< less_symm_lattice_2.energy else less_symm_lattice_2
+               self.barrier_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy> less_symm_lattice_2.energy else less_symm_lattice_2
+               self.calc_paramters_until_second_order()
+               self.order_flag = 2
 
-
+          elif less_symm_lattice_1!=None and less_symm_lattice_2==None:
+               self.JT_lattice = less_symm_lattice_1
+               self.calc_paramters_until_first_order()
+               self.order_flag = 1
+     def calc_paramters_until_first_order(self):
+          self.JT_dist = self.symm_lattice.calc_dist(self.JT_lattice)
+          self.calc_E_JT()
+          self.E_b = 0.0
+          c = 64.654148236
+          
+          self.hw = float(c*( 2*( abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5)
+          
+          self.F =  float((( 2*self.E_JT*self.hw )**0.5))
+          self.G =  0.0
 
      def __repr__(self) -> str:
-          return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' + 'Barrier energy: '  + str(self.E_b) + '\n' + 'hw+G: ' + str(self.hw_pG) + '\n' + 'hw-G: ' + str(self.hw_mG) + '\n' + 'hw: '+ str(self.hw) 
+          if self.order_flag == 1:
+               return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' +  'hw: '+ str(self.hw) 
+          
+          elif self.order_flag == 2:
+               return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' + 'Barrier energy: '  + str(self.E_b) + '\n' + 'hw+G: ' + str(self.hw_pG) + '\n' + 'hw-G: ' + str(self.hw_mG) + '\n' + 'hw: '+ str(self.hw) 
 
      def calc_dists(self):
           self.JT_dist = self.symm_lattice.calc_dist(self.JT_lattice)
@@ -40,16 +106,17 @@ class Jahn_Teller_Theory:
           self.E_b = abs( self.JT_lattice.energy - self.barrier_lattice.energy)*1000
 
 
-     def calc_paramters(self):
+     def calc_paramters_until_second_order(self):
           self.calc_dists()
           c = 64.654148236
           self.calc_E_JT()
           self.calc_E_b()
           self.delta = self.E_JT - self.E_b
+          self.delta = self.E_b
 
-          self.hw_mG = c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5
+          self.hw_mG = float(c*( 2*(-abs( self.E_b/1000 ) + abs(self.E_JT/1000) ) / self.JT_dist**2  )**0.5)
 
-          self.hw_pG = c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5
+          self.hw_pG = float(c*( 2*(abs( self.E_JT/1000 ) ) / self.barrier_dist**2 )**0.5)
           self.hw = (self.hw_mG + self.hw_pG)/2
           self.hw = float(self.hw)
           self.calc_Taylor_coeffs()

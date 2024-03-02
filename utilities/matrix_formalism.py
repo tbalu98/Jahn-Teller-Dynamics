@@ -33,7 +33,7 @@ class ket_vector:
                self.coeffs = maths.col_vector(np.matrix( [  [num] for num in coeffs ] ))
                self.dim = len(self.coeffs.coeffs)
      
-     def to_dataframe(self, bases):
+     def to_dataframe(self, bases)->pd.DataFrame:
           ket_dict = {}
           index_col_name = str(bases.qm_nums_names)
           ket_dict[index_col_name] = list( map( lambda x: str(x), bases._ket_states ) )
@@ -105,7 +105,8 @@ class ket_vector:
      def round(self, dig):
           return ket_vector(coeffs=self.coeffs.round(dig), name = self.name, subsys_name = self.subsys_name, eigen_val = self.eigen_val)
 
-
+     def calc_abs_square(self):
+          return  ket_vector(self.coeffs.calc_abs_square())
 
 class bases_system:
      def __init__(self, bases_kets:list[ket_vector]):

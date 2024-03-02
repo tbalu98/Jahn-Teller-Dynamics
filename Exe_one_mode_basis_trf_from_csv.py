@@ -14,18 +14,10 @@ import utilities.matrix_formalism as mf
 import utilities.braket_formalism as bf
 import utilities.quantum_system as qs
 import utilities.OUTCAR_parsing as parsing
+import utilities.xml_parser
+import sys
 
-control_file_path = 'data/'
 
-control_data = pd.read_csv( control_file_path + 'control.csv' , index_col='case')
-
-def read_lattice(control, symm_type):
-    latt = VASP.POSCAR_data( control.data_folder + control[symm_type+'_path']).lattice
-    latt.get_dope_ions().m = control.dopant_m
-    latt.get_maj_ions().m = control.maj_m
-    latt.energy = control[symm_type+'_energy']
-
-    return latt
 
 # Create the symm electron system
 #Symmetry operations
@@ -42,8 +34,22 @@ el_sys_ops['s0'] = mf.MatrixOperator(maths.Matrix(s0), name = 's0')
 el_sys_ops['Lz'] = mf.MatrixOperator.create_Lz_op()
 
 
-electron_system = qs.quantum_system_node('electron_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],qm_nums_names=['orbital'])  ,
+orbital_system = qs.quantum_system_node('orbital_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],qm_nums_names=['orbital'])  ,
                                          operators=el_sys_ops, dim= 2)
+
+
+
+#electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
+electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
+
+spin_sys_ops = {}
+Sz = np.matrix([[0.5,0],[0,-0.5]], dtype= np.float64)
+
+spin_sys_ops['Sz'] = mf.MatrixOperator(maths.Matrix(Sz), name = 'Sz')
+
+
+
+spin_sys = qs.quantum_system_node('spin_system', mf.hilber_space_bases().from_qm_nums_list([['up'], ['down']] , qm_nums_names=['spin']) , operators=spin_sys_ops)
 
 
 
@@ -51,45 +57,17 @@ electron_system = qs.quantum_system_node('electron_system', base_states=mf.hilbe
 symm_types = ['symm_geom', 'less_symm_geom_1','less_symm_geom_2']
 
 
-#Create one mode harmonic oscillator
-mode = 77.6
-
 
 spatial_dim = 2
-order  = 12
 
 
 
 
+theory_data = pd.read_csv('JT_data_results.csv', index_col='case_name')
 
-filenames = ['C3v.outcar', 'C1h.outcar','C1h_JahnTeller.outcar']
-
-
-
-symm_lattice = parsing.OUTCAR_data_parser(filenames[0]).lattice
-symm_lattice.set_cell_size(14.1786088943480006)
-#symm_lattice.push_to_cell()
-symm_lattice.to_unit_cell()
-
-less_symm_lattice_1 = parsing.OUTCAR_data_parser(filenames[1]).lattice
-less_symm_lattice_1.set_cell_size(14.1786088943480006)
-#less_symm_lattice_1.push_to_cell()
-less_symm_lattice_1.to_unit_cell()
-
-less_symm_lattice_2 = parsing.OUTCAR_data_parser(filenames[2]).lattice
-less_symm_lattice_2.set_cell_size(14.1786088943480006)
-#less_symm_lattice_2.push_to_cell()
-less_symm_lattice_2.to_unit_cell()
-
-
-    #Calculate the parameters of Jahn-Teller theory
-JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
-
+JT_theory = jt.Jahn_Teller_Theory().from_df(theory_data)
+order = 12
 print(JT_theory)
-
-
-    #JT_theory.E_JT = 41.8
-    #JT_theory.delta  = 9.1
 
 
 #Create quantum system tree graph:
@@ -116,14 +94,12 @@ JT_int.H_int.calc_eigen_vals_vects()
 
 res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-    #res_df = res_df.set_index('states')
-res_df.to_csv('one_mode_Exe_problem.csv',sep = ';')
-    #JT_eigen_states = qm.eigen_vect.from_vals_vects( JT_int.H_int.eigen_vals, JT_int.H_int.eigen_vects)
+res_df.to_csv('one_mode_Exe_problem_NO_spin_orbit_coupling.csv',sep = ';')
 
 print('Eigen values of the Jahn-Teller interaction')
 print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
 
-print(len(JT_int.H_int.eigen_kets))
+
 
 ground_1 = JT_int.H_int.eigen_kets[0]
 
@@ -148,9 +124,9 @@ new_trf_matrix, new_hilbert_space = JT_int.system_tree.create_basis_trf_matrix('
 
 deg_sys = mf.degenerate_system_2D( [ground_1,ground_2] )
 
-pert_ham = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='electron_system' )
+pert_ham = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='orbital_system' )
     
-print('red factors')
+print('red factor:')
 
 print(deg_sys.add_perturbation(pert_ham))
 
@@ -168,17 +144,48 @@ Psiminus:mf.ket_vector = (ground_1-complex(0.0,1.0)*ground_2)/(2.0)**0.5
 
 
 Psiplus_ph_el_sys_trfed = new_trf_matrix*Psiplus
+
+
+"""
 Psiplus_df = Psiplus_ph_el_sys_trfed.to_dataframe(new_hilbert_space)
     
 Psiplus_df.to_csv('Psi_plus_new.csv',sep = ';')
-
+"""
 Psiminus_ph_el_sys_trfed = new_trf_matrix*Psiminus
 
 
-
+"""
 Psiminus_df = Psiminus_ph_el_sys_trfed.to_dataframe(new_hilbert_space)
     
 Psiminus_df.to_csv('Psi_minus_new.csv',sep = ';')
+"""
+
+
+point_defect_tree.insert_node('electron_system', spin_sys)
+
+JT_int = qmp.Exe_tree(point_defect_tree, JT_theory)
+
+
+JT_int.create_one_mode_hamiltonian()
+
+
+
+
+l  =1.0
+JT_int.add_spin_orbit_coupling(l)
+JT_int.H_int.calc_eigen_vals_vects()
+res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
+    
+res_df.to_csv('one_mode_spin_Exe_problem_so_coupling.csv',sep = ';')
+
+
+print('-------------------------------')
+
+print('red factor by Hamiltonian')
+
+print( JT_int.H_int.eigen_kets[3].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val)
+
+print('-------------------------------')
 
     #op = mf.MatrixOperator.from_ket_vectors([  Psiminus_ph_el_sys_trfed, Psiplus_ph_el_sys_trfed ])
     

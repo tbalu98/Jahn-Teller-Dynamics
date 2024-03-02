@@ -31,7 +31,9 @@ class col_vector:
         coeffs = np.loadtxt(file_name)
         return col_vector(np.transpose(np.matrix(coeffs)))
 
-
+    def calc_abs_square(self):
+        coeff_conj = np.conj(self.coeffs)
+        return col_vector(np.multiply(coeff_conj,self.coeffs))
 
 
     def map(self, func):
@@ -86,12 +88,20 @@ class col_vector:
     def __mul__(self, other):
         if type(other) is row_vector:
             return Matrix(np.matmul(self.coeffs,other.coeffs))
-
         elif (type(other) is complex) or (type(other) is float):
             return col_vector(self.coeffs* other)
 
+        """
+        elif isinstance(other,col_vector):
+             
+            return col_vector(np.multiply(self.coeffs,np.conj(other.coeffs)))
+        """
+
+
+
 
     def __rmul__(self, other):
+
         return self*other
 
     def __truediv__(self, other):

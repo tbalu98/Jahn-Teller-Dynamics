@@ -17,13 +17,7 @@ import utilities.OUTCAR_parsing as parsing
 import utilities.xml_parser
 import sys
 
-def read_lattice(control, symm_type):
-    latt = VASP.POSCAR_data( control.data_folder + control[symm_type+'_path']).lattice
-    latt.get_dope_ions().m = control.dopant_m
-    latt.get_maj_ions().m = control.maj_m
-    latt.energy = control[symm_type+'_energy']
 
-    return latt
 
 # Create the symm electron system
 #Symmetry operations
@@ -40,8 +34,22 @@ el_sys_ops['s0'] = mf.MatrixOperator(maths.Matrix(s0), name = 's0')
 el_sys_ops['Lz'] = mf.MatrixOperator.create_Lz_op()
 
 
-electron_system = qs.quantum_system_node('electron_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],qm_nums_names=['orbital'])  ,
+orbital_system = qs.quantum_system_node('orbital_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],qm_nums_names=['orbital'])  ,
                                          operators=el_sys_ops, dim= 2)
+
+
+
+#electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
+electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
+
+spin_sys_ops = {}
+Sz = np.matrix([[0.5,0],[0,-0.5]], dtype= np.float64)
+
+spin_sys_ops['Sz'] = mf.MatrixOperator(maths.Matrix(Sz), name = 'Sz')
+
+
+
+spin_sys = qs.quantum_system_node('spin_system', mf.hilber_space_bases().from_qm_nums_list([['up'], ['down']] , qm_nums_names=['spin']) , operators=spin_sys_ops)
 
 
 
@@ -56,16 +64,27 @@ spatial_dim = 2
 
 
 
-#filenames = ['vasprun_C3v.xml', 'vasprun_C1hb.xml','vasprun_C1hJT.xml']
-filenames = [sys.argv[2],sys.argv[3],sys.argv[4] ]
-order  = int(sys.argv[1])
+filenames = ['vasprun_C3v.xml', 'vasprun_C1hb.xml',None]
+filenames = ['vasprun_C3v.xml', 'vasprun_C1hb.xml','vasprun_C1hJT.xml']
+
+filenames = [ 'GeV_gnd_D3d_vasprun.xml', 'GeV_gnd_nosym_vasprun.xml', 'GeV_gnd_barrier_vasprun.xml' ]
+
+filenames = ['PbV_D3d_vasprun.xml', 'PbV_C2h_vasprun.xml','PbV_C2h_barrier_vasprun.xml']
+
+filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml',None]
+filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml','SnV_C2h_barrier_vasprun.xml']
+
+
+order =12
+#filenames = [sys.argv[2],sys.argv[3],sys.argv[4] ]
+#order  = int(sys.argv[1])
 
 
 symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
 
 
 less_symm_lattice_1 = utilities.xml_parser.xml_parser(filenames[1]).lattice
-less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice
+less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice if filenames[2]!=None else None
 
     #Calculate the parameters of Jahn-Teller theory
 JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
@@ -97,7 +116,7 @@ JT_int.H_int.calc_eigen_vals_vects()
 
 res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-res_df.to_csv('one_mode_Exe_problem.csv',sep = ';')
+res_df.to_csv('one_mode_Exe_problem_NO_spin_orbit_coupling.csv',sep = ';')
 
 print('Eigen values of the Jahn-Teller interaction')
 print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
@@ -127,7 +146,7 @@ new_trf_matrix, new_hilbert_space = JT_int.system_tree.create_basis_trf_matrix('
 
 deg_sys = mf.degenerate_system_2D( [ground_1,ground_2] )
 
-pert_ham = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='electron_system' )
+pert_ham = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='orbital_system' )
     
 print('red factor:')
 
@@ -147,17 +166,48 @@ Psiminus:mf.ket_vector = (ground_1-complex(0.0,1.0)*ground_2)/(2.0)**0.5
 
 
 Psiplus_ph_el_sys_trfed = new_trf_matrix*Psiplus
+
+
+"""
 Psiplus_df = Psiplus_ph_el_sys_trfed.to_dataframe(new_hilbert_space)
     
 Psiplus_df.to_csv('Psi_plus_new.csv',sep = ';')
-
+"""
 Psiminus_ph_el_sys_trfed = new_trf_matrix*Psiminus
 
 
-
+"""
 Psiminus_df = Psiminus_ph_el_sys_trfed.to_dataframe(new_hilbert_space)
     
 Psiminus_df.to_csv('Psi_minus_new.csv',sep = ';')
+"""
+
+
+point_defect_tree.insert_node('electron_system', spin_sys)
+
+JT_int = qmp.Exe_tree(point_defect_tree, JT_theory)
+
+
+JT_int.create_one_mode_hamiltonian()
+
+
+
+
+l  =1.0
+JT_int.add_spin_orbit_coupling(l)
+JT_int.H_int.calc_eigen_vals_vects()
+res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
+    
+res_df.to_csv('one_mode_spin_Exe_problem_so_coupling.csv',sep = ';')
+
+
+print('-------------------------------')
+
+print('red factor by Hamiltonian')
+
+print( JT_int.H_int.eigen_kets[3].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val)
+
+print('-------------------------------')
 
     #op = mf.MatrixOperator.from_ket_vectors([  Psiminus_ph_el_sys_trfed, Psiplus_ph_el_sys_trfed ])
     

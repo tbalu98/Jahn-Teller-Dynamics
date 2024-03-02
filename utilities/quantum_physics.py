@@ -201,6 +201,19 @@ class Exe_tree:
         self.JT_theory = jt_theory
         self.H_int:mf.MatrixOperator
     
+    def create_spin_orbit_couping(self):
+
+        Sz = self.system_tree.create_operator('Sz', 'spin_system')
+        Lz = self.system_tree.create_operator('Lz', 'orbital_system')
+
+        return Lz**Sz
+    
+    def add_spin_orbit_coupling(self,l):
+        H_so = self.create_spin_orbit_couping()
+        self.system_tree.find_subsystem('electron_system')[-1].operators['H_SO'] = H_so
+
+        self.H_int = self.H_int+l*self.system_tree.create_operator('H_SO',subsys_id='point_defect', operator_sys='electron_system')
+
     def create_multi_mode_hamiltonian(self):
 
         hamiltons = []
@@ -242,7 +255,7 @@ class Exe_tree:
 
         K = self.system_tree.create_operator('K', 'nuclei')
 
-        self.JT_theory.set_quantum(77.6)
+        #self.JT_theory.set_quantum(77.6)
 
         s0 = self.system_tree.create_operator('s0', 'electron_system')
         sz = self.system_tree.create_operator('sz', 'electron_system')

@@ -72,6 +72,14 @@ class Vector:
 
         return Vector(new_x,new_y,new_z)
 
+    def to_natural_bases(self, basis_vecs:list):
+        
+        x_vec:Vector = basis_vecs[0].scale(self.x)
+        y_vec:Vector = basis_vecs[1].scale(self.y)
+        z_vec:Vector = basis_vecs[2].scale(self.z)
+
+        return x_vec.add(y_vec).add(z_vec)
+
 
 
     def push_to_cell(self,cell_x:float, cell_y:float, cell_z:float):
@@ -119,6 +127,13 @@ class Ions:
             dist = vec.get_min_dist_vec(ions2)[1]
             #dist_vec = dist_vec.push_to_cell(self.cell_x,self.cell_y,self.cell_z)
             #dist_vec = dist_vec.push_to_unit_cell()
+            #!
+            unit_cell_dist_vec:Vector = vec.get_min_dist_vec(ions2)[0]
+
+            dist_vec = unit_cell_dist_vec.to_natural_bases(self.basis_vecs)
+
+            dist = dist_vec.length()
+
             dist_sq = dist_sq + (dist)**2
         return dist_sq
     
@@ -226,7 +241,7 @@ class Lattice:
                 self_ions = self.ions_arr[i]
                 other_ions = other_lattice.ions_arr[i]
                 lattice_dist = lattice_dist + self_ions.calc_dist_sq(other_ions)*(self_ions.m)
-            return ((lattice_dist)**0.5)*self.cell_x
+            return ((lattice_dist)**0.5)#*self.cell_x
 
 
 
