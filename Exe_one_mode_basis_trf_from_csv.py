@@ -61,9 +61,10 @@ symm_types = ['symm_geom', 'less_symm_geom_1','less_symm_geom_2']
 spatial_dim = 2
 
 
+order = sys.argv[1]
+filename = sys.argv[2]
 
-
-theory_data = pd.read_csv('JT_data_results.csv', index_col='case_name')
+theory_data = pd.read_csv(filename, index_col='case_name')
 
 JT_theory = jt.Jahn_Teller_Theory().from_df(theory_data)
 order = 12

@@ -75,9 +75,9 @@ filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml',None]
 filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml','SnV_C2h_barrier_vasprun.xml']
 
 
-order =12
-#filenames = [sys.argv[2],sys.argv[3],sys.argv[4] ]
-#order  = int(sys.argv[1])
+#order =12
+filenames = [sys.argv[2],sys.argv[3],sys.argv[4] ]
+order  = int(sys.argv[1])
 
 
 symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
