@@ -63,7 +63,6 @@ spatial_dim = 2
 
 order = int(sys.argv[1])
 filename = sys.argv[2]
-
 theory_data = pd.read_csv(filename, index_col='case_name')
 
 JT_theory = jt.Jahn_Teller_Theory().from_df(theory_data)
