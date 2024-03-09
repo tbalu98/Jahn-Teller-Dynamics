@@ -18,7 +18,9 @@ import utilities.xml_parser
 import sys
 
 
-filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml','SnV_C2h_barrier_vasprun.xml']
+filenames = [sys.argv[1], sys.argv[2], sys.argv[3]]
+
+#filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml','SnV_C2h_barrier_vasprun.xml']
 
 
 res_data = {}
