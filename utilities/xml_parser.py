@@ -1,5 +1,73 @@
 import xml.dom.minidom
 import utilities.VASP as VASP
+import pandas as pd
+
+
+def save_raw_data_from_xmls(lattices:list):
+    
+
+
+
+    symm_lattice = lattices[0]
+
+
+#symm_lattice = VASP.Lattice().read_from_coordinates_dataframe('symm_latt.csv',{'Sn': 16, 'C': 12})
+
+    df =  symm_lattice.to_coordinates_data_frame()
+    df.to_csv('symmetric_lattice.csv')
+
+
+
+    less_symm_lattice_1 = lattices[1]
+
+    df =  less_symm_lattice_1.to_coordinates_data_frame()
+    df.to_csv('JT_lattice.csv')
+
+
+    if lattices[-1]!=None:
+        less_symm_lattice_2 = lattices[2]
+
+        df =  less_symm_lattice_2.to_coordinates_data_frame()
+        df.to_csv('barrier_lattice.csv')
+    else:
+        less_symm_lattice_2=None
+
+
+    par_dict = {}
+
+    par_dict['atom_1_name'] = [symm_lattice.ions_arr[0].name]
+    par_dict['atom_2_name'] = [symm_lattice.ions_arr[1].name]
+
+    par_dict['atom_1_mass'] = [symm_lattice.ions_arr[0].m]
+    par_dict['atom_2_mass'] = [symm_lattice.ions_arr[1].m]
+
+    par_dict['symm_lattice_energy'] = [symm_lattice.energy]
+    par_dict['JT_lattice_energy'] = [less_symm_lattice_1.energy]
+    if less_symm_lattice_2!=None:
+
+        par_dict['barrier_lattice_energy'] = [less_symm_lattice_2.energy]
+
+    par_dict['basis_vec_1_x'] = [symm_lattice.ions_arr[0].basis_vecs[0].x]
+    par_dict['basis_vec_1_y'] = [symm_lattice.ions_arr[0].basis_vecs[0].y]
+    par_dict['basis_vec_1_z'] = [symm_lattice.ions_arr[0].basis_vecs[0].z]
+
+    par_dict['basis_vec_2_x'] = [symm_lattice.ions_arr[0].basis_vecs[1].x]
+    par_dict['basis_vec_2_y'] = [symm_lattice.ions_arr[0].basis_vecs[1].y]
+    par_dict['basis_vec_2_z'] = [symm_lattice.ions_arr[0].basis_vecs[1].z]
+
+    par_dict['basis_vec_3_x'] = [symm_lattice.ions_arr[0].basis_vecs[2].x]
+    par_dict['basis_vec_3_y'] = [symm_lattice.ions_arr[0].basis_vecs[2].y]
+    par_dict['basis_vec_3_z'] = [symm_lattice.ions_arr[0].basis_vecs[2].z]
+
+
+    par_df = pd.DataFrame(par_dict)
+
+    par_df.index.name = 'index'
+
+
+    par_df.to_csv('atomic_parameters.csv', sep = ';')
+
+
 
 
 class xml_parser:

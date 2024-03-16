@@ -5,6 +5,8 @@ import collections
 import math
 import collections
 import copy
+import pandas as pd
+from io import StringIO
 #Coordinate = collections.namedtuple('Coordinate', 'x y z')
 
 Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom', 'less_symm_geom_1', 'less_symm_geom_2', 'symm_geom_energy', 'less_symm' ])
@@ -121,6 +123,32 @@ class Ions:
     def __len__(self):
         return len(self._vecs)
     
+    def to_dataframe(self):
+
+        res_dict = {}
+        res_dict['x coordinate'] = [ vec.to_natural_bases(self.basis_vecs).x for vec in self._vecs ]
+        res_dict['y coordinate'] = [ vec.to_natural_bases(self.basis_vecs).y for vec in self._vecs ]
+        res_dict['z coordinate'] = [ vec.to_natural_bases(self.basis_vecs).z for vec in self._vecs ]
+
+        res_df =  pd.DataFrame(res_dict)
+        res_df.index.name = 'index'
+
+        return res_df
+
+
+
+    def to_dataframe_string(self):
+
+        df = self.to_dataframe()
+        
+        string_buffer = StringIO()
+        
+        df.to_csv(string_buffer, sep=';', index=True)
+        csv_string = string_buffer.getvalue()
+
+        return csv_string
+
+
     def calc_dist_sq(self, ions2: list):
         dist_sq = 0.0
         for i,vec in zip(range(0,len(self._vecs)),self._vecs):
@@ -142,7 +170,7 @@ class Ions:
 
 class Lattice:
     def __init__(self, energy = None,cell_x=1.0, cell_y=1.0, cell_z=1.0):
-        self.ions_arr = []
+        self.ions_arr = list[Ions]
         self.energy = energy
         self.cell_x = cell_x
         self.cell_y = cell_y
@@ -150,6 +178,69 @@ class Lattice:
     
     def push_vec_back_to_cell(self, vec:Vector):
         return vec.push_to_cell(self.cell_x, self.cell_y, self.cell_z)
+
+    def read_from_file(self, filename):
+        f = open(filename, "r")
+        print(f.read())
+
+    def to_dataframe_string(self):
+        
+        df_str =""
+        for ion_arr in self.ions_arr:
+            df_str+=ion_arr.to_dataframe_string()
+        return df_str
+
+    def to_coordinates_data_frame(self):
+        x_coordinates = []
+        y_coordinates = []
+        z_coordinates = []
+        atom_name = []
+        
+        for ion_arr in self.ions_arr:
+            x_coordinates+=[ vec.x for vec in ion_arr ]
+            y_coordinates+=[ vec.y for vec in ion_arr ]
+            z_coordinates+=[ vec.z for vec in ion_arr ]
+            atom_name +=[ion_arr.name for i in range(0,len(ion_arr._vecs))]
+        
+        res_dict = {}
+        res_dict['x_coordinates'] = x_coordinates
+        res_dict['y_coordinates'] = y_coordinates
+        res_dict['z_coordinates'] = z_coordinates
+        res_dict['atom_name'] = atom_name
+
+        res_df = pd.DataFrame(res_dict)
+        res_df.index.name = 'index'
+        return res_df
+
+    def save_to_coordinates_dataframe(self):
+        res_df = self.to_coordinates_data_frame()
+        res_df.to_csv(self)
+
+    def read_from_coordinates_dataframe(self,filename, mass_dict,basis_vecs,energy):
+        df = pd.read_csv(filename)
+
+
+        atom_types = list(set(df['atom_name'].tolist()))
+
+
+        #basis_vecs = [Vector(1.0,0.0,0.0),Vector(0.0,1.0,0.0),Vector(0.0,0.0,1.0)]
+
+        ions_arr = [ Ions(name = atom_type, vecs = [], m=mass_dict[atom_type], basis_vecs=basis_vecs ) for atom_type in atom_types ]
+
+        for index, row in df.iterrows():
+            x = float(row['x_coordinates'])
+            y = float(row['y_coordinates'])
+            z = float(row['z_coordinates'])
+            atom_type = row['atom_name']
+
+            ion_arr = list(filter(lambda x: x.name == atom_type,ions_arr))[0]
+
+            ion_arr._vecs.append(Vector(x,y,z))
+        
+        lattice = Lattice(energy=energy)
+        lattice.ions_arr =  ions_arr
+
+        return lattice
 
 
     def push_to_cell(self):

@@ -16,6 +16,49 @@ Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
 Jahn_Teller_Pars = collections.namedtuple('Jahn_Teller_Pars',  'E_JT E_b hwpG hwmG hw F G ' )
 
 
+def build_jt_theory_from_csv(csv_filenames:list):
+
+
+    par_file_name =  csv_filenames[0] # sys.argv[3]
+    symm_lattice_coords_filename =  csv_filenames[1] # sys.argv[4]
+    JT_lattice_coords_filename = csv_filenames[2] #sys.argv[5]
+    barrier_lattice_coords_filename =  csv_filenames[3] if len(csv_filenames)==4 else None #'barrier_lattice.csv'    sys.argv[6]
+
+    #Par dataframe
+
+    par_df = pd.read_csv(par_file_name,sep=';')
+
+    atom_1_name = str(par_df.iloc[0]['atom_1_name'])
+    atom_2_name = str(par_df.iloc[0]['atom_2_name'])
+
+    basis_vec_1 = VASP.Vector(float(par_df['basis_vec_1_x']), float(par_df['basis_vec_1_y']), float(par_df['basis_vec_1_z']))
+    basis_vec_2 = VASP.Vector(float(par_df['basis_vec_2_x']), float(par_df['basis_vec_2_y']), float(par_df['basis_vec_2_z']))
+    basis_vec_3 = VASP.Vector(float(par_df['basis_vec_3_x']), float(par_df['basis_vec_3_y']), float(par_df['basis_vec_3_z']))
+
+    basis_vecs = [basis_vec_1, basis_vec_2,basis_vec_3]
+    
+    mass_dict = {  atom_1_name: float( par_df.iloc[0]['atom_1_mass'] ) , atom_2_name: float( par_df.iloc[0]['atom_2_mass'])}
+
+    sym_lattice_energy = float(par_df.iloc[0]['symm_lattice_energy'])
+    less_symm_lattice_1_energy = float(par_df.iloc[0]['JT_lattice_energy'])
+    if barrier_lattice_coords_filename!=None:
+          less_symm_lattice_2_energy = float(par_df.iloc[0]['barrier_lattice_energy'])
+          less_symm_lattice_2 = VASP.Lattice().read_from_coordinates_dataframe(barrier_lattice_coords_filename, mass_dict, basis_vecs,less_symm_lattice_2_energy)
+    else:
+          less_symm_lattice_2 = None
+
+
+
+
+    symm_lattice = VASP.Lattice().read_from_coordinates_dataframe(symm_lattice_coords_filename, mass_dict,basis_vecs,sym_lattice_energy)
+    
+    less_symm_lattice_1 = VASP.Lattice().read_from_coordinates_dataframe(JT_lattice_coords_filename, mass_dict, basis_vecs, less_symm_lattice_1_energy)
+    
+
+    return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2)
+
+
+
 class Jahn_Teller_Theory:
 
 
@@ -58,6 +101,13 @@ class Jahn_Teller_Theory:
           return self
           #dopant_atom_mass = theor
 
+     def from_Taylor_coeffs(self, hw, F,G = None):
+          self.F = F
+          self.G = G
+          self.hw = hw
+          self.order_flag = 3
+          return self
+
      def from_parameters(self, E_JT:float, delta:float,energy_quantum:float):
           self.E_JT = E_JT
           self.delta = delta
@@ -94,8 +144,12 @@ class Jahn_Teller_Theory:
                return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' +  'hw: '+ str(self.hw) 
           
           elif self.order_flag == 2:
-               return 'Jahn-Teller energy: ' + str(self.E_JT) + '\n' + 'Barrier energy: '  + str(self.E_b) + '\n' + 'hw+G: ' + str(self.hw_pG) + '\n' + 'hw-G: ' + str(self.hw_mG) + '\n' + 'hw: '+ str(self.hw) 
-
+               res_str = 'Jahn-Teller energy: ' + str(round(self.E_JT,4))+' meV' +'\n' + 'Barrier energy: '  + str(round(self.E_b,4))+ ' meV' + '\n' + 'hw+G: ' + str(round(self.hw_pG,4)) +' meV' + '\n' + 'hw-G: ' + str(round(self.hw_mG,4)) + ' meV' + '\n' + 'hw = '+ str(round(self.hw,4)) + ' meV'+'\n' +  'Taylor coefficients:' + '\n'+ 'F = ' + str(round(self.F,4)) + ' meV'+'\n' +'G = ' + str(round(self.G,4)) + ' meV'
+               return res_str
+          
+          elif self.order_flag == 3:
+               res_str = 'hw = '+ str(round(self.hw,4)) + ' meV'+'\n' +  'Taylor coefficients:' + '\n'+ 'F = ' + str(round(self.F,4)) + ' meV'+'\n' +'G = ' + str(round(self.G,4)) + ' meV'
+               return res_str
      def calc_dists(self):
           self.JT_dist = self.symm_lattice.calc_dist(self.JT_lattice)
           self.barrier_dist = self.symm_lattice.calc_dist(self.barrier_lattice)

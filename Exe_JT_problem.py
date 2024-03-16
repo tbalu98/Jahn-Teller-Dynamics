@@ -16,6 +16,12 @@ import utilities.quantum_system as qs
 import utilities.OUTCAR_parsing as parsing
 import utilities.xml_parser
 import sys
+from scipy.constants import physical_constants
+
+import warnings
+warnings.simplefilter("ignore", np.ComplexWarning)
+
+
 
 
 
@@ -64,30 +70,59 @@ spatial_dim = 2
 
 
 
-filenames = ['vasprun_C3v.xml', 'vasprun_C1hb.xml',None]
-filenames = ['vasprun_C3v.xml', 'vasprun_C1hb.xml','vasprun_C1hJT.xml']
-
-filenames = [ 'GeV_gnd_D3d_vasprun.xml', 'GeV_gnd_nosym_vasprun.xml', 'GeV_gnd_barrier_vasprun.xml' ]
-
-filenames = ['PbV_D3d_vasprun.xml', 'PbV_C2h_vasprun.xml','PbV_C2h_barrier_vasprun.xml']
-
-filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml',None]
-filenames = ['SnV_D3d_vasprun.xml', 'SnV_C2h_JT_vasprun.xml','SnV_C2h_barrier_vasprun.xml']
-
-
-#order =12
-filenames = [sys.argv[2],sys.argv[3],sys.argv[4] ]
 order  = int(sys.argv[1])
 
+l  =  float(sys.argv[2])
 
-symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
+#order =12
+
+JT_theory = jt.Jahn_Teller_Theory()
+
+filenames = None
+
+arguments = sys.argv[1:]
+
+save_raw_pars = False
+
+if arguments[-1] == '-save_raw_pars':
+    save_raw_pars = True
+    arguments.pop()
+
+if len(arguments) == 5:# or len(sys.argv) ==7:
+    if maths.isFloat(arguments[2]) and maths.isFloat(arguments[3]) and maths.isFloat(arguments[4]):
+        JT_theory = jt.Jahn_Teller_Theory().from_Taylor_coeffs(hw=float(arguments[2]), F = float(arguments[3]), G = float(arguments[4]))
+    else:
+        filenames = [arguments[2],arguments[3],arguments[4] ]
+
+elif len(arguments) == 6:
+
+    JT_theory = jt.build_jt_theory_from_csv([arguments[2],arguments[3],arguments[4],arguments[5]])
+
+elif len(arguments)==4:
+    filenames = [arguments[2],arguments[3]]
+
+if filenames !=None:
+
+    if filenames[0][-3:]=="xml":
+        symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
+        less_symm_lattice_1 = utilities.xml_parser.xml_parser(filenames[1]).lattice
+        less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice if len(filenames)==3 else None
+        JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
+
+    elif filenames[0][-3:]=="csv":
+        JT_theory = jt.build_jt_theory_from_csv(filenames)
 
 
-less_symm_lattice_1 = utilities.xml_parser.xml_parser(filenames[1]).lattice
-less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice if filenames[2]!=None else None
+
+    if save_raw_pars == True:
+        utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2])
+
 
     #Calculate the parameters of Jahn-Teller theory
-JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
+
+
+print('Maximum number of energy quantums of vibrations in each direction:\n n = ' + str(order) )
+print('Energy of spin-orbit coupling:\n ' +'lambda = ' + str(l)  )
 
 print(JT_theory)
 
@@ -116,10 +151,16 @@ JT_int.H_int.calc_eigen_vals_vects()
 
 res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-res_df.to_csv('one_mode_Exe_problem_NO_spin_orbit_coupling.csv',sep = ';')
+res_df.to_csv('Eigen_vectors_no_so_coupling.csv',sep = ';')
+print('-------------------------------')
 
-print('Eigen values of the Jahn-Teller interaction')
-print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
+print('Eigen values of the Jahn-Teller interaction without spin-orbit coupling')
+
+for x in JT_int.H_int.eigen_kets[0:10]:
+    print(str(round(x.eigen_val.real,4)) + ' meV') 
+
+
+#print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
 
 
 
@@ -147,67 +188,43 @@ new_trf_matrix, new_hilbert_space = JT_int.system_tree.create_basis_trf_matrix('
 deg_sys = mf.degenerate_system_2D( [ground_1,ground_2] )
 
 pert_ham = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='orbital_system' )
-    
-print('red factor:')
 
-print(deg_sys.add_perturbation(pert_ham))
+print('Reduction factor:')
 
-deg_sys.to_complex_basis(new_trf_matrix)
-
-eminus_prob = deg_sys.complex_deg_ket_vectors[0]
-eplus_prob = deg_sys.complex_deg_ket_vectors[1]
-
-    #op = mf.MatrixOperator.from_ket_vectors([ eminus_prob, eplus_prob ])
-
+print('p = '+ str( round(deg_sys.add_perturbation(pert_ham),4)) + ' meV')
 
     
-Psiplus:mf.ket_vector = (ground_1+complex(0.0,1.0)*ground_2)/(2.0)**0.5
-Psiminus:mf.ket_vector = (ground_1-complex(0.0,1.0)*ground_2)/(2.0)**0.5
 
 
-Psiplus_ph_el_sys_trfed = new_trf_matrix*Psiplus
+if l>0.0 or l < 0.0:
+
+    point_defect_tree.insert_node('electron_system', spin_sys)
+
+    JT_int = qmp.Exe_tree(point_defect_tree, JT_theory)
 
 
-"""
-Psiplus_df = Psiplus_ph_el_sys_trfed.to_dataframe(new_hilbert_space)
-    
-Psiplus_df.to_csv('Psi_plus_new.csv',sep = ';')
-"""
-Psiminus_ph_el_sys_trfed = new_trf_matrix*Psiminus
-
-
-"""
-Psiminus_df = Psiminus_ph_el_sys_trfed.to_dataframe(new_hilbert_space)
-    
-Psiminus_df.to_csv('Psi_minus_new.csv',sep = ';')
-"""
-
-
-point_defect_tree.insert_node('electron_system', spin_sys)
-
-JT_int = qmp.Exe_tree(point_defect_tree, JT_theory)
-
-
-JT_int.create_one_mode_hamiltonian()
+    JT_int.create_one_mode_hamiltonian()
 
 
 
 
-l  =1.0
-JT_int.add_spin_orbit_coupling(l)
-JT_int.H_int.calc_eigen_vals_vects()
-res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
-    
-res_df.to_csv('one_mode_spin_Exe_problem_so_coupling.csv',sep = ';')
+    JT_int.add_spin_orbit_coupling(l)
+    JT_int.H_int.calc_eigen_vals_vects()
+    res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
+
+    res_df.to_csv('Eigen_vectors_so_coupling.csv',sep = ';')
+    print('-------------------------------')
+
+    print('Eigen values of the Jahn-Teller interaction with spin-orbit coupling')
+
+    for x in JT_int.H_int.eigen_kets[0:10]:
+        print(str(round(x.eigen_val.real,4)) + ' meV') 
 
 
-print('-------------------------------')
 
-print('red factor by Hamiltonian')
+    print('-------------------------------')
 
-print( JT_int.H_int.eigen_kets[3].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val)
+    print('p Ham reduction factor')
 
-print('-------------------------------')
+    print( 'lambda_Ham = ' + str(round((JT_int.H_int.eigen_kets[3].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
 
-    #op = mf.MatrixOperator.from_ket_vectors([  Psiminus_ph_el_sys_trfed, Psiplus_ph_el_sys_trfed ])
-    

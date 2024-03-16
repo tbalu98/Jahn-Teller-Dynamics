@@ -5,7 +5,12 @@ from scipy.linalg import eig as eigs
 from scipy import sparse
 import collections
 
-
+def isFloat(s):
+   try:
+      float(s)
+      return True
+   except:
+      return False
 
 precision = 0.0000001
 #precision = 0.0000001
@@ -169,7 +174,7 @@ class Matrix:
             base_trp = base.coeffs.transpose().tolist()[0]
             raw_matrix.append(base_trp)
         
-        matrix = np.matrix(raw_matrix)
+        matrix = np.matrix(raw_matrix, dtype=complex_number_typ)
 
         return Matrix(matrix.transpose())
     
@@ -177,7 +182,7 @@ class Matrix:
         raw_matrix = []
         for base in bases:
             raw_matrix.append(base.coeffs.tolist()[0])
-        matrix = np.matrix(raw_matrix)
+        matrix = np.matrix(raw_matrix,dtype=complex_number_typ)
         return Matrix(matrix)
     
     def to_new_bases(self, bases: list[col_vector]):

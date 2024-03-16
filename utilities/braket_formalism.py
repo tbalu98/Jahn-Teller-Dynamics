@@ -92,8 +92,12 @@ class bra_state:
     def __repr__(self):
         txt = '<'
 
-        for num in self.qm_state:
-            txt+=str(num) + ','
+        qm_nums_len = len(self.qm_state.qm_nums)
+        for i in range(0,qm_nums_len):
+            txt+=str(self.qm_state[i])
+            
+            if i !=qm_nums_len-1:
+                txt+= ','
 
         txt += '|'
         return txt
@@ -135,9 +139,12 @@ class ket_state:
     def __repr__(self):
         txt = '|'
 
-        for num in self.qm_state:
-            txt+=str(num) + ','
-
+        qm_nums_len = len(self.qm_state.qm_nums)
+        for i in range(0,qm_nums_len):
+            txt+=str(self.qm_state[i])
+            
+            if i !=qm_nums_len-1:
+                txt+= ','
         txt += '>'
         return txt
     
