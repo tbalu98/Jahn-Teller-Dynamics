@@ -16,6 +16,7 @@ import utilities.quantum_system as qs
 import utilities.OUTCAR_parsing as parsing
 import utilities.xml_parser
 import sys
+import utilities.JT_config_file_parsing as cfg_parser
 from scipy.constants import physical_constants
 
 import warnings
@@ -67,12 +68,15 @@ symm_types = ['symm_geom', 'less_symm_geom_1','less_symm_geom_2']
 spatial_dim = 2
 
 
+JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser(str(sys.argv[1]))
+#JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser('JT_csv_config.cfg')
 
 
 
-order  = int(sys.argv[1])
+order  = JT_cfg_parser.get_order()
 
-l  =  float(sys.argv[2])
+l  =  JT_cfg_parser.get_spin_orbit_coupling()
+E_x, E_y = JT_cfg_parser.get_electric_field()
 
 #order =12
 
@@ -84,38 +88,17 @@ arguments = sys.argv[1:]
 
 save_raw_pars = False
 
+
 if arguments[-1] == '-save_raw_pars':
     save_raw_pars = True
     arguments.pop()
 
-if len(arguments) == 5:# or len(sys.argv) ==7:
-    if maths.isFloat(arguments[2]) and maths.isFloat(arguments[3]) and maths.isFloat(arguments[4]):
-        JT_theory = jt.Jahn_Teller_Theory().from_Taylor_coeffs(hw=float(arguments[2]), F = float(arguments[3]), G = float(arguments[4]))
-    else:
-        filenames = [arguments[2],arguments[3],arguments[4] ]
-
-elif len(arguments) == 6:
-
-    JT_theory = jt.build_jt_theory_from_csv([arguments[2],arguments[3],arguments[4],arguments[5]])
-
-elif len(arguments)==4:
-    filenames = [arguments[2],arguments[3]]
-
-if filenames !=None:
-
-    if filenames[0][-3:]=="xml":
-        symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
-        less_symm_lattice_1 = utilities.xml_parser.xml_parser(filenames[1]).lattice
-        less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice if len(filenames)==3 else None
-        JT_theory = jt.Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
-
-    elif filenames[0][-3:]=="csv":
-        JT_theory = jt.build_jt_theory_from_csv(filenames)
+JT_theory, symm_lattice, less_symm_lattice_1, less_symm_lattice_2 = JT_cfg_parser.build_JT_theory()
 
 
 
-    if save_raw_pars == True:
-        utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2])
+if save_raw_pars == True:
+    utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2])
 
 
     #Calculate the parameters of Jahn-Teller theory
@@ -151,10 +134,10 @@ JT_int.H_int.calc_eigen_vals_vects()
 
 res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-res_df.to_csv('Eigen_vectors_no_so_coupling.csv',sep = ';')
+res_df.to_csv('Eigen_vectors.csv',sep = ';')
 print('-------------------------------')
 
-print('Eigen values of the Jahn-Teller interaction without spin-orbit coupling')
+print('Eigen values of the Jahn-Teller interaction')
 
 for x in JT_int.H_int.eigen_kets[0:10]:
     print(str(round(x.eigen_val.real,4)) + ' meV') 
@@ -193,10 +176,38 @@ print('Reduction factor:')
 
 print('p = '+ str( round(deg_sys.add_perturbation(pert_ham),4)) + ' meV')
 
+
+
+if E_x !=0.0 or E_y != 0.0:
     
+    JT_int.create_one_mode_hamiltonian()
+
+    JT_int.add_electric_field(E_x, E_y)
+    
+    JT_int.H_int.calc_eigen_vals_vects()
+    res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
+
+    res_df.to_csv('Eigen_vectors_with_electric_field.csv',sep = ';')
+    print('-------------------------------')
+
+    print('Eigen values of the Jahn-Teller interaction with electric field')
+    print('electric field strngth')
+    print('E_x = ' + str(E_x))
+    print('E_y = ' + str(E_y))
+
+    for x in JT_int.H_int.eigen_kets[0:10]:
+        print(str(round(x.eigen_val.real,4)) + ' meV') 
 
 
-if l>0.0 or l < 0.0:
+
+    print('-------------------------------')
+
+    print('q Ham reduction factor')
+
+    print( 'lambda_Ham = ' + str(round((JT_int.H_int.eigen_kets[1].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
+
+
+if l > 0.0 or l < 0.0:
 
     point_defect_tree.insert_node('electron_system', spin_sys)
 
@@ -205,14 +216,11 @@ if l>0.0 or l < 0.0:
 
     JT_int.create_one_mode_hamiltonian()
 
-
-
-
     JT_int.add_spin_orbit_coupling(l)
     JT_int.H_int.calc_eigen_vals_vects()
     res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-    res_df.to_csv('Eigen_vectors_so_coupling.csv',sep = ';')
+    res_df.to_csv('Eigen_vectors_with_so_coupling.csv',sep = ';')
     print('-------------------------------')
 
     print('Eigen values of the Jahn-Teller interaction with spin-orbit coupling')

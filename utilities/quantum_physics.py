@@ -214,6 +214,24 @@ class Exe_tree:
 
         self.H_int = self.H_int+l*self.system_tree.create_operator('H_SO',subsys_id='point_defect', operator_sys='electron_system')
 
+    def create_electric_field_interaction(self, E_x, E_y)->mf.MatrixOperator:
+
+        Lz = self.system_tree.create_operator('Lz', 'orbital_system')
+        Lx = self.system_tree.create_operator('sx', 'orbital_system')
+
+        H_el = E_x*Lz + E_y*Lx
+
+
+        return H_el
+
+
+
+    def add_electric_field(self, E_x, E_y):
+        H_el = self.create_electric_field_interaction(E_x, E_y)
+        self.system_tree.find_subsystem('orbital_system')[-1].operators['H_el'] = H_el
+
+        self.H_int = self.H_int + self.system_tree.create_operator('H_el', subsys_id='point_defect', operator_sys='orbital_system')
+
     def create_multi_mode_hamiltonian(self):
 
         hamiltons = []

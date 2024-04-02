@@ -1,7 +1,7 @@
 import xml.dom.minidom
 import utilities.VASP as VASP
 import pandas as pd
-
+from configparser import ConfigParser
 
 def save_raw_data_from_xmls(lattices:list):
     
@@ -66,6 +66,28 @@ def save_raw_data_from_xmls(lattices:list):
 
 
     par_df.to_csv('atomic_parameters.csv', sep = ';')
+
+    par_cfg = ConfigParser()
+
+    par_cfg['atom_names'] = { 'atom_1_name' : symm_lattice.ions_arr[0].name, 'atom_2_name':symm_lattice.ions_arr[1].name }
+    par_cfg['atom_masses'] = { 'atom_1_mass':symm_lattice.ions_arr[0].m, 'atom_2_mass':symm_lattice.ions_arr[1].m}
+    par_cfg['lattice_energies'] = {'symm_lattice_energy':symm_lattice.energy, 'JT_lattice_energy': less_symm_lattice_1.energy, 'barrier_lattice_energy': less_symm_lattice_2.energy }
+
+    par_cfg['basis_vectors'] = { 
+    'basis_vector_1_x' :symm_lattice.ions_arr[0].basis_vecs[0].x,
+    'basis_vector_1_y' : symm_lattice.ions_arr[0].basis_vecs[0].y,
+    'basis_vector_1_z' : symm_lattice.ions_arr[0].basis_vecs[0].z,
+
+    'basis_vector_2_x' : symm_lattice.ions_arr[0].basis_vecs[1].x,
+    'basis_vector_2_y' : symm_lattice.ions_arr[0].basis_vecs[1].y,
+    'basis_vector_2_z' : symm_lattice.ions_arr[0].basis_vecs[1].z,
+
+    'basis_vector_3_x' : symm_lattice.ions_arr[0].basis_vecs[2].x,
+    'basis_vector_3_y' : symm_lattice.ions_arr[0].basis_vecs[2].y,
+    'basis_vector_3_z' : symm_lattice.ions_arr[0].basis_vecs[2].z}
+
+    with open('atom_parameters.cfg', 'w') as conf:
+        par_cfg.write(conf)
 
 
 

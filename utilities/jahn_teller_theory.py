@@ -10,10 +10,52 @@ import itertools
 import utilities.maths as maths
 import utilities.matrix_formalism as mf
 import pandas as pd
-
+import utilities.xml_parser
+import utilities.JT_config_file_parsing as jt_parser
 Eigen_state_2D = collections.namedtuple('Eigen_state',  'x_fonon y_fonon' )
 
 Jahn_Teller_Pars = collections.namedtuple('Jahn_Teller_Pars',  'E_JT E_b hwpG hwmG hw F G ' )
+
+def build_jt_theory_from_csv_2(csv_filenames:list):
+
+
+     par_file_name =  csv_filenames[0] # sys.argv[3]
+     symm_lattice_coords_filename =  csv_filenames[1] # sys.argv[4]
+     JT_lattice_coords_filename = csv_filenames[2] #sys.argv[5]
+     barrier_lattice_coords_filename =  csv_filenames[3] if len(csv_filenames)==4 else None #'barrier_lattice.csv'    sys.argv[6]
+
+     at_parser = jt_parser.Atom_config_parser(par_file_name)
+
+    #Par dataframe
+
+
+     atom_1_name, atom_2_name = at_parser.get_names()
+
+     basis_vec_1, basis_vec_2, basis_vec_3 =at_parser.get_basis_vectors()
+
+     basis_vecs = [basis_vec_1, basis_vec_2,basis_vec_3]
+    
+     mass_1, mass_2 = at_parser.get_masses()
+
+     mass_dict = {  atom_1_name: float( mass_1 ) , atom_2_name: float( mass_2)}
+
+     sym_lattice_energy = float(at_parser.get_lattice_energy('symm_lattice_energy'))
+     less_symm_lattice_1_energy = float(at_parser.get_lattice_energy('JT_lattice_energy'))
+     if barrier_lattice_coords_filename!=None:
+          less_symm_lattice_2_energy = float(at_parser.get_lattice_energy('barrier_lattice_energy'))
+          less_symm_lattice_2 = VASP.Lattice().read_from_coordinates_dataframe(barrier_lattice_coords_filename, mass_dict, basis_vecs,less_symm_lattice_2_energy)
+     else:
+          less_symm_lattice_2 = None
+
+
+
+
+     symm_lattice = VASP.Lattice().read_from_coordinates_dataframe(symm_lattice_coords_filename, mass_dict,basis_vecs,sym_lattice_energy)
+    
+     less_symm_lattice_1 = VASP.Lattice().read_from_coordinates_dataframe(JT_lattice_coords_filename, mass_dict, basis_vecs, less_symm_lattice_1_energy)
+    
+
+     return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2), symm_lattice, less_symm_lattice_1, less_symm_lattice_2
 
 
 def build_jt_theory_from_csv(csv_filenames:list):
@@ -55,12 +97,20 @@ def build_jt_theory_from_csv(csv_filenames:list):
     less_symm_lattice_1 = VASP.Lattice().read_from_coordinates_dataframe(JT_lattice_coords_filename, mass_dict, basis_vecs, less_symm_lattice_1_energy)
     
 
-    return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2)
+    return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2), symm_lattice, less_symm_lattice_1, less_symm_lattice_2
 
 
 
 class Jahn_Teller_Theory:
 
+
+     def build_jt_theory_from_vasprunxmls(filenames):
+          symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
+          less_symm_lattice_1 = utilities.xml_parser.xml_parser(filenames[1]).lattice
+          less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice if len(filenames)==3 else None
+          JT_theory = Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
+
+          return JT_theory, symm_lattice, less_symm_lattice_1, less_symm_lattice_2
 
      def from_df(self, theory_data:pd.DataFrame):
           case_index = 0
