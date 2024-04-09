@@ -312,7 +312,8 @@ class MatrixOperator:
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]).transpose())
 
 
-
+     def calc_expected_val(self, ket:ket_vector):
+          return ket.to_bra_vector()*self*ket
 
      def from_ket_vectors(kets: list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]))

@@ -69,15 +69,17 @@ spatial_dim = 2
 
 
 JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser(str(sys.argv[1]))
-#JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser('JT_csv_config.cfg')
+#JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser('JT_xml_config.cfg')
 
 
 
 order  = JT_cfg_parser.get_order()
 
-l  =  JT_cfg_parser.get_spin_orbit_coupling()
+l = JT_cfg_parser.get_spin_orbit_coupling()
 E_x, E_y = JT_cfg_parser.get_electric_field()
 
+problem_name = JT_cfg_parser.get_problem_name()
+print(problem_name)
 #order =12
 
 JT_theory = jt.Jahn_Teller_Theory()
@@ -98,7 +100,7 @@ JT_theory, symm_lattice, less_symm_lattice_1, less_symm_lattice_2 = JT_cfg_parse
 
 
 if save_raw_pars == True:
-    utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2])
+    utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2], problem_name)
 
 
     #Calculate the parameters of Jahn-Teller theory
@@ -134,7 +136,7 @@ JT_int.H_int.calc_eigen_vals_vects()
 
 res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-res_df.to_csv('Eigen_vectors.csv',sep = ';')
+res_df.to_csv( problem_name +'_eigen_vectors.csv',sep = ';')
 print('-------------------------------')
 
 print('Eigen values of the Jahn-Teller interaction')
@@ -187,7 +189,7 @@ if E_x !=0.0 or E_y != 0.0:
     JT_int.H_int.calc_eigen_vals_vects()
     res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-    res_df.to_csv('Eigen_vectors_with_electric_field.csv',sep = ';')
+    res_df.to_csv(problem_name + '_eigen_vectors_with_electric_field.csv',sep = ';')
     print('-------------------------------')
 
     print('Eigen values of the Jahn-Teller interaction with electric field')
@@ -220,7 +222,7 @@ if l > 0.0 or l < 0.0:
     JT_int.H_int.calc_eigen_vals_vects()
     res_df = JT_int.H_int.create_eigen_kets_vals_table(JT_int.system_tree.root_node.base_states)
 
-    res_df.to_csv('Eigen_vectors_with_so_coupling.csv',sep = ';')
+    res_df.to_csv( problem_name+ '_eigen_vectors_with_so_coupling.csv',sep = ';')
     print('-------------------------------')
 
     print('Eigen values of the Jahn-Teller interaction with spin-orbit coupling')

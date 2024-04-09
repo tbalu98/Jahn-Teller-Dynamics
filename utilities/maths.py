@@ -88,7 +88,7 @@ class col_vector:
     def set_val(self, index, val):
         self.coeffs[index, 0] = val
     def to_row_vector(self):
-        return row_vector(np.transpose(self.coeffs))
+        return row_vector(np.conj(np.transpose(self.coeffs)))
 
     def __mul__(self, other):
         if type(other) is row_vector:

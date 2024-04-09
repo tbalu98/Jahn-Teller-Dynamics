@@ -36,6 +36,12 @@ class Atom_config_parser:
 
 class Jahn_Teller_config_parser:
 
+    def get_problem_name(self):
+        if self.config.has_option('DEFAULT','calculation_name'):
+            return str(self.config['DEFAULT']['calculation_name'] )
+        else:
+            return str('')
+
     def get_electric_field(self):
         if self.config.has_section('electric_field'):
             return float(self.config['electric_field']['E_x'] if self.config.has_option('electric_field', 'E_x') else 0.0), float(self.config['electric_field']['E_y'] if self.config.has_option('electric_field', 'E_y') else 0.0)

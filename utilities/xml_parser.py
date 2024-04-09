@@ -3,7 +3,7 @@ import utilities.VASP as VASP
 import pandas as pd
 from configparser import ConfigParser
 
-def save_raw_data_from_xmls(lattices:list):
+def save_raw_data_from_xmls(lattices:list, problem_name):
     
 
 
@@ -14,21 +14,21 @@ def save_raw_data_from_xmls(lattices:list):
 #symm_lattice = VASP.Lattice().read_from_coordinates_dataframe('symm_latt.csv',{'Sn': 16, 'C': 12})
 
     df =  symm_lattice.to_coordinates_data_frame()
-    df.to_csv('symmetric_lattice.csv')
+    df.to_csv(problem_name+'_symmetric_lattice.csv')
 
 
 
     less_symm_lattice_1 = lattices[1]
 
     df =  less_symm_lattice_1.to_coordinates_data_frame()
-    df.to_csv('JT_lattice.csv')
+    df.to_csv(problem_name+'_JT_lattice.csv')
 
 
     if lattices[-1]!=None:
         less_symm_lattice_2 = lattices[2]
 
         df =  less_symm_lattice_2.to_coordinates_data_frame()
-        df.to_csv('barrier_lattice.csv')
+        df.to_csv( problem_name + '_barrier_lattice.csv')
     else:
         less_symm_lattice_2=None
 
@@ -65,7 +65,7 @@ def save_raw_data_from_xmls(lattices:list):
     par_df.index.name = 'index'
 
 
-    par_df.to_csv('atomic_parameters.csv', sep = ';')
+    par_df.to_csv(problem_name +'_atomic_parameters.csv', sep = ';')
 
     par_cfg = ConfigParser()
 
@@ -86,7 +86,7 @@ def save_raw_data_from_xmls(lattices:list):
     'basis_vector_3_y' : symm_lattice.ions_arr[0].basis_vecs[2].y,
     'basis_vector_3_z' : symm_lattice.ions_arr[0].basis_vecs[2].z}
 
-    with open('atom_parameters.cfg', 'w') as conf:
+    with open(problem_name+'_atom_parameters.cfg', 'w') as conf:
         par_cfg.write(conf)
 
 
