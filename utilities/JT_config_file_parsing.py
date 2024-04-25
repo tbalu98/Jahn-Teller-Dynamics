@@ -36,6 +36,20 @@ class Atom_config_parser:
 
 class Jahn_Teller_config_parser:
 
+    def get_res_folder_name(self):
+        if self.config.has_option('DEFAULT', 'results_folder'):
+            return str(self.config['DEFAULT']['results_folder'])
+        else:
+            return str('')
+    
+
+    def get_data_folder_name(self):
+        if self.config.has_option('DEFAULT', 'data_folder'):
+            return str(self.config['DEFAULT']['data_folder'])
+        else:
+            return str('')
+        
+
     def get_problem_name(self):
         if self.config.has_option('DEFAULT','calculation_name'):
             return str(self.config['DEFAULT']['calculation_name'] )
@@ -47,6 +61,17 @@ class Jahn_Teller_config_parser:
             return float(self.config['electric_field']['E_x'] if self.config.has_option('electric_field', 'E_x') else 0.0), float(self.config['electric_field']['E_y'] if self.config.has_option('electric_field', 'E_y') else 0.0)
         else:
             return 0.0,0.0
+    
+    def get_magnetic_field(self):
+        if self.config.has_section('magnetic_field'):
+            return float(self.config['magnetic_field']['B_x'] if self.config.has_option('magnetic_field', 'B_x') else 0.0),float(self.config['magnetic_field']['B_y'] if self.config.has_option('magnetic_field', 'B_y') else 0.0), float(self.config['magnetic_field']['B_z'] if self.config.has_option('magnetic_field', 'B_z') else 0.0)
+        else:
+            return 0.0,0.0, 0.0
+    """
+    def get_magnetic_field(self):
+        if self.config.has_section('magnetic_field'):
+            return float(self.config['magnetic_field']['B_z'] if self.config.has_option('magnetic_field', 'B_z') else 0.0)
+    """
     def __init__(self, config_file_name):
         config_file = open(config_file_name,'r')
         config_string = config_file.read()
@@ -60,34 +85,34 @@ class Jahn_Teller_config_parser:
     def get_order(self):
         return int(self.config['DEFAULT']['order'] if self.config.has_option('DEFAULT', 'order') else 12)
 
-    def build_JT_theory(self):
+    def build_JT_theory(self, data_folder_name):
         filenames = []
         if self.config.has_section('vasprun.xml_files'):
             if self.config.has_option('vasprun.xml_files','symmetric_lattice'):
-                filenames.append(self.config['vasprun.xml_files']['symmetric_lattice'])
+                filenames.append(data_folder_name + self.config['vasprun.xml_files']['symmetric_lattice'])
 
             if self.config.has_option('vasprun.xml_files','Jahn-Teller_lattice'):
-                filenames.append(self.config['vasprun.xml_files']['Jahn-Teller_lattice'])
+                filenames.append(data_folder_name + self.config['vasprun.xml_files']['Jahn-Teller_lattice'])
             
             if self.config.has_option('vasprun.xml_files','barrier_lattice'):
-                filenames.append(self.config['vasprun.xml_files']['barrier_lattice'])
+                filenames.append(data_folder_name + self.config['vasprun.xml_files']['barrier_lattice'])
         
             return jt.Jahn_Teller_Theory.build_jt_theory_from_vasprunxmls(filenames)
 
         elif self.config.has_section('.csv_files'):
             if self.config.has_option('.csv_files', 'atom_parameters'):
-                filenames.append(self.config['.csv_files']['atom_parameters'])
+                filenames.append(data_folder_name + self.config['.csv_files']['atom_parameters'])
 
             if self.config.has_option('.csv_files','symmetric_lattice'):
-                filenames.append(self.config['.csv_files']['symmetric_lattice'])
+                filenames.append(data_folder_name + self.config['.csv_files']['symmetric_lattice'])
 
             if self.config.has_option('.csv_files','Jahn-Teller_lattice'):
-                filenames.append(self.config['.csv_files']['Jahn-Teller_lattice'])
+                filenames.append(data_folder_name + self.config['.csv_files']['Jahn-Teller_lattice'])
             
             if self.config.has_option('.csv_files','barrier_lattice'):
-                filenames.append(self.config['.csv_files']['barrier_lattice'])
+                filenames.append(data_folder_name + self.config['.csv_files']['barrier_lattice'])
 
-            return jt.build_jt_theory_from_csv_2(filenames)
+            return jt.Jahn_Teller_Theory.build_jt_theory_from_csv(filenames)
         
         elif self.config.has_section('fitting_parameters'):
             F = float(self.config['fitting_parameters']['F'])

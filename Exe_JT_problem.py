@@ -1,23 +1,13 @@
-import pandas as pd
-import utilities.VASP as VASP
-import math
 import utilities.jahn_teller_theory as jt
 import utilities.maths as  maths
 import utilities.matrix_formalism as mf
 import numpy as np
-import scipy as sc
-from scipy.sparse.linalg import eigs
-from numpy import linalg as LA
-import matplotlib.pyplot as plt
 import utilities.quantum_physics as qmp
 import utilities.matrix_formalism as mf
-import utilities.braket_formalism as bf
 import utilities.quantum_system as qs
-import utilities.OUTCAR_parsing as parsing
 import utilities.xml_parser
 import sys
 import utilities.JT_config_file_parsing as cfg_parser
-from scipy.constants import physical_constants
 
 import warnings
 warnings.simplefilter("ignore", np.ComplexWarning)

@@ -3,9 +3,9 @@ import copy
 import itertools
 from collections import namedtuple
 import numpy as np
-quantum_subsystem_signature = namedtuple('quantum_subsystem_signature','name dim qm_nums_names' )
+#quantum_subsystem_signature = namedtuple('quantum_subsystem_signature','name dim qm_nums_names' )
 
-
+"""
 class leaf_system_signature:
     def __init__(self, name:str, dim:int, qm_nums_names:list[str]):
         self.name = name
@@ -14,7 +14,7 @@ class leaf_system_signature:
 
     def __pow__(self, other):
         pass
-
+"""
 
 class quantum_state:
     def __init__(self, qm_nums: list, amplitude = complex(1.0, 0.0)):
@@ -75,6 +75,9 @@ class quantum_state:
 
     def get_sub_state(self, indexes):
         return [ self.qm_nums[index]  for index in indexes]
+
+
+
 class bra_state:
 
     def calc_order(self):

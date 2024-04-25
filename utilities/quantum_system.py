@@ -89,7 +89,10 @@ class node:
         depths = []
 
         self.find_node_imp(id, res, depths, new_depth_0=0)
-        return res#, depths
+        if len(res) == 0:
+            return None#, depths
+        elif len(res) == 1:
+            return res[0]
 
 
 
@@ -136,14 +139,65 @@ class tree:
     def __init__(self, root_node:node):
         self.root_node  = root_node
 
-    def insert_node(self, parent_node_id, new_child):
-        parent_node = self.root_node.find_node(parent_node_id)[0]
-        parent_node.add_child(new_child)
+    def insert_node(self, parent_node_id, new_child:node):
+        if self.root_node.find_node(new_child.id) ==None:
+
+            parent_node = self.root_node.find_node(parent_node_id)
+            parent_node.add_child(new_child)
         #parent_node.children.append(new_child)
 
 
 
 class quantum_system_node(node):
+
+
+    def create_2D_orbital_system_node():
+        el_sys_ops = {}
+
+        b1 = mf.ket_vector( [ 1.0/2**0.5, 1.0/2**0.5 ] )
+        b2 = mf.ket_vector( [ complex(1.0, 0.0)/(-2)**0.5, complex(-1.0, 0.0)/(-2)**0.5 ] )
+        bs = [b1, b2]
+        el_sys_ops['X_orb'] = mf.MatrixOperator.pauli_x_mx_op()#.to_new_basis(bs)
+        el_sys_ops['Y_orb'] = mf.MatrixOperator.pauli_y_mx_op()#.to_new_basis(bs)
+        el_sys_ops['Z_orb'] = mf.MatrixOperator.pauli_z_mx_op()#.to_new_basis(bs)
+
+        #el_sys_ops['Lz'] = -1*mf.MatrixOperator.pauli_y_mx_op()
+        #el_sys_ops['Lz'] = mf.MatrixOperator.pauli_x_mx_op()
+
+        #el_sys_ops['Lz'] = mf.MatrixOperator.create_Lz_op()
+
+        #el_sys_ops['Lz'] = mf.MatrixOperator.pauli_z_mx_op().new_basis_system(bs)
+        el_sys_ops['Lz'] = mf.MatrixOperator.pauli_z_mx_op().to_new_basis(bs)
+
+
+        #el_sys_ops['Lx'] = mf.MatrixOperator.pauli_y_mx_op()
+        #el_sys_ops['Ly'] = mf.MatrixOperator.pauli_z_mx_op()
+
+        orbital_system = quantum_system_node('orbital_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],
+                                                                        qm_nums_names=['orbital'])  ,operators=el_sys_ops, dim= 2)
+
+        return orbital_system
+
+#Common quatum systems
+
+    def create_spin_system_node():
+    
+        spin_sys_ops = {}
+
+        spin_sys_ops['Sz'] = 0.5*mf.MatrixOperator.pauli_z_mx_op()
+        spin_sys_ops['Sy'] = 0.5*mf.MatrixOperator.pauli_y_mx_op()
+        spin_sys_ops['Sx'] = 0.5*mf.MatrixOperator.pauli_x_mx_op()
+
+
+        spin_sys = quantum_system_node('spin_system', mf.hilber_space_bases().from_qm_nums_list([['up'], ['down']] , qm_nums_names=['spin']) , operators=spin_sys_ops)
+
+        return spin_sys
+
+
+    def create_id_op(self, matrix_type = maths.Matrix):
+        id_op = mf.MatrixOperator.create_id_matrix_op(self.dim, matrix_type = matrix_type)
+        return id_op
+
     def __init__(self, id, base_states:mf.hilber_space_bases = None,operators = {},children:list  = None, dim = 1):
         node.__init__(self, id, children )
         self.operators = operators
@@ -175,7 +229,7 @@ class quantum_system_node(node):
         children_system_bases = [ x.base_states for x in simple_systems if x.base_states!=None ]
 
         self.base_states = mf.hilber_space_bases.kron_hilber_spaces(children_system_bases)
-
+        self.dim = self.base_states.dim
     #def find_operator(operator_id) -> node:
 
     def find_operator(self, operator_id):
@@ -268,7 +322,7 @@ class quantum_system_tree(tree):
         super().insert_node(parent_node_id, new_child)
         
         self.root_node.create_hilbert_space()
-        parent_node = self.find_subsystem(parent_node_id)[-1]
+        parent_node = self.find_subsystem(parent_node_id)
         parent_node.create_hilbert_space()
 
     def create_operator(self, operator_id , subsys_id='', operator_sys = '' )->mf.MatrixOperator:
@@ -280,7 +334,7 @@ class quantum_system_tree(tree):
 
 
         else:
-            subsys_node = self.root_node.find_node(subsys_id)[0]
+            subsys_node = self.root_node.find_node(subsys_id)
 
             return subsys_node.create_operator(operator_id= operator_id, operator_system_id=operator_sys)
     

@@ -7,18 +7,21 @@ import copy
 import math
 import pandas as pd
 import utilities.braket_formalism as  bf
-#import utilities.jahn_teller_theory as  jt
-#Data structures
 
 from collections import namedtuple
 
 
 
 
-
+dtype = np.complex64
 
 
 class ket_vector:
+
+     def normalize(self):
+          length = self.abs_sq()
+          return self/length
+
      def __init__(self, coeffs:maths.col_vector, eigen_val = None, name = '', subsys_name  = ''):
           self.name = name
           self.subsys_name = subsys_name
@@ -63,7 +66,6 @@ class ket_vector:
           return ket_vector(self.coeffs.set_item(index, item))
 
      def __repr__(self):
-          rep_str = ""
           if self.eigen_val == None:
                return str(self.coeffs)
           else:
@@ -147,12 +149,39 @@ class bra_vector:
 class hilber_space_bases:
 
 
+    def create_ket_vector(self, ket_states:list[bf.ket_state]):
+          
+
+          indexes = []
+          coefficients = []
+
+          ket_vec = ket_vector(maths.col_vector(np.zeros((len(self._ket_states), 1), dtype=np.complex128  )))
+
+          for ket_state in ket_states:
+               ket_state_index = self.get_ket_state_index(ket_state)
+               indexes.append(ket_state_index)
+               coeff = ket_state.qm_state.amplitude
+               coefficients.append(coeff)
+               ket_vec.set_val(ket_state_index,coeff )
+
+          return ket_vec
+               
+
+
+
+    def get_ket_index(self, find_ket_state):
+          for (i, ket_state) in  zip( range(0, self._ket_states) ,self._ket_states):
+               if find_ket_state == ket_state:
+                    return i
+          return None
+
+
+
     def create_trf_op(self, basis_name:str):
          return MatrixOperator.basis_trf_matrix(self.base_vectors[basis_name][0])
 
 
     def kron_hilber_spaces(hilber_spaces:list):
-          #new_hilber_spaces = hilber_spaces[::-1]
         return list( itertools.accumulate(hilber_spaces , lambda x,y: x**y) )[-1]
 
 
@@ -206,6 +235,9 @@ class hilber_space_bases:
 
     def __init__(self, bra_states = None, ket_states = None, names = None):
         
+
+        self._ket_states = []
+        self._bra_states = []
         self.base_vectors = {}
 
         if bra_states == None:
@@ -221,11 +253,11 @@ class hilber_space_bases:
             self.qm_nums_names = []
         else:
             self.qm_nums_names = names
+        self.dim = len(self._bra_states)
 
     def savetxt(self, filename):
         txt = ''
 
-        #txt+='amplitude' + ' '
 
         txt+=str(self.qm_nums_names) + "\n"
 
@@ -246,13 +278,6 @@ class hilber_space_bases:
 
         return int(np.where(exam_ket_states == ks)[0])
 
-        #return list(filter( lambda x: x==ks, self._ket_states))
-
-    
-    def filter_sub_syss_by_order(self,order ):
-        state_indexes = []
-        for index in range(0, len(self._bra_states)):
-            ket = self._bra_states[index]
 
     def __len__(self):
         return len(self._ket_states)
@@ -263,18 +288,6 @@ class hilber_space_bases:
     def __pow__(self, other):
         if isinstance(other, hilber_space_bases):
             
-            """
-            new_bra_states = []
-            new_ket_states = []
-            for bra_a in other._bra_states:
-                for bra_b in self._bra_states:
-                    new_bra_states.append(bra_a**bra_b)
-
-            for ket_a in other._ket_states:
-                for ket_b in self._ket_states:
-                    new_ket_states.append(ket_a**ket_b)
-
-            """
             new_bra_states = [ bra_a**bra_b for bra_a in self._bra_states 
                                             for bra_b in other._bra_states ]
             new_ket_states = [ ket_a**ket_b for ket_a in self._ket_states 
@@ -282,7 +295,6 @@ class hilber_space_bases:
             
             new_qm_nums_names = self.qm_nums_names + other.qm_nums_names
             
-            #new_qm_nums_names = other.qm_nums_names + self.qm_nums_names
             
             return hilber_space_bases(new_bra_states, new_ket_states,names = new_qm_nums_names)
         
@@ -297,23 +309,41 @@ class hilber_space_bases:
 
 
 
-class QuantumState:
-    def __init__(self, matrix :maths.Matrix):
-        self.matrix = matrix
-
-
-
 
 
 #Quantummechanical operator:
 class MatrixOperator:
 
+     def tolist(self):
+          return self.matrix.tolist()
+
+     def pauli_x_mx_op():
+          mx = np.matrix( [ [ complex(0.0, 0.0), complex(1.0, 0.0)]  , [ complex( 1.0, 0.0 ), complex( 0.0, 0.0)] ] , dtype=dtype)
+          return MatrixOperator(maths.Matrix(mx))
+
+     def pauli_y_mx_op():
+          mx = np.matrix( [ [ complex(0.0, 0.0), complex(0.0, -1.0)]  , [ complex( 0.0, 1.0 ), complex( 0.0, 0.0)] ], dtype=dtype )
+          return MatrixOperator(maths.Matrix(mx))
+     
+     def pauli_z_mx_op():
+          mx = np.matrix( [ [ complex(1.0, 0.0), complex(0.0, 0.0)]  , [ complex( 0.0, 0.0 ), complex( -1.0, 0.0)] ], dtype=dtype )
+          return MatrixOperator(maths.Matrix(mx))
+
+     def save_eigen_vals_vects_to_file(self, bases_states:hilber_space_bases, eig_vec_filename, eig_vals_filename):
+          self.calc_eigen_vals_vects()
+    
+          eig_vec_df, eig_val_df  = self.create_eigen_kets_vals_table(bases_states)
+
+          eig_vec_df.to_csv( eig_vec_filename,sep = ';')
+          eig_val_df.to_csv( eig_vals_filename,sep = ';')
+
+
      def basis_trf_matrix( kets:list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]).transpose())
 
 
-     def calc_expected_val(self, ket:ket_vector):
-          return ket.to_bra_vector()*self*ket
+     def calc_expected_val(self, ket:ket_vector)->float:
+          return (ket.to_bra_vector()*self*ket).real
 
      def from_ket_vectors(kets: list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]))
@@ -322,23 +352,12 @@ class MatrixOperator:
           return MatrixOperator(maths.Matrix.from_row_vectors([ bra.coeffs for bra in bras ]))
 
 
+     def to_new_basis(self, basis_kets:list[ket_vector]):
+          return MatrixOperator(self.matrix.to_new_bases( [ ket.coeffs for ket in basis_kets ]))
+
      def new_basis_system(self, bases: list[ket_vector]):
           new_bases_matrix = self.matrix.to_new_bases(list(map(lambda x: x.coeffs  ,bases )))
           return MatrixOperator(new_bases_matrix.transpose(), name  = self.name, subsys_name=self.subsys_name)
-
-     """
-     def as_part_of_a_system(self, qm_sys_sign: bf.quantum_system_signature ):
-          if qm_sys_sign ==None:
-               return self
-          else:
-               dim_before, dim_after = qm_sys_sign.get_dim_before_and_after(self.subsys_name)
-               id_0 = MatrixOperator.create_id_matrix_op(dim_before)
-               id_1 = MatrixOperator.create_id_matrix_op(dim_after)
-
-               return id_0**self**id_1
-          
-     """
-
 
      def accumulate_operators(mx_ops, fun):
           return list( itertools.accumulate(mx_ops, fun) )[-1]
@@ -352,7 +371,6 @@ class MatrixOperator:
 
      def save(self,filename):
           self.matrix.save(filename)
-     #matrix:maths.SparseMatrix
      def round(self, dig):
           return MatrixOperator(self.matrix.round(dig), name = self.name, subsys_name=self.subsys_name)
      def change_type(self, dtype):
@@ -396,8 +414,6 @@ class MatrixOperator:
           self.name = name
           self.subsys_name = subsys_name
           self.matrix = matrix
-          #self.dim = self.matrix.dim
-          #self.calc_eigen_vals_vects() !!!
           self.matrix_class = type(matrix)
      
      def create_id_matrix_op(dim, matrix_type=maths.Matrix):
@@ -407,18 +423,14 @@ class MatrixOperator:
           return len(self.matrix)
 
      def create_Lz_op(matrix_type=maths.Matrix):
-          #Lz_mat = np.matrix([[0, complex(0,1)], [complex(0,-1), 0]], dtype=np.complex64)
 
           return MatrixOperator(matrix_type.create_Lz_mx())
 
-     #def create_id_op(n:int):
-     #     return MatrixOperator(maths.Matrix(np.eye(n)))
 
      def __getitem__(self,key):
           return self.matrix[key]
 
      def calc_eigen_vals_vects_old(self, num_of_vals = None, ordering_type = None):
-        #self.eigen_vals, self.eigen_vects =  eigs(self.matrix, k = len(self.matrix), which = 'SM')
           eigen_vals, eigen_vects =  self.matrix.get_eig_vals(num_of_vals, ordering_type)
 
           self.eigen_kets = []
@@ -429,14 +441,13 @@ class MatrixOperator:
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
 
      def calc_eigen_vals_vects(self, num_of_vals = None, ordering_type = None):
-        #self.eigen_vals, self.eigen_vects =  eigs(self.matrix, k = len(self.matrix), which = 'SM')
           eigen_vals, eigen_vects =  self.matrix.get_eig_vals(num_of_vals, ordering_type)
           
           self.eigen_kets = []
 
           for i in range(0, len(eigen_vals)):
                
-               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.matrix([eigen_vects[:,i]]))),eigen_vals[i]) )
+               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.matrix([eigen_vects[:,i]]))),eigen_vals[i].real) )
 
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
 
@@ -446,13 +457,31 @@ class MatrixOperator:
           eigen_kets_dict = {}
           index_col_name = str(bases.qm_nums_names)
           eigen_kets_dict[index_col_name] = list( map( lambda x: str(x), bases._ket_states ) )
-          for eigen_ket in self.eigen_kets:
-               eigen_kets_dict[str(eigen_ket.eigen_val)] = eigen_ket.coeffs.tolist()
+          eigen_vec_names = []
+          eigen_vals = []
+          for (i,eigen_ket) in zip( range(0, len(self.eigen_kets)) ,self.eigen_kets):
+
+               eigen_vec_name = 'eigenstate_' + str(i)
+
+               eigen_val = eigen_ket.eigen_val
+
+               eigen_vec_names.append(eigen_vec_name)
+               
+               eigen_vals.append(eigen_val)
+
+               eigen_kets_dict[eigen_vec_name] = eigen_ket.coeffs.tolist()
 
 
-          eig_mx_df = pd.DataFrame.from_dict(eigen_kets_dict )
-          eig_mx_df = eig_mx_df.set_index(index_col_name)
-          return eig_mx_df
+          eig_vecs_df = pd.DataFrame.from_dict(eigen_kets_dict )
+          eig_vecs_df = eig_vecs_df.set_index(index_col_name)
+
+          eig_val_dict = {}
+          eig_val_dict['state_name'] = eigen_vec_names
+          eig_val_dict['eigenenergy'] = eigen_vals
+
+          eig_vals_df = pd.DataFrame.from_dict(eig_val_dict).set_index('state_name')
+
+          return eig_vecs_df, eig_vals_df
 
 
 
@@ -462,28 +491,12 @@ class MatrixOperator:
      
      def get_eigen_val(self, i):
         return self.eigen_vals[i]
-     
-     def calc_sandwich(self, Phi1: QuantumState, Phi2: QuantumState):
-        #Phi1_tr = np.transpose(Phi1)
-          
-        #return complex(np.matmul( Phi2, np.matmul( self.matrix, Phi1_tr ) ))
-        Phi1_tr_matrix = Phi1.matrix.transpose()
-        Phi2_matrix = Phi2.matrix
-
-        return complex( Phi2_matrix.multiply( self.matrix.multiply(Phi1_tr_matrix) ) )
-     
-     def interaction_with(self, other):
-          return MatrixOperator( self.matrix.kron(other.matrix) )
-          #return MatrixOperator(np.kron( self.matrix, other.matrix ) )
 
      def multiply(self, other):
-          #return MatrixOperator(np.matmul(matrix1,matrix2,dtype=np.complex64))
         return MatrixOperator(self.matrix.multiply(other.matrix))
 
      def truncate_matrix(self, trunc_num):
           dim = len(self.matrix)
-          #self.matrix = self.matrix[0:dim-trunc_num, 0: dim-trunc_num]
-          #return MatrixOperator(self.matrix.truncate(trunc_num, trunc_num))
           return MatrixOperator(maths.Matrix(self.matrix[0:dim-trunc_num, 0: dim-trunc_num]),self.name, self.subsys_name)
      
      def get_dim(self):
@@ -544,6 +557,13 @@ class FirstOrderPerturbation:
 
 
 
+class reduction_factors:
+     def __init__(self, deg_ket_vectors:list[ket_vector] ):
+          self.deg_ket_vectors = deg_ket_vectors
+     
+     def p_red_factor(self, op:MatrixOperator):
+
+          return abs( op.calc_expected_val(self.deg_ket_vectors[0])-op.calc_expected_val(self.deg_ket_vectors[1]))
 
   
 
@@ -572,23 +592,43 @@ class degenerate_system_2D(degenerate_system):
           else:
                return None
      
+     """
      def to_complex_basis(self, basis_trf_matrix:MatrixOperator):
-          
+          #pass
           phix = self.deg_ket_vectors[0]
           phiy = self.deg_ket_vectors[1]
           phiplus = basis_trf_matrix*(phix+complex(0.0,1.0)*phiy)/(2**0.5)
           phiminus = basis_trf_matrix*(phix-complex(0.0,1.0)*phiy)/(2**0.5)
           self.complex_deg_ket_vectors = [phiminus, phiplus]
+     """
+     def to_complex_basis(self, basis_trf_matrix:MatrixOperator):
+          #pass
+          phix = self.deg_ket_vectors[0]
+          phiy = self.deg_ket_vectors[1]
+          phiplus = basis_trf_matrix*(phix+complex(0.0,1.0)*phiy)/(2**0.5)
+          phiminus = basis_trf_matrix*(phix-complex(0.0,1.0)*phiy)/(2**0.5)
+          self.complex_deg_ket_vectors = [phiminus, phiplus]
+     
+
+     def pert_in_complex_basis(self, pert_ham:MatrixOperator):
+          complex_pert_ham =  pert_ham.to_new_basis(self.complex_deg_ket_vectors)
+
+          complex_pert_ham.calc_eigen_vals_vects()
+
+          return (complex_pert_ham.eigen_kets[1].eigen_val - complex_pert_ham.eigen_kets[0].eigen_val)/2
           
      def add_perturbation(self, perturbation: MatrixOperator):
           pert_sys_mat =  super().add_perturbation(perturbation)
           pert_sys_mat.calc_eigen_vals_vects()
 
 
-          red_fact= abs(pert_sys_mat.eigen_kets[0].eigen_val-pert_sys_mat.eigen_kets[1].eigen_val)/2
+          self.p_red_fact= abs(pert_sys_mat.eigen_kets[0].eigen_val-pert_sys_mat.eigen_kets[1].eigen_val)/2
 
-          return red_fact
 
+     def calc_p_factor(self, perturbation:MatrixOperator):
+          p_1 = perturbation.calc_expected_val(self.deg_ket_vectors[0])
+          p_2 = perturbation.calc_expected_val(self.deg_ket_vectors[1])
+          return p_2 + p_1
 
 class braket_to_matrix_formalism:
      def __init__(self, eig_states:hilber_space_bases, used_dimensions = None):
@@ -597,28 +637,7 @@ class braket_to_matrix_formalism:
           self.used_dimension = used_dimensions
 
      def create_new_basis(self, gen_ops:list[MatrixOperator], generating_order:int)->list[ket_vector]:
-          bases_vectors_data = namedtuple('bases_vector_data', 'vector create_num annil_num')
-
-          basis_vector_datas = []
-          """
-          raise_x_op = bf.raise_index_operator(0)
-
-          raise_y_op = bf.raise_index_operator(1)
-
-          raise_x_mx_op = self.create_MatrixOperator(raise_x_op)
-        
-          raise_y_mx_op = self.create_MatrixOperator(raise_y_op)
-
-
           bases_vectors = []
-
-          plus_gen_op = 1/2**0.5*(raise_x_mx_op+complex(0.0,1.0)*raise_y_mx_op)
-          minus_gen_op = 1/2**0.5*(raise_x_mx_op+complex(0.0,-1.0)*raise_y_mx_op)
-
-          gen_ops = [plus_gen_op, minus_gen_op]
-          """
-          bases_vectors = []
-          #base_0 = ket_vector( maths.col_vector.zeros(self.eig_states.dim) )
           base_0 = ket_vector( maths.col_vector.zeros(self.used_dimension) )
           
           base_0.set_item(0,complex(1.0,0.0))
@@ -627,8 +646,7 @@ class braket_to_matrix_formalism:
 
           bases_vectors.append(base_0)
 
-          op_1_count = 0
-          op_2_count = 0
+    
 
           for i in range(0,generating_order):
                new_bases_vectors = []
@@ -636,7 +654,6 @@ class braket_to_matrix_formalism:
                     
                     for j in range(0, len(gen_ops)):
                     
-                    #for gen_op in gen_ops:
 
 
 
@@ -660,18 +677,13 @@ class braket_to_matrix_formalism:
 
           basis_vector_datas = []
 
-          bases_vectors = []
-          #base_0 = ket_vector( maths.col_vector.zeros(self.eig_states.dim) )
           base_0 = ket_vector( maths.col_vector.zeros(self.used_dimension) )
           
           base_0.set_item(0,complex(1.0,0.0))
 
           basis_vector_datas.append(bases_vectors_data(base_0,0,0))          
 
-          #bases_vectors.append(base_0)
-
-          op_1_count = 0
-          op_2_count = 0
+         
 
           for i in range(0,generating_order):
                new_bases_vector_datas = []
@@ -697,42 +709,15 @@ class braket_to_matrix_formalism:
 
                               new_bases_vector_datas.append(bases_vectors_data(new_base,new_create_num, new_annil_num))
 
-                              #new_bases_vector_datas.append(new_base_data)
                basis_vector_datas+=new_bases_vector_datas
           
-          #return [ bases_vectors_data( base_vectors_data.vector.normalize(),base_vectors_data.create_num, base_vectors_data.annil_num) for base_vectors_data in basis_vector_datas ]                
           new_hilbert_space = hilber_space_bases().from_qm_nums_list(qm_nums_list=[ [base_vectors_data.create_num, base_vectors_data.annil_num] for base_vectors_data in basis_vector_datas ], qm_nums_names=['+', '-'])
           return [  base_vectors_data.vector.normalize() for base_vectors_data in basis_vector_datas ]   ,new_hilbert_space             
 
 
-
-     """
-     def tree_basis_generations_imp(self,parent_vector:ket_vector, gen_ops:list[MatrixOperator], curr_level:int,generating_order:int,bases_vectors:list[ket_vector]):
-          if curr_level<generating_order:
-               for gen_op in gen_ops:
-                    curr_level+=1
-                    new_parent_vector = gen_op*parent_vector
-                    bases_vectors.append(new_parent_vector)
-                    self.tree_basis_generations_imp(new_parent_vector,gen_ops, curr_level,generating_order,bases_vectors)
-
-     def tree_basis_generation(self,gen_ops:list[MatrixOperator], generating_order:int)->list[ket_vector]:
-          bases_vectors = []
-
-          base_0 = ket_vector( maths.col_vector.zeros(self.used_dimension) )
-          
-          base_0.set_item(0,complex(1.0,0.0))
-
-          bases_vectors.append(base_0)
-
-          self.tree_basis_generations_imp(base_0, gen_ops,0,generating_order,bases_vectors)
-
-          return [ base_vec.normalize() for base_vec in bases_vectors ]                
-     """
-
      def create_basis_trf(self, gen_ops:list[MatrixOperator], generation_order:int)->MatrixOperator:
           basis =  self.create_new_basis(gen_ops, generation_order)
           
-          #basis = self.tree_basis_generation(gen_ops, generation_order)
           return MatrixOperator.basis_trf_matrix(basis)
 
 
@@ -747,7 +732,6 @@ class braket_to_matrix_formalism:
 
 
                     mx_op[i][j] = bra*op*ket
-          #if self.mxtype == 'ordinary':
           return MatrixOperator(maths.Matrix(mx_op), name = name,subsys_name=subsys_name)
 
 
