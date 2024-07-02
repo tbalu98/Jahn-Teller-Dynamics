@@ -194,6 +194,18 @@ class quantum_system_node(node):
         return spin_sys
 
 
+    def create_spin_orbit_system():
+        
+        orbital_system = quantum_system_node.create_2D_orbital_system_node()
+
+        spin_sys = quantum_system_node.create_spin_system_node()
+        electron_system = quantum_system_node('electron_system', children=[spin_sys, orbital_system])
+
+
+        
+
+
+
     def create_id_op(self, matrix_type = maths.Matrix):
         id_op = mf.MatrixOperator.create_id_matrix_op(self.dim, matrix_type = matrix_type)
         return id_op

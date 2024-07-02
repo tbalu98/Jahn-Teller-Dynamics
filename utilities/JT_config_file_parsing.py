@@ -34,18 +34,71 @@ class Atom_config_parser:
     def get_lattice_energy(self, lattice_name):
         return float(self.config['lattice_energies'][lattice_name])
 
+class ZPL_config_parser:
+    def __init__(self, config_file_name):
+        config_file = open(config_file_name,'r')
+        config_string = config_file.read()
+
+        self.config = ConfigParser()
+        self.config.read_string(config_string)
+
+    def get_option_of_field(self, field, option):
+        if self.config.has_option( field , option):
+            return str(self.config[field][option])
+        else:
+            return str('')
+    
+    def get_calculation_name(self):
+        return self.get_option_of_field('DEFAULT', 'calculation_name')
+
+    def get_gnd_cfg_filename(self):
+        return self.get_option_of_field('DEFAULT', 'ground_state_cfg')
+    def get_cfg_data_folder(self):
+        return self.get_option_of_field('DEFAULT', 'cfg_data_folder') + '/'
+
+    def get_results_folder(self):
+        return self.get_option_of_field('DEFAULT', 'results_folder') + '/'
+
+    def get_ex_cfg_filename(self):
+        return self.get_option_of_field('DEFAULT', 'excited_state_cfg')
+    
+    def get_B_min(self):
+        return float(self.get_option_of_field('magnetic_field', 'B_min'))
+
+    def get_B_max(self):
+        return float(self.get_option_of_field('magnetic_field', 'B_max'))
+
+    def get_step_num(self):
+        return int(self.get_option_of_field('magnetic_field', 'step_num'))
+
+
 class Jahn_Teller_config_parser:
 
     def get_res_folder_name(self):
         if self.config.has_option('DEFAULT', 'results_folder'):
-            return str(self.config['DEFAULT']['results_folder'])
+            return str(self.config['DEFAULT']['results_folder']) + '/'
         else:
             return str('')
     
 
+    def get_option_of_field(self, field, option):
+        if self.config.has_option( field , option):
+            return str(self.config[field][option])
+        else:
+            return str('')
+
+    def get_LzSz_exp_val_num(self):
+        res_str = self.get_option_of_field('spin_orbit_coupling','calc_LzSz')
+        return int(res_str) if res_str!='' else 0
+
+    def get_gL_factor(self):
+        res_str = self.get_option_of_field('spin_orbit_coupling','gL')
+        return int(res_str) if res_str!='' else 0
+
+
     def get_data_folder_name(self):
         if self.config.has_option('DEFAULT', 'data_folder'):
-            return str(self.config['DEFAULT']['data_folder'])
+            return str(self.config['DEFAULT']['data_folder']) + '/'
         else:
             return str('')
         
@@ -81,6 +134,10 @@ class Jahn_Teller_config_parser:
 
     def get_spin_orbit_coupling(self):
         return float(self.config['spin_orbit_coupling']['lambda'] if self.config.has_section('spin_orbit_coupling') else 0.0)
+
+    def get_gL_factor(self):
+        return float(self.config['spin_orbit_coupling']['gL'] if self.config.has_section('spin_orbit_coupling') else 0.0)
+
 
     def get_order(self):
         return int(self.config['DEFAULT']['order'] if self.config.has_option('DEFAULT', 'order') else 12)

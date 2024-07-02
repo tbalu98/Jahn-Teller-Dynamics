@@ -12,6 +12,8 @@ phonon_sys_data = namedtuple('phonon_sys_data', 'mode dim order qm_nums_names')
 mode1data = phonon_sys_data(78, 2,5, [ 'mode_1_x, mode_1_y' ])
 
 Bohn_magneton_meV_T = 0.057883671
+Bohn_magneton_meV_T = 1.0
+
 g_factor = 2.0023
 
 round_precision_dig = 7
@@ -210,6 +212,12 @@ class Exe_tree:
         self.system_tree = system_tree
         self.JT_theory = jt_theory
         self.H_int:mf.MatrixOperator
+        self.p_factor:float
+        self.f_factor:float
+        self.gL_factor:float
+        self.delta_factor:float
+        self.KJT_factor:float
+        self.lambda_factor:float
     
     def create_spin_orbit_couping(self):
 
@@ -218,12 +226,15 @@ class Exe_tree:
         #Sz = self.system_tree.find_subsystem('spin_system').create_id_op()
         return Lz**Sz
     
-    def add_spin_orbit_coupling(self,l):
+    def add_spin_orbit_coupling(self):
         
         LzSz_op = self.create_spin_orbit_couping()
         self.system_tree.find_subsystem('electron_system').operators['LzSz'] = LzSz_op
 
-        self.H_int = self.H_int+l*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
+        self.H_int = self.H_int+self.lambda_factor*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
+
+
+
 
     def create_electric_field_interaction(self, E_x, E_y)->mf.MatrixOperator:
 
@@ -238,11 +249,11 @@ class Exe_tree:
 
         return H_el
 
-    def create_magnetic_field_spin_z_interaction(self, B_z, delta)->mf.MatrixOperator:
+    def create_magnetic_field_spin_z_interaction(self, B_z, delta, gl_factor)->mf.MatrixOperator:
 
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
 
-        H_mag = (-2*delta)*B_z*Sz
+        H_mag = (-2*delta*gl_factor)*B_z*Sz
         
         return H_mag
     
@@ -263,9 +274,9 @@ class Exe_tree:
         return Bohn_magneton_meV_T * g_factor*(Bx*Sx + By*Sy + Bz*Sz)
 
 
-    def add_magnetic_field(self, Bx,By,Bz, delta, f):
+    def add_magnetic_field(self, Bx,By,Bz):
 
-        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, delta)
+        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_factor, self.gL_factor)
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
         H_mag_spin_z_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id='point_defect', operator_sys='spin_system')
 
@@ -273,15 +284,36 @@ class Exe_tree:
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin'] = H_mag_spin
         H_mag_spin_point_def = self.system_tree.create_operator('H_mag_spin', subsys_id = 'point_defect', operator_sys='spin_system')
 
-        H_mag_ang = self.create_magnetic_field_ang_interaction( Bz, f)
+        H_mag_ang = self.create_magnetic_field_ang_interaction( Bz, self.f_factor)
         self.system_tree.find_subsystem('orbital_system').operators['H_mag_ang'] = H_mag_ang
         H_mag_ang_point_def = self.system_tree.create_operator('H_mag_ang', subsys_id = 'point_defect', operator_sys='orbital_system')
 
-
-
-
-
         self.H_int = self.H_int + H_mag_spin_point_def + H_mag_ang_point_def + H_mag_spin_z_point_def
+
+    def create_spin_orbit_in_mag_field_ham(self, Bx, By, Bz):
+        
+        #Spin-orbit Hamiltonian
+        Lz = self.system_tree.create_operator('Lz', 'orbital_system')
+        Sz = self.system_tree.create_operator('Sz', 'spin_system')
+
+        H_SO = self.lambda_factor*Lz**Sz
+
+        #Add magnetic field
+
+        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_factor, self.gL_factor)
+        self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
+        H_mag_spin_z_el_sys = self.system_tree.create_operator('H_mag_spin_z', subsys_id='electron_system', operator_sys='spin_system')
+
+        H_mag_spin = self.create_magnetic_field_spin_interaction(Bx, By, Bz)
+        self.system_tree.find_subsystem('spin_system').operators['H_mag_spin'] = H_mag_spin
+        H_mag_spin_el_sys = self.system_tree.create_operator('H_mag_spin', subsys_id = 'electron_system', operator_sys='spin_system')
+
+        H_mag_ang = self.create_magnetic_field_ang_interaction( Bz, self.f_factor)
+        self.system_tree.find_subsystem('orbital_system').operators['H_mag_ang'] = H_mag_ang
+        H_mag_ang_el_sys = self.system_tree.create_operator('H_mag_ang', subsys_id = 'electron_system', operator_sys='orbital_system')
+
+
+        return  H_SO + H_mag_spin_z_el_sys + H_mag_spin_el_sys + H_mag_ang_el_sys
 
 
     def add_electric_field(self, E_x, E_y):
@@ -319,7 +351,7 @@ class Exe_tree:
         self.H_int = sum(hamiltons)
         return self.H_int
 
-    def create_one_mode_hamiltonian(self, mode = 0.0):
+    def create_one_mode_DJT_hamiltonian(self, mode = 0.0):
         X = self.system_tree.create_operator('X', 'nuclei' )
         Y = self.system_tree.create_operator('Y', 'nuclei' )
 
@@ -339,6 +371,10 @@ class Exe_tree:
         sx = self.system_tree.create_operator('X_orb', 'electron_system')
 
         self.H_int =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+        
+        #self.H_int = 1000*self.system_tree.root_node.create_id_op()
+        #self.H_int =    self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
 
         #return K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+
 
