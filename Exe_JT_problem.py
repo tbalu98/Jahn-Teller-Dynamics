@@ -7,7 +7,6 @@ import utilities.quantum_physics as qmp
 import utilities.matrix_formalism as mf
 import utilities.braket_formalism as bf
 import utilities.quantum_system as qs
-import old_ones.OUTCAR_parsing as parsing
 import utilities.xml_parser
 import sys
 import utilities.JT_config_file_parsing as cfg_parser

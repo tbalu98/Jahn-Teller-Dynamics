@@ -113,9 +113,11 @@ class Ions:
         self.name = name
         self._vecs = vecs
         self.m = m
+        """
         self.cell_x = cell_x
         self.cell_y = cell_y
         self.cell_z = cell_z
+        """
         self.basis_vecs = basis_vecs
 
     def __getitem__(self,i):
@@ -172,9 +174,11 @@ class Lattice:
     def __init__(self, energy = None,cell_x=1.0, cell_y=1.0, cell_z=1.0):
         self.ions_arr = list[Ions]
         self.energy = energy
+        """
         self.cell_x = cell_x
         self.cell_y = cell_y
         self.cell_z = cell_z
+        """
     
     def push_vec_back_to_cell(self, vec:Vector):
         return vec.push_to_cell(self.cell_x, self.cell_y, self.cell_z)

@@ -31,17 +31,26 @@ class Jahn_Teller_Theory:
           at_parser = jt_parser.Atom_config_parser(par_file_name)
 
   
-
-
-          atom_1_name, atom_2_name = at_parser.get_names()
-
           basis_vec_1, basis_vec_2, basis_vec_3 =at_parser.get_basis_vectors()
 
           basis_vecs = [basis_vec_1, basis_vec_2,basis_vec_3]
+          """
+          atom_1_name, atom_2_name = at_parser.get_names()
+
+
     
           mass_1, mass_2 = at_parser.get_masses()
 
           mass_dict = {  atom_1_name: float( mass_1 ) , atom_2_name: float( mass_2)}
+          """
+
+          atom_names = at_parser.get_names()
+          atom_masses = at_parser.get_masses()
+
+          mass_dict = {  }
+
+          for atom_name,atom_mass in zip(atom_names, atom_masses):
+               mass_dict[atom_name] = float(atom_mass)
 
           sym_lattice_energy = float(at_parser.get_lattice_energy('symm_lattice_energy'))
           less_symm_lattice_1_energy = float(at_parser.get_lattice_energy('JT_lattice_energy'))

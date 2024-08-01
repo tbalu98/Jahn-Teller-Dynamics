@@ -26,10 +26,25 @@ class Atom_config_parser:
         return VASP.Vector(bv_1x, bv_1y, bv_1z), VASP.Vector(bv_2x, bv_2y, bv_2z),VASP.Vector(bv_3x, bv_3y, bv_3z)
 
     def get_masses(self):
-        return float(self.config['atom_masses']['atom_1_mass']), float(self.config['atom_masses']['atom_2_mass'])
+        masses = [   ]
+        
+        for i in range(1, len(self.config['atom_masses']) + 1):
+            masses.append(self.config['atom_masses'][ 'atom_' + str(i)+ '_mass' ])
+
+        return masses
+
+        #return float(self.config['atom_masses']['atom_1_mass']), float(self.config['atom_masses']['atom_2_mass'])
 
     def get_names(self):
-        return self.config['atom_names']['atom_1_name'], self.config['atom_names']['atom_2_name']
+        names = [   ]
+        
+        for i in range(1, len(self.config['atom_names']) + 1):
+            names.append(self.config['atom_names'][ 'atom_' + str(i)+ '_name' ])
+
+        return names
+
+
+        #return self.config['atom_names']['atom_1_name'], self.config['atom_names']['atom_2_name']
 
     def get_lattice_energy(self, lattice_name):
         return float(self.config['lattice_energies'][lattice_name])

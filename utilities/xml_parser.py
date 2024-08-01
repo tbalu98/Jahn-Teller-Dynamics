@@ -3,7 +3,7 @@ import utilities.VASP as VASP
 import pandas as pd
 from configparser import ConfigParser
 
-def save_raw_data_from_xmls(lattices:list, problem_name, data_folder):
+def save_raw_data_from_xmls(lattices:list[VASP.Lattice], problem_name, data_folder):
     
 
 
@@ -70,8 +70,21 @@ def save_raw_data_from_xmls(lattices:list, problem_name, data_folder):
 
     par_cfg = ConfigParser()
 
-    par_cfg['atom_names'] = { 'atom_1_name' : symm_lattice.ions_arr[0].name, 'atom_2_name':symm_lattice.ions_arr[1].name }
-    par_cfg['atom_masses'] = { 'atom_1_mass':symm_lattice.ions_arr[0].m, 'atom_2_mass':symm_lattice.ions_arr[1].m}
+    atom_names_dict = {}
+    atom_mass_dict = {}
+
+    for i,ions_arr in zip(range(1,len(symm_lattice.ions_arr)+1) ,symm_lattice.ions_arr):
+        atom_names_dict[ 'atom_'+str(i) + '_name'  ] = ions_arr.name
+        atom_mass_dict[ 'atom_'+str(i) + '_mass'  ] = ions_arr.m
+        
+
+
+
+
+    #par_cfg['atom_names'] = { 'atom_1_name' : symm_lattice.ions_arr[0].name, 'atom_2_name':symm_lattice.ions_arr[1].name }
+    #par_cfg['atom_masses'] = { 'atom_1_mass':symm_lattice.ions_arr[0].m, 'atom_2_mass':symm_lattice.ions_arr[1].m}
+    par_cfg['atom_names'] = atom_names_dict
+    par_cfg['atom_masses'] = atom_mass_dict
     par_cfg['lattice_energies'] = {'symm_lattice_energy':symm_lattice.energy, 'JT_lattice_energy': less_symm_lattice_1.energy, 'barrier_lattice_energy': less_symm_lattice_2.energy }
 
     par_cfg['basis_vectors'] = { 
