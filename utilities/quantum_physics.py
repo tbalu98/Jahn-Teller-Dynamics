@@ -7,6 +7,7 @@ import numpy as np
 import utilities.jahn_teller_theory as  jt
 import utilities.maths as maths
 import utilities.quantum_system as qs
+import copy
 phonon_sys_data = namedtuple('phonon_sys_data', 'mode dim order qm_nums_names')
 
 mode1data = phonon_sys_data(78, 2,5, [ 'mode_1_x, mode_1_y' ])
@@ -219,6 +220,36 @@ class Exe_tree:
         self.KJT_factor:float
         self.lambda_factor:float
     
+    def create_minimal_model_DJT_H_int(self):
+        #H_ZJT=ZJTx*kron(eye(l),sz)+ZJTy*kron(eye(l),sx); #zeroJT for Hepp dissertation
+
+        """
+        sz = self.system_tree.create_operator('Z_orb', 'electron_system')
+        sx = self.system_tree.create_operator('X_orb', 'electron_system')
+        return self.ZJTx*sz + self.ZJTy*sx
+        """
+    
+        return  mf.MatrixOperator.create_id_matrix_op(dim = self.system_tree.root_node.dim)
+
+    def to_minimal_model(self,ZJTx, ZJTy):
+        self.ZJTx = ZJTx
+        self.ZJTy = ZJTy
+
+        new_obj = copy.deepcopy(self)
+
+        orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
+        spin_sys = qs.quantum_system_node.create_spin_system_node()
+
+        electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
+
+        point_defect = qs.quantum_system_node('point_defect', children = [electron_system])
+
+        new_obj.system_tree = qs.quantum_system_tree(point_defect)
+
+        new_obj.H_int = self.create_minimal_model_DJT_H_int()
+
+        return new_obj
+
     def create_spin_orbit_couping(self):
 
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
@@ -378,3 +409,15 @@ class Exe_tree:
         #return K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
 
 
+"""
+class minimal_Exe_model(Exe_tree):
+    def __init__(self, jt_theory):
+        orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
+        spin_sys = qs.quantum_system_node.create_spin_system_node()
+
+        electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
+
+        super.__init__(qs.quantum_system_tree(electron_system),jt_theory)
+        self.H_int = maths.Matrix.create_zeros(dim = self.system_tree.root_node.dim)
+
+"""

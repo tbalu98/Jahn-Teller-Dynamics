@@ -419,6 +419,9 @@ class MatrixOperator:
      def create_id_matrix_op(dim, matrix_type=maths.Matrix):
           return MatrixOperator(matrix_type.create_eye(dim))
 
+     def create_null_matrix_op(dim, matrix_type=maths.Matrix):
+          return MatrixOperator(matrix_type.create_zeros(dim))
+
      def __len__(self):
           return len(self.matrix)
 

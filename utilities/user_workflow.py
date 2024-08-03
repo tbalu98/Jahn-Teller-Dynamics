@@ -254,17 +254,20 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False):
     LzSz_expected_vals= [ LzSz_op.calc_expected_val( eig_ket) for eig_ket in JT_int.H_int.eigen_kets[0:50] ]
     
 
-
-    p_32 = LzSz_expected_vals[2]
-    p_12 = LzSz_expected_vals[0]
+    """
+    p_32 = 2*LzSz_expected_vals[2]
+    p_12 = -2*LzSz_expected_vals[0]
+    """
+    p_32 = 2*LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[2])
+    p_12 = -2*LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[0])
 
     print('p values after adding SOC to Hamiltonian')
 
-    print( "p3/2 = " + str(2* p_32 ))
-    print( "p1/2 = " + str(2* p_12 ))
+    print( "p3/2 = " + str(p_32 ))
+    print( "p1/2 = " + str(p_12 ))
 
-    JT_int.p_factor = p_32-p_12
-    JT_int.delta_factor = p_32+p_12
+    JT_int.p_factor = (p_32+p_12)/2
+    JT_int.delta_factor = (p_32-p_12)/2
 
     print('Based on C8 and C9 equation:'  )
     print("p = " + str( JT_int.p_factor ))

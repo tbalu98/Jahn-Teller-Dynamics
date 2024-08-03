@@ -7,6 +7,9 @@ import collections
 import copy
 import pandas as pd
 from io import StringIO
+from typing import List
+import utilities.jahn_teller_theory as jt
+
 #Coordinate = collections.namedtuple('Coordinate', 'x y z')
 
 Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom', 'less_symm_geom_1', 'less_symm_geom_2', 'symm_geom_energy', 'less_symm' ])
@@ -172,7 +175,8 @@ class Ions:
 
 class Lattice:
     def __init__(self, energy = None,cell_x=1.0, cell_y=1.0, cell_z=1.0):
-        self.ions_arr = list[Ions]
+        #self.ions_arr = list[Ions]
+        self.ions_arr: List[Ions] = []
         self.energy = energy
         """
         self.cell_x = cell_x
@@ -198,19 +202,19 @@ class Lattice:
         x_coordinates = []
         y_coordinates = []
         z_coordinates = []
-        atom_name = []
+        #atom_name = []
         
         for ion_arr in self.ions_arr:
             x_coordinates+=[ vec.x for vec in ion_arr ]
             y_coordinates+=[ vec.y for vec in ion_arr ]
             z_coordinates+=[ vec.z for vec in ion_arr ]
-            atom_name +=[ion_arr.name for i in range(0,len(ion_arr._vecs))]
+            #atom_name +=[ion_arr.name for i in range(0,len(ion_arr._vecs))]
         
         res_dict = {}
         res_dict['x_coordinates'] = x_coordinates
         res_dict['y_coordinates'] = y_coordinates
         res_dict['z_coordinates'] = z_coordinates
-        res_dict['atom_name'] = atom_name
+        #res_dict['atom_name'] = atom_name
 
         res_df = pd.DataFrame(res_dict)
         res_df.index.name = 'index'
@@ -220,17 +224,43 @@ class Lattice:
         res_df = self.to_coordinates_data_frame()
         res_df.to_csv(self)
 
-    def read_from_coordinates_dataframe(self,filename, mass_dict,basis_vecs,energy):
+    def read_from_coordinates_dataframe(self,filename, atom_datas,basis_vecs,energy):
+
+        #ions_arr = [Ions(name=atom_data.name,vecs = [], m = atom_data.mass, basis_vecs=basis_vecs)  for atom_data in atom_datas   ]
         df = pd.read_csv(filename)
 
 
-        atom_types = list(set(df['atom_name'].tolist()))
+        #atom_names = list(set(df['atom_name'].tolist()))
 
 
         #basis_vecs = [Vector(1.0,0.0,0.0),Vector(0.0,1.0,0.0),Vector(0.0,0.0,1.0)]
 
-        ions_arr = [ Ions(name = atom_type, vecs = [], m=mass_dict[atom_type], basis_vecs=basis_vecs ) for atom_type in atom_types ]
+        #ions_arr = [ Ions(name = atom_type, vecs = [], m=atom_types[atom_type], basis_vecs=basis_vecs ) for atom_type in atom_names ]
+        ions_arr = []
+        to_index = 0
+        from_index = 0
+        for atom_data in atom_datas:
+            atom_name = atom_data.name
+            atom_number = int(atom_data.number)
+            atom_mass = float(atom_data.mass)
+            to_index +=atom_number
 
+            coord_vecs = []
+
+            for ind in df.index[from_index:to_index]:
+                
+                x = float(df['x_coordinates'][ind])
+                y = float(df['y_coordinates'][ind])
+                z = float(df['z_coordinates'][ind])
+
+
+            #for row in df.iterrows()[from_index:to_index]:
+
+
+                coord_vecs.append(Vector(x,y,z))
+            
+        ions_arr.append(Ions(name = atom_name, vecs= coord_vecs, m = atom_mass, basis_vecs=basis_vecs))
+        """
         for index, row in df.iterrows():
             x = float(row['x_coordinates'])
             y = float(row['y_coordinates'])
@@ -240,7 +270,7 @@ class Lattice:
             ion_arr = list(filter(lambda x: x.name == atom_type,ions_arr))[0]
 
             ion_arr._vecs.append(Vector(x,y,z))
-        
+        """
         lattice = Lattice(energy=energy)
         lattice.ions_arr =  ions_arr
 

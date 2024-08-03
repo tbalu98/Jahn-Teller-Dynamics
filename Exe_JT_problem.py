@@ -193,8 +193,8 @@ if l!=0.0:
     
 
 
-    p_32 = LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[2])
-    p_12 = LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[0])
+    p_32 = 2*LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[2])
+    p_12 = -2*LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[0])
 
 
     print('p values after adding spin-orbit coupling to Hamiltonian')
@@ -202,8 +202,8 @@ if l!=0.0:
     print( "p3/2 = " + str( p_32 ))
     print( "p1/2 = " + str( p_12 ))
 
-    p = p_32+p_12
-    delta = p_32-p_12
+    p = (p_32+p_12)/2
+    delta = (p_32-p_12)/2
 
     JT_int.p_factor = p
 

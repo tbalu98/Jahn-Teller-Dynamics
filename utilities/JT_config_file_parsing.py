@@ -25,6 +25,15 @@ class Atom_config_parser:
 
         return VASP.Vector(bv_1x, bv_1y, bv_1z), VASP.Vector(bv_2x, bv_2y, bv_2z),VASP.Vector(bv_3x, bv_3y, bv_3z)
 
+
+    def get_numbers(self):
+        numbers = [   ]
+        
+        for i in range(1, len(self.config['atom_numbers']) + 1):
+            numbers.append(self.config['atom_numbers'][ 'atom_' + str(i)+ '_number' ])
+
+        return numbers
+
     def get_masses(self):
         masses = [   ]
         

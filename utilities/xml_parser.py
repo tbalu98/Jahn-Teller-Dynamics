@@ -72,10 +72,11 @@ def save_raw_data_from_xmls(lattices:list[VASP.Lattice], problem_name, data_fold
 
     atom_names_dict = {}
     atom_mass_dict = {}
-
+    atom_numbers_dict = {}
     for i,ions_arr in zip(range(1,len(symm_lattice.ions_arr)+1) ,symm_lattice.ions_arr):
         atom_names_dict[ 'atom_'+str(i) + '_name'  ] = ions_arr.name
         atom_mass_dict[ 'atom_'+str(i) + '_mass'  ] = ions_arr.m
+        atom_numbers_dict['atom_' + str(i) + '_number'] = len(ions_arr)
         
 
 
@@ -85,6 +86,7 @@ def save_raw_data_from_xmls(lattices:list[VASP.Lattice], problem_name, data_fold
     #par_cfg['atom_masses'] = { 'atom_1_mass':symm_lattice.ions_arr[0].m, 'atom_2_mass':symm_lattice.ions_arr[1].m}
     par_cfg['atom_names'] = atom_names_dict
     par_cfg['atom_masses'] = atom_mass_dict
+    par_cfg['atom_numbers'] = atom_numbers_dict
     par_cfg['lattice_energies'] = {'symm_lattice_energy':symm_lattice.energy, 'JT_lattice_energy': less_symm_lattice_1.energy, 'barrier_lattice_energy': less_symm_lattice_2.energy }
 
     par_cfg['basis_vectors'] = { 

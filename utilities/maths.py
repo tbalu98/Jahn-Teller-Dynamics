@@ -155,6 +155,8 @@ class row_vector:
 
 class Matrix:
     
+        
+
     def tolist(self):
         return self.matrix.tolist()
 
@@ -200,6 +202,10 @@ class Matrix:
 
     def create_eye(dim):
         return Matrix(np.eye(dim,dtype= complex_number_typ))
+
+    def create_zeros(dim):
+        return Matrix(np.zeros(dim,dtype = complex_number_typ))
+
 
     def save(self,filename):
         np.savetxt(filename,self.matrix)
