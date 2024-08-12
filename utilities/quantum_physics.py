@@ -12,8 +12,8 @@ phonon_sys_data = namedtuple('phonon_sys_data', 'mode dim order qm_nums_names')
 
 mode1data = phonon_sys_data(78, 2,5, [ 'mode_1_x, mode_1_y' ])
 
-Bohn_magneton_meV_T = 0.057883671
 Bohn_magneton_meV_T = 1.0
+Bohn_magneton_meV_T = 0.057883671
 
 g_factor = 2.0023
 
@@ -202,6 +202,21 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 class Exe_tree:
 
 
+    def get_essential_data(self):
+        
+        res_dict = {}
+
+        res_dict['Jahn-Teller energy (eV)'] = [self.JT_theory.E_JT]
+        res_dict['barrier energy (eV)'] = [self.JT_theory.delta]
+        res_dict['hw (eV)'] = [self.JT_theory.hw]
+        res_dict['p Ham factor'] = [self.p_factor]
+        res_dict['gL factor'] = [self.gL_factor]
+        res_dict['delta_p factor'] = [self.delta_p_factor]
+        res_dict['f factor'] = [self.f_factor]
+        res_dict['K_JT factor'] = [self.KJT_factor]
+
+        return res_dict
+
 
     def get_base_state(self):
         return self.system_tree.root_node.base_states
@@ -216,7 +231,7 @@ class Exe_tree:
         self.p_factor:float
         self.f_factor:float
         self.gL_factor:float
-        self.delta_factor:float
+        self.delta_p_factor:float
         self.KJT_factor:float
         self.lambda_factor:float
     
@@ -245,6 +260,8 @@ class Exe_tree:
         point_defect = qs.quantum_system_node('point_defect', children = [electron_system])
 
         new_obj.system_tree = qs.quantum_system_tree(point_defect)
+
+        new_obj.lambda_factor = self.lambda_factor*self.p_factor+self.KJT_factor
 
         new_obj.H_int = self.create_minimal_model_DJT_H_int()
 
@@ -284,7 +301,9 @@ class Exe_tree:
 
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
 
-        H_mag = (-2*delta*gl_factor)*B_z*Sz
+        #H_mag = -2*delta*B_z*Sz
+        #H_mag = -2*delta*gl_factor*B_z*Sz
+        H_mag = -2*delta*gl_factor*Bohn_magneton_meV_T*B_z*Sz
         
         return H_mag
     
@@ -304,10 +323,18 @@ class Exe_tree:
 
         return Bohn_magneton_meV_T * g_factor*(Bx*Sx + By*Sy + Bz*Sz)
 
+    def add_model_magnetic_field(self,Bz):
+        #2*pd*(Bz*kron(kron(eye(l) ,s0),0.5*Sz))
+
+        Sz_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id = 'point_defect', operator_sys='spin_system')
+
+        H_mag_model = self.pd*Bz*Sz_point_def
+
+        self.H_int = self.H_int+H_mag_model
 
     def add_magnetic_field(self, Bx,By,Bz):
 
-        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_factor, self.gL_factor)
+        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_p_factor, self.gL_factor)
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
         H_mag_spin_z_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id='point_defect', operator_sys='spin_system')
 
@@ -331,7 +358,7 @@ class Exe_tree:
 
         #Add magnetic field
 
-        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_factor, self.gL_factor)
+        H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_p_factor, self.gL_factor)
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
         H_mag_spin_z_el_sys = self.system_tree.create_operator('H_mag_spin_z', subsys_id='electron_system', operator_sys='spin_system')
 

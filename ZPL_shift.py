@@ -58,11 +58,15 @@ for B in Bs:
     
     B = float(B)
 
+    """
     Bx = 0.5*27.992*float(M[0,:]*B_comp_vec)*4.13567/1000
     By = 0.5*27.992*float(M[1,:]*B_comp_vec)*4.13567/1000
     Bz = 0.5*27.992*float(M[2,:]*B_comp_vec)*4.13567/1000
-
-
+    """
+    Bx = float(M[0,:]*B_comp_vec)
+    By = float(M[1,:]*B_comp_vec)
+    Bz = float(M[2,:]*B_comp_vec)
+    
 
     print(str(B) + 'T')
     JT_int_1.create_one_mode_DJT_hamiltonian()
@@ -88,7 +92,7 @@ JT_int_2_Es = [[],[],[],[]]
 print('reduction factors:')
 
 print( 'p = ' + str(JT_int_2.p_factor) )
-print('delta = ' + str(JT_int_2.delta_factor))
+print('delta = ' + str(JT_int_2.delta_p_factor))
 
 for B in Bs:
     B = float(B)
@@ -97,11 +101,15 @@ for B in Bs:
     B_comp_vec = np.transpose(np.matrix( [0,0,B] ))
     
     B = float(B)
-
+    
+    """
     Bx = 0.5*27.992*float(M[0,:]*B_comp_vec)*4.13567/1000
     By = 0.5*27.992*float(M[1,:]*B_comp_vec)*4.13567/1000
     Bz = 0.5*27.992*float(M[2,:]*B_comp_vec)*4.13567/1000
-
+    """
+    Bx = float(M[0,:]*B_comp_vec)
+    By = float(M[1,:]*B_comp_vec)
+    Bz = float(M[2,:]*B_comp_vec)
 
     JT_int_2.create_one_mode_DJT_hamiltonian()
     JT_int_2.add_spin_orbit_coupling()  

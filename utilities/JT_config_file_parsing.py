@@ -1,6 +1,6 @@
 from configparser import ConfigParser
 import utilities.jahn_teller_theory as jt
-import utilities.VASP as VASP
+import utilities.VASP as V
 
 class Atom_config_parser:
     def __init__(self, config_file_name):
@@ -23,7 +23,7 @@ class Atom_config_parser:
         bv_3y = float(self.config['basis_vectors']['basis_vector_3_y'])
         bv_3z = float(self.config['basis_vectors']['basis_vector_3_z'])
 
-        return VASP.Vector(bv_1x, bv_1y, bv_1z), VASP.Vector(bv_2x, bv_2y, bv_2z),VASP.Vector(bv_3x, bv_3y, bv_3z)
+        return V.Vector(bv_1x, bv_1y, bv_1z), V.Vector(bv_2x, bv_2y, bv_2z),V.Vector(bv_3x, bv_3y, bv_3z)
 
 
     def get_numbers(self):
@@ -116,7 +116,7 @@ class Jahn_Teller_config_parser:
         return int(res_str) if res_str!='' else 0
 
     def get_gL_factor(self):
-        res_str = self.get_option_of_field('spin_orbit_coupling','gL')
+        res_str = self.get_option_of_field('spin_orbit_coupling','orbital_reduction_factor')
         return int(res_str) if res_str!='' else 0
 
 
@@ -157,10 +157,10 @@ class Jahn_Teller_config_parser:
         self.config.read_string(config_string)
 
     def get_spin_orbit_coupling(self):
-        return float(self.config['spin_orbit_coupling']['lambda'] if self.config.has_section('spin_orbit_coupling') else 0.0)
+        return float(self.config['spin_orbit_coupling']['intrinsic_spin-orbit_coupling'] if self.config.has_section('spin_orbit_coupling') else 0.0)
 
     def get_gL_factor(self):
-        return float(self.config['spin_orbit_coupling']['gL'] if self.config.has_section('spin_orbit_coupling') else 0.0)
+        return float(self.config['spin_orbit_coupling']['orbital_reduction_factor'] if self.config.has_section('spin_orbit_coupling') else 0.0)
 
 
     def get_order(self):

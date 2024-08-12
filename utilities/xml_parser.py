@@ -1,9 +1,9 @@
 import xml.dom.minidom
-import utilities.VASP as VASP
+import utilities.VASP as V
 import pandas as pd
 from configparser import ConfigParser
 
-def save_raw_data_from_xmls(lattices:list[VASP.Lattice], problem_name, data_folder):
+def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder):
     
 
 
@@ -142,9 +142,9 @@ class xml_parser:
             for i in range(0,ion_num):
                 ion_pos_vecs.append(next(position_vecs_iterator))
             
-            ions_arr.append(VASP.Ions( name=ion_name, vecs=ion_pos_vecs, m = ion_mass, cell_x = self.basis_vecs[0].x,cell_y = self.basis_vecs[0].y,cell_z = self.basis_vecs[0].z , basis_vecs=self.basis_vecs ))
+            ions_arr.append(V.Ions( name=ion_name, vecs=ion_pos_vecs, m = ion_mass, cell_x = self.basis_vecs[0].x,cell_y = self.basis_vecs[0].y,cell_z = self.basis_vecs[0].z , basis_vecs=self.basis_vecs ))
         
-        self.lattice = VASP.Lattice(energy = self.lattice_energy,cell_x=self.basis_vecs[0].x,cell_y=self.basis_vecs[1].y,cell_z=self.basis_vecs[2].z)
+        self.lattice = V.Lattice(energy = self.lattice_energy,cell_x=self.basis_vecs[0].x,cell_y=self.basis_vecs[1].y,cell_z=self.basis_vecs[2].z)
         self.lattice.ions_arr = ions_arr
 
 
@@ -175,7 +175,7 @@ class xml_parser:
 
     def get_vectors_from_varray(varray:xml.dom.minidom.Element):
         vectors = varray.getElementsByTagName('v')
-        return [ VASP.Vector.from_str(v.childNodes[0].data)   for v in vectors ]
+        return [ V.Vector.from_str(v.childNodes[0].data)   for v in vectors ]
 
 
         

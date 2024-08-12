@@ -19,12 +19,13 @@ warnings.simplefilter("ignore", np.ComplexWarning)
 
 orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
 
-electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
 
 
 #Spin system ops
 
 spin_sys = qs.quantum_system_node.create_spin_system_node()
+
+electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
 
 spatial_dim = 2
 
@@ -36,7 +37,7 @@ JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser(str(sys.argv[1]))
 
 order  = JT_cfg_parser.get_order()
 calc_name = JT_cfg_parser.get_problem_name()
-l  =  JT_cfg_parser.get_spin_orbit_coupling()
+intrinsic_so_coupling  =  JT_cfg_parser.get_spin_orbit_coupling()
 E_x, E_y = JT_cfg_parser.get_electric_field()
 
 Bx, By,Bz = JT_cfg_parser.get_magnetic_field()
@@ -48,9 +49,8 @@ LzSz_calc_num = JT_cfg_parser.get_LzSz_exp_val_num()
 
 gl_factor = JT_cfg_parser.get_gL_factor()
 
-#order =12
 
-#JT_theory = jt.Jahn_Teller_Theory()
+
 
 filenames = None
 
@@ -75,7 +75,7 @@ if save_raw_pars == True:
 
 
 print('Maximum number of energy quantums of vibrations in each direction:\n n = ' + str(order) )
-print('Energy of spin-orbit coupling:\n ' +'lambda = ' + str(l)  )
+print('Energy of spin-orbit coupling:\n ' +'lambda = ' + str(intrinsic_so_coupling)  )
 
 print(JT_theory)
 
@@ -149,7 +149,7 @@ print('Reduction factor from first order perturbation:')
 
 deg_sys.add_perturbation(pert_ham_Lz)
 
-print('p = '+ str( round(deg_sys.p_red_fact,4)) + ' meV')
+print('p = '+ str( round(deg_sys.p_red_fact,4)) )
 
 
 
@@ -158,14 +158,14 @@ orbital_system.operators['Lz_normal'] = mf.MatrixOperator.pauli_z_mx_op()
 
 Lz_point_def = point_defect_tree.create_operator(operator_id='Lz', operator_sys='orbital_system')
 
-JT_int.lambda_factor = l
+JT_int.lambda_factor = intrinsic_so_coupling
 
 
 
-if l!=0.0:
+if intrinsic_so_coupling!=0.0:
 
-    print('spin orbit coupling lambda = ' + str(l))
-    point_defect_tree.insert_node('electron_system', spin_sys)
+    print('intrinsic spin-orbit coupling = ' + str(intrinsic_so_coupling))
+    #point_defect_tree.insert_node('electron_system', spin_sys)
 
 
 
@@ -208,9 +208,10 @@ if l!=0.0:
     JT_int.p_factor = p
 
     JT_int.f_factor = JT_int.gL_factor*JT_int.p_factor
-    JT_int.delta_factor =delta
+    JT_int.delta_p_factor =delta
 
-    print('C8 and C9 equation:'  )
+
+    print('Ham reduction factor')
     print("p = " + str( p ))
     print( "delta = " + str(delta) )
     
@@ -241,7 +242,7 @@ if l!=0.0:
     
     print('-------------------------------')
 
-    print('p Ham reduction factor')
+
 
     print( 'lambda_Ham = ' + str(round((JT_int.H_int.eigen_kets[2].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
 
@@ -250,7 +251,7 @@ if l!=0.0:
 
 
 
-if l!=0.0 and(Bz!=0.0 or Bx!= 0.0 or By != 0.0):
+if intrinsic_so_coupling!=0.0 and(Bz!=0.0 or Bx!= 0.0 or By != 0.0):
 
 
     JT_int.add_magnetic_field(Bx,By,Bz)
@@ -286,5 +287,14 @@ eig_val_file_name = calc_name + '_eigen_values_interaction.csv'
 JT_int.save_eigen_vals_vects_to_file(res_folder + eig_vec_file_name,res_folder+eig_val_file_name)
 
 
+#Save essential data
 
 
+
+essential_data_res = JT_int.get_essential_data()
+
+essential_data_res['intrinsic spin-orbit coupling (eV)'] = [intrinsic_so_coupling]
+
+ess_data_df = pd.DataFrame(essential_data_res).set_index('intrinsic spin-orbit coupling (eV)')
+
+ess_data_df.to_csv(res_folder + calc_name+'_essential_data.csv',sep = ';')

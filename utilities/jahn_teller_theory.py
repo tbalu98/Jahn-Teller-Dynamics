@@ -2,7 +2,7 @@ import numpy as np
 import collections
 from numpy import linalg as LA
 import math
-import utilities.VASP as VASP
+import utilities.VASP as V
 import collections
 import copy
 from scipy.sparse.linalg import eigs
@@ -65,16 +65,16 @@ class Jahn_Teller_Theory:
           less_symm_lattice_1_energy = float(at_parser.get_lattice_energy('JT_lattice_energy'))
           if barrier_lattice_coords_filename!=None:
                less_symm_lattice_2_energy = float(at_parser.get_lattice_energy('barrier_lattice_energy'))
-               less_symm_lattice_2 = VASP.Lattice().read_from_coordinates_dataframe(barrier_lattice_coords_filename, atom_datas, basis_vecs,less_symm_lattice_2_energy)
+               less_symm_lattice_2 = V.Lattice().read_from_coordinates_dataframe(barrier_lattice_coords_filename, atom_datas, basis_vecs,less_symm_lattice_2_energy)
           else:
                less_symm_lattice_2 = None
 
 
 
 
-          symm_lattice = VASP.Lattice().read_from_coordinates_dataframe(symm_lattice_coords_filename, atom_datas,basis_vecs,sym_lattice_energy)
+          symm_lattice = V.Lattice().read_from_coordinates_dataframe(symm_lattice_coords_filename, atom_datas,basis_vecs,sym_lattice_energy)
     
-          less_symm_lattice_1 = VASP.Lattice().read_from_coordinates_dataframe(JT_lattice_coords_filename, atom_datas, basis_vecs, less_symm_lattice_1_energy)
+          less_symm_lattice_1 = V.Lattice().read_from_coordinates_dataframe(JT_lattice_coords_filename, atom_datas, basis_vecs, less_symm_lattice_1_energy)
     
 
           return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2), symm_lattice, less_symm_lattice_1, less_symm_lattice_2
@@ -141,7 +141,7 @@ class Jahn_Teller_Theory:
           self.calc_Taylor_coeffs()
           return self
 
-     def __init__(self, symm_lattice: VASP.Lattice=None, less_symm_lattice_1: VASP.Lattice=None, less_symm_lattice_2:VASP.Lattice=None):
+     def __init__(self, symm_lattice: V.Lattice=None, less_symm_lattice_1: V.Lattice=None, less_symm_lattice_2:V.Lattice=None):
           self.symm_lattice = symm_lattice
           
           if less_symm_lattice_1!=None and less_symm_lattice_2!=None:
@@ -154,6 +154,7 @@ class Jahn_Teller_Theory:
                self.JT_lattice = less_symm_lattice_1
                self.calc_paramters_until_first_order()
                self.order_flag = 1
+               
      def calc_paramters_until_first_order(self):
           self.JT_dist = self.symm_lattice.calc_dist(self.JT_lattice)
           self.calc_E_JT()

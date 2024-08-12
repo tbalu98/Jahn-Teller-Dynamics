@@ -8,7 +8,6 @@ import copy
 import pandas as pd
 from io import StringIO
 from typing import List
-import utilities.jahn_teller_theory as jt
 
 #Coordinate = collections.namedtuple('Coordinate', 'x y z')
 
@@ -397,7 +396,7 @@ class POSCAR_data:
 
         names = self.convert_line_elements(name_line, str)
         numbers = self.convert_line_elements(numbers_line, int)
-        line_num = 8
+        line_num = 9
         self.lattice = Lattice()
         
         for name, number_of_ion in zip( names, numbers):
