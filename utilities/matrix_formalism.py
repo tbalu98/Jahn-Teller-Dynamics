@@ -18,11 +18,19 @@ dtype = np.complex64
 
 class ket_vector:
 
+     def from_str_list(str_list: list[str], eigen_energy:float =None):
+          coeffs = []
+          for coeff_str in str_list:
+               coeff = complex(coeff_str)
+               coeffs.append(coeff)
+
+          return ket_vector(coeffs, eigen_energy)
+
      def normalize(self):
           length = self.abs_sq()
           return self/length
 
-     def __init__(self, coeffs:maths.col_vector, eigen_val = None, name = '', subsys_name  = ''):
+     def __init__(self, coeffs, eigen_val = None, name = '', subsys_name  = ''):
           self.name = name
           self.subsys_name = subsys_name
           self.eigen_val = eigen_val
@@ -117,7 +125,18 @@ class bases_system:
 
 
 class bra_vector:
-     def __init__(self, coeffs:maths.row_vector):
+
+
+     def from_str_list(str_list: list[str], eigen_energy:float =None):
+          coeffs = []
+          for coeff_str in str_list:
+               coeff = complex(coeff_str)
+               coeffs.append(coeff)
+
+          return bra_vector(coeffs, eigen_energy)
+
+     def __init__(self, coeffs, eigen_val:float = None):
+          self.eigen_val = eigen_val
           if type(coeffs) is maths.row_vector:
                self.coeffs = coeffs
                self.dim = len(self.coeffs.coeffs[0])
@@ -738,3 +757,32 @@ class braket_to_matrix_formalism:
           return MatrixOperator(maths.Matrix(mx_op), name = name,subsys_name=subsys_name)
 
 
+
+
+class eigen_vectors:
+
+     def bra_from_csv(states_fn:str, energies_fn:str):
+          energies_df = pd.read_csv(energies_fn, sep=';',index_col='state_name')
+
+          states_df = pd.read_csv(states_fn, sep=';')
+          eigen_vectors = []
+          for eigen_state_name in list(states_df)[1:]:
+               coeff_strs = states_df[eigen_state_name].tolist()
+               eigen_energy = energies_df['eigenenergy'][eigen_state_name]
+
+               eigen_vectors.append(bra_vector.from_str_list(coeff_strs, eigen_energy))
+
+          return eigen_vectors
+     
+     def ket_from_csv(states_fn:str, energies_fn:str):
+          energies_df = pd.read_csv(energies_fn, sep=';',index_col='state_name')
+
+          states_df = pd.read_csv(states_fn, sep=';')
+          eigen_vectors = []
+          for eigen_state_name in list(states_df)[1:]:
+               coeff_strs = states_df[eigen_state_name].tolist()
+               eigen_energy = energies_df['eigenenergy'][eigen_state_name]
+
+               eigen_vectors.append(ket_vector.from_str_list(coeff_strs, eigen_energy))
+
+          return eigen_vectors

@@ -9,9 +9,12 @@ import utilities.user_workflow as uw
 import pandas as pd
 import sys
 import utilities.JT_config_file_parsing as  JT_cfg
+import utilities.maths as maths
 
 def meV_to_GHz(e):
     return e*241.798935
+
+
 
 #Read config file data
 
@@ -28,15 +31,30 @@ cfg_file_data_folder = ZPL_cfg_parser.get_cfg_data_folder()
 results_folder = ZPL_cfg_parser.get_results_folder()
 
 #config_file_name_gnd = 'PbV_JT_csv_config.cfg'
-JT_int_1 =  uw.spin_orbit_JT_procedure( cfg_file_data_folder + config_file_name_gnd)
 
 B_min = ZPL_cfg_parser.get_B_min()
 B_max = ZPL_cfg_parser.get_B_max()
 step_num = ZPL_cfg_parser.get_step_num()
 
-calculation_name = ZPL_cfg_parser.get_calculation_name()
-
 Bs = np.linspace(B_min, B_max, step_num)
+
+Bs_string = ''
+
+for B in Bs:
+    Bs_string +=str(round(B,4)) + ' T' + ', '
+
+print('Magnetic fields:')
+
+print(Bs_string)
+
+print('Ground state:')
+
+JT_int_1 =  uw.spin_orbit_JT_procedure( cfg_file_data_folder + config_file_name_gnd)
+
+
+
+
+calculation_name = ZPL_cfg_parser.get_calculation_name()
 
 
 
@@ -50,28 +68,37 @@ M = [[0.7071 , -0.7071 , 0],
 
 M = np.matrix(M)
 
+M = maths.Matrix(M)
+
+
 
 
 for B in Bs:
 
-    B_comp_vec = np.transpose(np.matrix( [0,0,B] ))
+    B_comp_vec = maths.col_vector(np.transpose(np.matrix( [0,0,B] )))
     
     B = float(B)
+
+    B_field = M*B_comp_vec
 
     """
     Bx = 0.5*27.992*float(M[0,:]*B_comp_vec)*4.13567/1000
     By = 0.5*27.992*float(M[1,:]*B_comp_vec)*4.13567/1000
     Bz = 0.5*27.992*float(M[2,:]*B_comp_vec)*4.13567/1000
     """
-    Bx = float(M[0,:]*B_comp_vec)
-    By = float(M[1,:]*B_comp_vec)
-    Bz = float(M[2,:]*B_comp_vec)
+    """
+    Bx = float(np.matmul(M[0,:],B_comp_vec).tolist()[0][0])
+    By = float((np.matmul(M[1,:],B_comp_vec).tolist()[0][0]))
+    Bz = float((M[2,:]*B_comp_vec).tolist()[0][0])
+    """
+
+
+    JT_int_1.create_one_mode_DJT_hamiltonian()
+    JT_int_1.add_spin_orbit_coupling()
+    JT_int_1.add_magnetic_field(*B_field.tolist())
+    #JT_int_1.add_magnetic_field(Bx, By, Bz)
     
 
-    print(str(B) + 'T')
-    JT_int_1.create_one_mode_DJT_hamiltonian()
-    JT_int_1.add_spin_orbit_coupling()  
-    JT_int_1.add_magnetic_field(Bx, By, Bz)
 
     JT_int_1.H_int.calc_eigen_vals_vects()
     for i in range(0, 4):
@@ -81,6 +108,7 @@ for B in Bs:
 
 
 #config_file_name_ex = 'PbV_ex_JT_csv_config.cfg'
+print('Excited state')
 JT_int_2 =  uw.spin_orbit_JT_procedure( cfg_file_data_folder + config_file_name_ex)
 
 
@@ -89,17 +117,21 @@ JT_int_2 =  uw.spin_orbit_JT_procedure( cfg_file_data_folder + config_file_name_
 
 JT_int_2_Es = [[],[],[],[]]
 
-print('reduction factors:')
 
-print( 'p = ' + str(JT_int_2.p_factor) )
-print('delta = ' + str(JT_int_2.delta_p_factor))
 
 for B in Bs:
     B = float(B)
-    print(str(B) + 'T')
 
-    B_comp_vec = np.transpose(np.matrix( [0,0,B] ))
+
+    #B_comp_vec = np.transpose(np.matrix( [0,0,B] ))
+    B_comp_vec = maths.col_vector(np.transpose(np.matrix( [0,0,B] )))
     
+    B = float(B)
+
+    B_field = M*B_comp_vec
+
+
+
     B = float(B)
     
     """
@@ -107,13 +139,15 @@ for B in Bs:
     By = 0.5*27.992*float(M[1,:]*B_comp_vec)*4.13567/1000
     Bz = 0.5*27.992*float(M[2,:]*B_comp_vec)*4.13567/1000
     """
+    """
     Bx = float(M[0,:]*B_comp_vec)
     By = float(M[1,:]*B_comp_vec)
     Bz = float(M[2,:]*B_comp_vec)
+    """
 
     JT_int_2.create_one_mode_DJT_hamiltonian()
     JT_int_2.add_spin_orbit_coupling()  
-    JT_int_2.add_magnetic_field(Bx, By, Bz)
+    JT_int_2.add_magnetic_field(*B_field.tolist())
 
     JT_int_2.H_int.calc_eigen_vals_vects()
     for i in range(0, 4):

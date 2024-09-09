@@ -8,6 +8,7 @@ import utilities.matrix_formalism as mf
 import utilities.braket_formalism as bf
 import utilities.quantum_system as qs
 import utilities.xml_parser
+import utilities.user_workflow as uw
 import sys
 import utilities.JT_config_file_parsing as cfg_parser
 from scipy.constants import physical_constants
@@ -63,26 +64,26 @@ if arguments[-1] == '-save_raw_pars':
     save_raw_pars = True
     arguments.pop()
 
+
 JT_theory, symm_lattice, less_symm_lattice_1, less_symm_lattice_2 = JT_cfg_parser.build_JT_theory(data_folder)
 
 
 
 if save_raw_pars == True:
-    utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2], calc_name, data_folder)
+    utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2], calc_name, data_folder,JT_cfg_parser.config)
 
 
     #Calculate the parameters of Jahn-Teller theory
 
 
-print('Maximum number of energy quantums of vibrations in each direction:\n n = ' + str(order) )
-print('Energy of spin-orbit coupling:\n ' +'lambda = ' + str(intrinsic_so_coupling)  )
 
-print(JT_theory)
+#print('Energy of spin-orbit coupling:\n ' +'lambda = ' + str(intrinsic_so_coupling) + str(' meV')  )
+
 
 
 #Create quantum system tree graph:
 
-mode_1 = qmp.one_mode_phonon_sys(JT_theory.hw,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
+mode_1 = qmp.one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
 
 
 nuclei = qs.quantum_system_node('nuclei')#, children=[mode_1])
@@ -100,59 +101,6 @@ point_defect_tree.insert_node('nuclei', mode_1)
 JT_int = qmp.Exe_tree(point_defect_tree, JT_theory)
 JT_int.gL_factor = gl_factor
 
-JT_int.create_one_mode_DJT_hamiltonian()
-    
-eig_vec_file_name = calc_name + '_eigen_vectors_only_DJT.csv'
-eig_val_file_name = calc_name + '_eigen_values_only_DJT.csv'
-
-JT_int.save_eigen_vals_vects_to_file( res_folder+ eig_vec_file_name,res_folder+ eig_val_file_name)
-
-
-print('-------------------------------')
-
-print('Eigen values of the Jahn-Teller interaction')
-
-for x in JT_int.H_int.eigen_kets[0:10]:
-    print(str(round(x.eigen_val.real,4)) + ' meV') 
-
-
-print('-------------------------------')
-
-
-#print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
-
-
-
-ground_1 = JT_int.H_int.eigen_kets[0]
-
-ground_2 = JT_int.H_int.eigen_kets[1]
-
-
-    #2D degenrate ground state system spin-orbital perturbation
-
-deg_sys = mf.degenerate_system_2D( [ground_1,ground_2] )
-
-
-
-Sz = spin_sys.operators['Sz']
-
-Lz = orbital_system.operators['Lz']
-
-electron_system.operators['LzSz'] = Lz**Sz
-
-pert_ham_Lz = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='orbital_system' )
-
-pert_ham_LzSz = JT_int.system_tree.create_operator(operator_id = 'LzSz',operator_sys='electron_system')
-
-
-print('Reduction factor from first order perturbation:')
-
-deg_sys.add_perturbation(pert_ham_Lz)
-
-print('p = '+ str( round(deg_sys.p_red_fact,4)) )
-
-
-
 orbital_system.operators['Lz_normal'] = mf.MatrixOperator.pauli_z_mx_op()
 
 
@@ -161,10 +109,78 @@ Lz_point_def = point_defect_tree.create_operator(operator_id='Lz', operator_sys=
 JT_int.lambda_factor = intrinsic_so_coupling
 
 
+print(JT_int.get_essential_input_string())
+
+print('-------------------------------------------------')
+print('Maximum number of energy quantums of vibrations in each direction = ' + str(order) )
+
+print('-------------------------------------------------')
+print(JT_theory)
+
+
+if intrinsic_so_coupling==0.0:
+
+
+    JT_int.create_one_mode_DJT_hamiltonian()
+
+    eig_vec_file_name = calc_name + '_eigen_vectors_only_DJT.csv'
+    eig_val_file_name = calc_name + '_eigen_values_only_DJT.csv'
+
+    JT_int.save_eigen_vals_vects_to_file( res_folder+ eig_vec_file_name,res_folder+ eig_val_file_name)
+
+
+    print('-------------------------------')
+
+    print('Eigen values of the Jahn-Teller interaction')
+
+    for x in JT_int.H_int.eigen_kets[0:10]:
+        print(str(round(x.eigen_val.real,4)) + ' meV') 
+
+
+    print('-------------------------------')
+
+
+    #print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
+
+
+
+    ground_1 = JT_int.H_int.eigen_kets[0]
+
+    ground_2 = JT_int.H_int.eigen_kets[2]
+
+
+    #2D degenrate ground state system spin-orbital perturbation
+
+    deg_sys = mf.degenerate_system_2D( [ground_1,ground_2] )
+
+
+
+    Sz = spin_sys.operators['Sz']
+
+    Lz = orbital_system.operators['Lz']
+
+    electron_system.operators['LzSz'] = Lz**Sz
+
+    pert_ham_Lz = JT_int.system_tree.create_operator(operator_id = 'Lz',operator_sys='orbital_system' )
+
+    pert_ham_LzSz = JT_int.system_tree.create_operator(operator_id = 'LzSz',operator_sys='electron_system')
+
+
+    print('Reduction factor from first order perturbation:')
+
+    deg_sys.add_perturbation(pert_ham_Lz)
+
+    print('p = '+ str( round(deg_sys.p_red_fact,4)) )
+
+
+
+
+
+
 
 if intrinsic_so_coupling!=0.0:
 
-    print('intrinsic spin-orbit coupling = ' + str(intrinsic_so_coupling))
+
     #point_defect_tree.insert_node('electron_system', spin_sys)
 
 
@@ -176,16 +192,10 @@ if intrinsic_so_coupling!=0.0:
 
     JT_int.H_int.calc_eigen_vals_vects()
 
-    E_32 = JT_int.H_int.eigen_kets[2]
-    E_12 = JT_int.H_int.eigen_kets[0]
+    #print("K_JT expectation value:")
 
-    print("K_JT expectation value:")
-
-    K_JT_32 =  JT_int.H_int.calc_expected_val(E_32)
-    K_JT_12 =  JT_int.H_int.calc_expected_val(E_12)
-    JT_int.KJT_factor = K_JT_12-K_JT_32
-    print(JT_int.KJT_factor)
-
+    JT_int.calc_K_JT_factor()
+    #print(JT_int.KJT_factor)
 
 
     LzSz_op = JT_int.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
@@ -193,28 +203,21 @@ if intrinsic_so_coupling!=0.0:
     
 
 
-    p_32 = 2*LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[2])
-    p_12 = -2*LzSz_op.calc_expected_val(JT_int.H_int.eigen_kets[0])
 
+    JT_int.calc_reduction_factors()
 
+    print('-------------------------------------------------')
+    print(JT_int.get_essential_theoretical_results_string())
+    """
     print('p values after adding spin-orbit coupling to Hamiltonian')
 
-    print( "p3/2 = " + str( p_32 ))
-    print( "p1/2 = " + str( p_12 ))
-
-    p = (p_32+p_12)/2
-    delta = (p_32-p_12)/2
-
-    JT_int.p_factor = p
-
-    JT_int.f_factor = JT_int.gL_factor*JT_int.p_factor
-    JT_int.delta_p_factor =delta
-
+    print( "p3/2 = " + str( JT_int.p_32 ))
+    print( "p1/2 = " + str( JT_int.p_12 ))
 
     print('Ham reduction factor')
-    print("p = " + str( p ))
-    print( "delta = " + str(delta) )
-    
+    print("p = " + str( JT_int.p_factor ))
+    print( "delta_p = " + str(JT_int.delta_p_factor) )
+    """
     if LzSz_calc_num>0:
         state_names = [ 'eigenstate_' + str(i) for i in range(0, LzSz_calc_num) ]
         eigen_energies = [ x.eigen_val for x in JT_int.H_int.eigen_kets[0:LzSz_calc_num]]
@@ -230,7 +233,7 @@ if intrinsic_so_coupling!=0.0:
 
 
         plt.rcParams['font.size'] = 18
-        plt.title('PbV energy and spin-orbit coupling \n expectation value')
+        plt.title('Spin-orbit coupling \n expectation value')
         plt.xlabel(r'$\left< L_{z} \otimes S_{z} \right>$')
         plt.ylabel(r'Energy (meV)')
         plt.plot( LzSz_expected_vals, eigen_energies , 'x')
@@ -239,7 +242,7 @@ if intrinsic_so_coupling!=0.0:
         
         plt.grid()
         plt.show()
-    
+    """
     print('-------------------------------')
 
 
@@ -248,6 +251,7 @@ if intrinsic_so_coupling!=0.0:
 
 
     print('-------------------------------')
+    """
 
 
 
@@ -258,13 +262,15 @@ if intrinsic_so_coupling!=0.0 and(Bz!=0.0 or Bx!= 0.0 or By != 0.0):
 
     JT_int.H_int.calc_eigen_vals_vects()
 
+    JT_int.calc_reduction_factors()
+
     print('p Ham reduction factor')
 
-    print( 'lambda_0 = ' + str(round((JT_int.H_int.eigen_kets[2].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
+    print( 'lambda_0 = ' + str(JT_int.p_factor) + ' meV')
 
 
 
-
+"""
 if E_x !=0.0 or E_y != 0.0:
 
     #JT_int.create_one_mode_hamiltonian()
@@ -280,9 +286,9 @@ if E_x !=0.0 or E_y != 0.0:
     else:
         print( 'lambda_0 = ' + str(round((JT_int.H_int.eigen_kets[3].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
 
-
-eig_vec_file_name = calc_name + '_eigen_vectors_interaction.csv'
-eig_val_file_name = calc_name + '_eigen_values_interaction.csv'
+"""
+eig_vec_file_name = calc_name + '_eigen_vectors.csv'
+eig_val_file_name = calc_name + '_eigen_values.csv'
 
 JT_int.save_eigen_vals_vects_to_file(res_folder + eig_vec_file_name,res_folder+eig_val_file_name)
 
@@ -291,10 +297,24 @@ JT_int.save_eigen_vals_vects_to_file(res_folder + eig_vec_file_name,res_folder+e
 
 
 
-essential_data_res = JT_int.get_essential_data()
+essential_data_res = JT_int.get_essential_theoretical_results()
+essential_data_res['calculation name'] = [calc_name]
 
-essential_data_res['intrinsic spin-orbit coupling (eV)'] = [intrinsic_so_coupling]
+ess_data_df = pd.DataFrame(essential_data_res).set_index('calculation name')
 
-ess_data_df = pd.DataFrame(essential_data_res).set_index('intrinsic spin-orbit coupling (eV)')
+ess_data_df.to_csv(res_folder + calc_name+'_DJT_pars_and_theoretical_results.csv',sep = ';')
 
-ess_data_df.to_csv(res_folder + calc_name+'_essential_data.csv',sep = ';')
+input_data_res = JT_int.get_essential_input()
+
+
+input_data_res['calculation name'] = [calc_name]
+
+
+input_data_df = pd.DataFrame(input_data_res).set_index('calculation name')
+
+input_data_df.to_csv(res_folder + calc_name +'_essential_input.csv')
+
+
+
+#uw.plot_2D_APES(JT_int.JT_theory)
+

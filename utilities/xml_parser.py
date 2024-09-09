@@ -3,7 +3,13 @@ import utilities.VASP as V
 import pandas as pd
 from configparser import ConfigParser
 
-def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder):
+
+"""
+def save_cfg_for_csv(xml_cfg:ConfigParser):
+    xml_cfg.remove_section('vasprun.xml_files')
+"""
+
+def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder, xml_cfg:ConfigParser):
     
 
 
@@ -13,24 +19,40 @@ def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder)
 
 #symm_lattice = VASP.Lattice().read_from_coordinates_dataframe('symm_latt.csv',{'Sn': 16, 'C': 12})
 
-    df =  symm_lattice.to_coordinates_data_frame()
-    df.to_csv(data_folder +   problem_name+'_symmetric_lattice.csv')
+    xml_cfg.remove_section('vasprun.xml_files')
+    xml_cfg.add_section('.csv_files')
+    
+    csv_files = {}
 
+
+    df =  symm_lattice.to_coordinates_data_frame()
+    symm_latt_geom_filename = problem_name+'_symmetric_lattice.csv'
+    df.to_csv(data_folder +   symm_latt_geom_filename)
+    csv_files['symmetric_lattice'] = symm_latt_geom_filename
+
+    
 
 
     less_symm_lattice_1 = lattices[1]
-
+    less_symm_latt_geom_filename_1 = problem_name+'_JT_lattice.csv'
     df =  less_symm_lattice_1.to_coordinates_data_frame()
-    df.to_csv(data_folder + problem_name+'_JT_lattice.csv')
+    df.to_csv(data_folder + less_symm_latt_geom_filename_1)
+    csv_files['Jahn-Teller_lattice'] = less_symm_latt_geom_filename_1
 
 
     if lattices[-1]!=None:
         less_symm_lattice_2 = lattices[2]
 
         df =  less_symm_lattice_2.to_coordinates_data_frame()
-        df.to_csv( data_folder + problem_name + '_barrier_lattice.csv')
+        barrier_lattice_filename = problem_name + '_barrier_lattice.csv'
+        df.to_csv( data_folder + barrier_lattice_filename)
+        csv_files['barrier_lattice'] = barrier_lattice_filename
+
     else:
         less_symm_lattice_2=None
+
+
+
 
     """
     par_dict = {}
@@ -102,9 +124,16 @@ def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder)
     'basis_vector_3_y' : symm_lattice.ions_arr[0].basis_vecs[2].y,
     'basis_vector_3_z' : symm_lattice.ions_arr[0].basis_vecs[2].z}
 
+
+    at_pars_filename  = problem_name + '_atom_parameters.cfg'
+    csv_files['atom_parameters'] = at_pars_filename
     with open( data_folder +  problem_name+'_atom_parameters.cfg', 'w') as conf:
         par_cfg.write(conf)
 
+    xml_cfg['.csv_files'] = csv_files
+
+    with open( data_folder +  problem_name+'_csv.cfg', 'w') as xml_conf:
+        xml_cfg.write(xml_conf)
 
 
 

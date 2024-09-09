@@ -96,11 +96,29 @@ class ZPL_config_parser:
         return int(self.get_option_of_field('magnetic_field', 'step_num'))
 
 
+#Fields:
+default_field = 'DEFAULT'
+so_c_field = 'spin_orbit_coupling'
+mag_field = 'magnetic_field'
+csv_field = '.csv_files'
+xml_field = 'vasprun.xml_files'
+el_field = 'electric_field'
+#Options:
+at_pat_opt = 'atom_parameters'
+out_folder_opt = 'results_folder'
+in_folder_opt  = 'data_folder'
+LzSz_spectrum_opt = 'calc_LzSz'
+orb_red_fact_op = 'orbital_reduction_factor'
+calc_name_opt = 'calculation_name'
+int_soc_opt = 'intrinsic_spin-orbit_coupling'
+symm_latt_opt = 'symmetric_lattice'
+JT_latt_opt = 'Jahn-Teller_lattice'
+barr_latt_opt = 'barrier_lattice'
 class Jahn_Teller_config_parser:
 
     def get_res_folder_name(self):
-        if self.config.has_option('DEFAULT', 'results_folder'):
-            return str(self.config['DEFAULT']['results_folder']) + '/'
+        if self.config.has_option(default_field, out_folder_opt):
+            return str(self.config[default_field][out_folder_opt]) + '/'
         else:
             return str('')
     
@@ -112,36 +130,36 @@ class Jahn_Teller_config_parser:
             return str('')
 
     def get_LzSz_exp_val_num(self):
-        res_str = self.get_option_of_field('spin_orbit_coupling','calc_LzSz')
+        res_str = self.get_option_of_field(so_c_field,LzSz_spectrum_opt)
         return int(res_str) if res_str!='' else 0
 
     def get_gL_factor(self):
-        res_str = self.get_option_of_field('spin_orbit_coupling','orbital_reduction_factor')
+        res_str = self.get_option_of_field(so_c_field,orb_red_fact_op)
         return int(res_str) if res_str!='' else 0
 
 
     def get_data_folder_name(self):
-        if self.config.has_option('DEFAULT', 'data_folder'):
-            return str(self.config['DEFAULT']['data_folder']) + '/'
+        if self.config.has_option(default_field, in_folder_opt):
+            return str(self.config[default_field][in_folder_opt]) + '/'
         else:
             return str('')
         
 
     def get_problem_name(self):
-        if self.config.has_option('DEFAULT','calculation_name'):
-            return str(self.config['DEFAULT']['calculation_name'] )
+        if self.config.has_option(default_field,calc_name_opt):
+            return str(self.config[default_field][calc_name_opt] )
         else:
             return str('')
 
     def get_electric_field(self):
-        if self.config.has_section('electric_field'):
-            return float(self.config['electric_field']['E_x'] if self.config.has_option('electric_field', 'E_x') else 0.0), float(self.config['electric_field']['E_y'] if self.config.has_option('electric_field', 'E_y') else 0.0)
+        if self.config.has_section(el_field):
+            return float(self.config[el_field]['E_x'] if self.config.has_option('electric_field', 'E_x') else 0.0), float(self.config['electric_field']['E_y'] if self.config.has_option('electric_field', 'E_y') else 0.0)
         else:
             return 0.0,0.0
     
     def get_magnetic_field(self):
-        if self.config.has_section('magnetic_field'):
-            return float(self.config['magnetic_field']['B_x'] if self.config.has_option('magnetic_field', 'B_x') else 0.0),float(self.config['magnetic_field']['B_y'] if self.config.has_option('magnetic_field', 'B_y') else 0.0), float(self.config['magnetic_field']['B_z'] if self.config.has_option('magnetic_field', 'B_z') else 0.0)
+        if self.config.has_section(mag_field):
+            return float(self.config[mag_field]['B_x'] if self.config.has_option(mag_field, 'B_x') else 0.0),float(self.config[mag_field]['B_y'] if self.config.has_option(mag_field, 'B_y') else 0.0), float(self.config[mag_field]['B_z'] if self.config.has_option(mag_field, 'B_z') else 0.0)
         else:
             return 0.0,0.0, 0.0
     """
@@ -157,41 +175,46 @@ class Jahn_Teller_config_parser:
         self.config.read_string(config_string)
 
     def get_spin_orbit_coupling(self):
-        return float(self.config['spin_orbit_coupling']['intrinsic_spin-orbit_coupling'] if self.config.has_section('spin_orbit_coupling') else 0.0)
+        return float(self.config[so_c_field][int_soc_opt] if self.config.has_section(so_c_field) else 0.0)
 
     def get_gL_factor(self):
-        return float(self.config['spin_orbit_coupling']['orbital_reduction_factor'] if self.config.has_section('spin_orbit_coupling') else 0.0)
+        return float(self.config[so_c_field][orb_red_fact_op] if self.config.has_section(so_c_field) else 0.0)
 
 
     def get_order(self):
         return int(self.config['DEFAULT']['order'] if self.config.has_option('DEFAULT', 'order') else 12)
 
+
+    def build_JT_theory_new(self, data_folder_name):
+        pass
+
+
     def build_JT_theory(self, data_folder_name):
         filenames = []
-        if self.config.has_section('vasprun.xml_files'):
-            if self.config.has_option('vasprun.xml_files','symmetric_lattice'):
-                filenames.append(data_folder_name + self.config['vasprun.xml_files']['symmetric_lattice'])
+        if self.config.has_section(xml_field):
+            if self.config.has_option(xml_field,symm_latt_opt):
+                filenames.append(data_folder_name + self.config[xml_field][symm_latt_opt])
 
-            if self.config.has_option('vasprun.xml_files','Jahn-Teller_lattice'):
-                filenames.append(data_folder_name + self.config['vasprun.xml_files']['Jahn-Teller_lattice'])
+            if self.config.has_option(xml_field,JT_latt_opt):
+                filenames.append(data_folder_name + self.config[xml_field][JT_latt_opt])
             
-            if self.config.has_option('vasprun.xml_files','barrier_lattice'):
-                filenames.append(data_folder_name + self.config['vasprun.xml_files']['barrier_lattice'])
+            if self.config.has_option(xml_field,barr_latt_opt):
+                filenames.append(data_folder_name + self.config[xml_field][barr_latt_opt])
         
             return jt.Jahn_Teller_Theory.build_jt_theory_from_vasprunxmls(filenames)
 
-        elif self.config.has_section('.csv_files'):
-            if self.config.has_option('.csv_files', 'atom_parameters'):
-                filenames.append(data_folder_name + self.config['.csv_files']['atom_parameters'])
+        elif self.config.has_section(csv_field):
+            if self.config.has_option(csv_field,at_pat_opt ):
+                filenames.append(data_folder_name + self.config[csv_field][at_pat_opt])
 
-            if self.config.has_option('.csv_files','symmetric_lattice'):
-                filenames.append(data_folder_name + self.config['.csv_files']['symmetric_lattice'])
+            if self.config.has_option(csv_field,symm_latt_opt):
+                filenames.append(data_folder_name + self.config[csv_field][symm_latt_opt])
 
-            if self.config.has_option('.csv_files','Jahn-Teller_lattice'):
-                filenames.append(data_folder_name + self.config['.csv_files']['Jahn-Teller_lattice'])
+            if self.config.has_option(csv_field,JT_latt_opt):
+                filenames.append(data_folder_name + self.config[csv_field][JT_latt_opt])
             
-            if self.config.has_option('.csv_files','barrier_lattice'):
-                filenames.append(data_folder_name + self.config['.csv_files']['barrier_lattice'])
+            if self.config.has_option(csv_field,barr_latt_opt):
+                filenames.append(data_folder_name + self.config[csv_field][barr_latt_opt])
 
             return jt.Jahn_Teller_Theory.build_jt_theory_from_csv(filenames)
         

@@ -1,6 +1,154 @@
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.linalg import eig as eigs
+from scipy.ndimage.filters import minimum_filter
+import matplotlib.pyplot as plt
+import pandas as pd
+from numba import njit
+class APES_second_order:
+
+    F:float
+    K:float
+    G:float
+
+
+    def from_pars(K,F,G):
+        new_apes = APES_second_order()
+        new_apes.K = K
+        new_apes.F = F
+        new_apes.G = G
+        return new_apes
+    
+    def calc_apes_plus(self, rho, phi):
+        return 0.5*self.K*rho**2 + rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
+        #return + rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
+
+    def calc_apes_negativ(self, rho, phi):
+        return 0.5*self.K*rho**2 - rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
+        #return  - rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
+
+    def calc_sec_order_potential(self, x,y):
+        return self.F*(x -y) + self.G*(x**2 - y**2 +2*x*y)
+
+    def calc_full_potential(self, xs,ys):
+        
+        data_mx = np.zeros((len(xs), len(ys)))
+        for i in range(0, len(xs)):
+            for j in range(0, len(ys)):
+                x = xs[i]
+                y = ys[j]
+
+                data_mx[i][j] = self.calc_sec_order_potential(x,y)
+
+        res_df =  pd.DataFrame(data_mx,index = ys, columns =xs)
+        
+        return res_df
+
+    def calc_APES(self, xs,ys):
+        data_mx = np.zeros((len(xs), len(ys)))
+        for i in range(0, len(xs)):
+            for j in range(0, len(ys)):
+                x = xs[i]
+                y = ys[j]
+
+                rho = (x**2+ y**2)**0.5
+
+
+                theta = np.arccos(x/rho) if rho!=0.0 else 0.0
+
+                e_plus = self.calc_apes_plus(rho, theta)
+                e_neg = self.calc_apes_negativ(rho, theta)
+
+                data_mx[i][j] = e_plus if e_plus<e_neg else e_neg
+
+        res_df =  pd.DataFrame(data_mx,index = ys, columns =xs)
+        
+        res_df.to_csv('APES_1_.csv')
+        return res_df, data_mx
+
+    def calc_full_apes_negativ_Descartes(self, xs, ys):
+
+        
+        data_mx = np.zeros((len(xs), len(ys)))
+        for i in range(0, len(xs)):
+            for j in range(0, len(ys)):
+                x = xs[i]
+                y = ys[j]
+
+                rho = (x**2+ y**2)**0.5
+
+
+                theta = np.arccos(x/rho) if rho!=0.0 else 0.0
+
+                data_mx[i][j] = self.calc_apes_negativ(rho, theta)
+
+        res_df =  pd.DataFrame(data_mx,index = ys, columns =xs)
+        
+        res_df.to_csv('APES_1_.csv')
+        return res_df, data_mx
+
+
+    def calc_full_apes_plus_Descartes(self, xs, ys):
+
+        
+        data_mx = np.zeros((len(xs), len(ys)))
+        for i in range(0, len(xs)):
+            for j in range(0, len(ys)):
+                x = xs[i]
+                y = ys[j]
+
+                rho = (x**2+ y**2)**0.5
+
+
+                theta = np.arccos(x/rho) if rho!=0.0 else 0.0
+
+                data_mx[i][j] = self.calc_apes_plus(rho, theta)
+
+        res_df =  pd.DataFrame(data_mx,index = ys, columns =xs)
+        
+        res_df.to_csv('APES_1_.csv')
+        return res_df, data_mx
+
+
+    def plot_polar_contour(values, zeniths ,azimuths):
+
+        theta = np.radians(azimuths)
+        #theta = azimuths
+        zeniths = np.array(zeniths)
+    
+        values = np.array(values)
+        values = values.reshape(len(azimuths), len(zeniths))
+    
+        r, theta = np.meshgrid(zeniths, np.radians(azimuths))
+        fig, ax = plt.subplots(subplot_kw=dict(projection='polar'))
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        plt.autumn()
+        cax = ax.contourf(theta, r, values, 30,cmap='jet')
+        cax.changed()
+        plt.autumn()
+        cb = fig.colorbar(cax)
+        cb.set_label("Pixel reflectance")
+        #plt.plot()
+        return fig, ax, cax
+
+
+
+def get_loc_min_indexes(data):
+    minima = (data == minimum_filter(data, 3, mode='constant', cval=0.0))
+    # print(data)
+    # print(minima)
+
+    print('min: \n'  +str(minima))
+    res = np.where(1 == minima)
+    
+    fmt_res = []
+
+    for i, j in zip(res[0], res[1]):
+        fmt_res.append((i,j))
+
+    return fmt_res
+
 
 def isFloat(s):
    try:
@@ -45,7 +193,10 @@ class col_vector:
         return col_vector(np.round(self.coeffs,dig))
 
     def tolist(self):
-        return self.coeffs.tolist()
+
+        flatten_coeffs = np.reshape(self.coeffs,(len(self.coeffs)))
+        return flatten_coeffs.tolist()[0]
+        #return self.coeffs.tolist()
 
     def zeros(dim):
         matrix = np.matrix(np.zeros(shape=( dim, 1 )), dtype=complex_number_typ)
@@ -123,6 +274,49 @@ class col_vector:
     
 
 class row_vector:
+
+
+
+
+    def __mul__(self, other):
+        if type(other) is row_vector:
+            return Matrix(np.matmul(self.coeffs,other.coeffs))
+        elif (type(other) is complex) or (type(other) is float):
+            return col_vector(self.coeffs* other)
+
+
+
+
+    def __rmul__(self, other):
+
+        return self*other
+
+    def __truediv__(self, other):
+        return col_vector(self.coeffs/other)
+
+    def __add__(self, other):
+        return col_vector(self.coeffs + other.coeffs)
+
+    def __radd__(self, other):
+        return self+ other
+
+    def __sub__(self, other):
+        return col_vector(self.coeffs-other.coeffs)
+
+    def __rsub__(self, other):
+        return self-other
+    
+    def __abs__(self):
+        magnitude = 0.0
+        for coeff in self.coeffs:
+            magnitude+=abs(coeff)**2
+        return float(magnitude**0.5)
+    
+    def extend(self, l:list):
+        old_coeffs_list = self.tolist()
+        new_coeffs_list = old_coeffs_list + l
+        return row_vector( np.matrix([ new_coeffs_list ]) )
+
     def set_val(self, index, val):
         self.coeffs[0, index] = val
     def __init__(self,coeffs:np.matrix):
@@ -152,6 +346,23 @@ class row_vector:
         return str(self.coeffs)
     def __getitem__(self, key):
         return self.coeffs[0][key]
+    
+    def tolist(self):
+        return self.coeffs.tolist()[0]
+    
+    def __eq__(self,other):
+        return self.coeffs.tolist()==other.coeffs.tolist()
+        #return np.array_equal(self.coeffs, other.coeffs)
+
+    def norm_square(self, to_index = None):
+        coeffs_list = self.tolist()
+        if to_index is None:
+            to_index = len(coeffs_list)
+        res = 0.0
+        for coeff in coeffs_list[0:to_index]:
+            res+= abs(coeff)**2
+        
+        return res
 
 class Matrix:
     
@@ -294,3 +505,94 @@ class Matrix:
         return Matrix(matrix)
     def save_text(self, filename):
         np.savetxt(filename, self.matrix)
+
+
+class numeric_function:
+    def __init__(self, input_data:np.matrix, val_data:np.ndarray, equidistant = True ):
+        self.input_data = input_data
+        self.val_data = val_data
+        self.equidistant = equidistant
+        self.dxs = [  abs(xs[1]-xs[0]) for xs in self.input_data   ] if equidistant==True else None
+
+    
+    def get_gradient(self):
+
+        first_gradient = np.gradient(self.val_data, *self.dxs)
+        return [numeric_function(self.input_data, first_gradient_i,equidistant=self.equidistant) for first_gradient_i in first_gradient] 
+
+    def get_extreme_points(self, precision = 0.1):
+        first_gradients = self.get_gradient()
+
+
+
+
+        # Get extreme points in each dir
+        loc_min_xi_indexes = [ np.where(precision>abs( first_grad_i.val_data )) for first_grad_i in first_gradients ]
+        
+        extr_points_ij = []
+
+    
+        for loc_min_i, i in zip(loc_min_xi_indexes , range(len(loc_min_xi_indexes)) ):
+            extr_points_ij.append([])
+            index_coords = np.matrix( loc_min_i ).transpose()
+            for index_coord,j in zip(index_coords, range(0,len(index_coords))):
+                extr_points_ij[i].append( row_vector(index_coord))
+
+
+
+        #Consider the gradients according to the first variable
+        #Evaluate the gradients according to different variables as well
+        extrenum_points = []
+        for ext_points_0j in extr_points_ij[0]:
+            is_extr_point = True
+            for grad_i in first_gradients:
+                if abs(grad_i.get_value(tuple(ext_points_0j.tolist())))<precision:
+                    is_extr_point=True
+                else:
+                    is_extr_point=False
+                    break
+            
+            if is_extr_point == True:
+                extrenum_points.append(ext_points_0j)
+
+
+        # Consider the gradients according to the first variable
+        # Is it an extrenum point everywhere else?
+        """
+        extrenum_points = []
+
+        for ext_points_0j in extr_points_ij[0]:
+
+            in_it = True
+
+            for extr_points_i in extr_points_ij[1:]:
+                if ext_points_0j in extr_points_i:
+                    in_it = True
+                else:
+                    in_it = False
+                    break
+            
+            extrenum_points.append(ext_points_0j) if in_it is True else None
+        """
+        return [ self.transform_row_vec_to_point(ext_point) for ext_point in extrenum_points]
+
+
+
+    def get_value(self, indexes:tuple):
+        return self.val_data[indexes]
+
+    def transform_row_vec_to_point(self, row_vec:row_vector):
+        new_coords=  []
+
+        indexes = row_vec.tolist()
+
+        
+
+        for ind, axis_val in zip(indexes, self.input_data):
+            new_coords.append( axis_val[ind]  )
+        
+        val_in_point = [self.get_value(tuple(indexes))]
+
+        new_coords+=val_in_point
+
+        return row_vector(np.matrix(new_coords))
