@@ -176,6 +176,26 @@ def equal_matrix(a:np.matrix, b:np.matrix):
 
 class col_vector:
 
+
+    def basis_trf(self,new_bases:list):
+        new_bases_row_vectors = [ new_base.to_row_vector() for new_base in new_bases  ]
+        basis_trf_mx =  Matrix.from_row_vectors(new_bases_row_vectors)
+        return basis_trf_mx*self
+
+    def length(self):
+        coeffs = self.tolist()
+        res = 0.0
+        for coeff in coeffs:
+            res+=abs(coeff)**2
+        return res**0.5
+
+    def normalize(self):
+        return (1/self.length())*self
+
+    def from_list(coeff_list):
+        coeffs_mx = np.matrix([coeff_list]).transpose()
+        return col_vector(coeffs_mx)
+
     def from_file(file_name):
         coeffs = np.loadtxt(file_name)
         return col_vector(np.transpose(np.matrix(coeffs)))
@@ -209,7 +229,10 @@ class col_vector:
 
     def __eq__(self,other):
         #return np.array_equal(self.coeffs , other.coeffs)
-        return equal_matrix(self.coeffs, other.coeffs)
+        if other==None:
+            return False
+        else:
+            return equal_matrix(self.coeffs, other.coeffs)
 
     def __init__(self,coeffs:np.matrix):
         if coeffs.shape[1]==1:

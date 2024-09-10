@@ -8,7 +8,7 @@ import copy
 import pandas as pd
 from io import StringIO
 from typing import List
-
+import utilities.maths as maths
 #Coordinate = collections.namedtuple('Coordinate', 'x y z')
 
 Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom', 'less_symm_geom_1', 'less_symm_geom_2', 'symm_geom_energy', 'less_symm' ])
@@ -16,6 +16,10 @@ Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom',
 
 
 class Vector:
+
+    def tolist(self):
+        return [ self.x, self.y, self.z ]
+
     def __init__(self, x, y, z ):
         self.x = x
         self.y= y
@@ -173,7 +177,8 @@ class Ions:
         return len(self)<= len(other)
 
 class Lattice:
-    def __init__(self, energy = None,cell_x=1.0, cell_y=1.0, cell_z=1.0):
+    def __init__(self, energy=None ,basis_vecs = None):
+        self.basis_vecs = basis_vecs
         #self.ions_arr = list[Ions]
         self.ions_arr: List[Ions] = []
         self.energy = energy
@@ -270,7 +275,8 @@ class Lattice:
 
             ion_arr._vecs.append(Vector(x,y,z))
         """
-        lattice = Lattice(energy=energy)
+
+        lattice = Lattice(energy, [ maths.col_vector.from_list(b.tolist()) for b in basis_vecs ] )
         lattice.ions_arr =  ions_arr
 
         return lattice

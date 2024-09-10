@@ -14,6 +14,9 @@ import utilities.JT_config_file_parsing as cfg_parser
 from scipy.constants import physical_constants
 import pandas as pd
 import warnings
+
+eig_state_prefix = 'eigen_state_'
+mag_field_label = 'magnetic field (T)'
 warnings.simplefilter("ignore", np.ComplexWarning)
 
 # Create the symm electron system
@@ -26,7 +29,10 @@ orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
 
 spin_sys = qs.quantum_system_node.create_spin_system_node()
 
-electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
+#electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
+
+electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
+
 
 spatial_dim = 2
 
@@ -35,6 +41,11 @@ JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser(str(sys.argv[1]))
 
 
 # Get data from config file
+
+
+JT_cfg_parser.read_mag_field()
+
+JT_cfg_parser.get_mag_field_dir()
 
 order  = JT_cfg_parser.get_order()
 calc_name = JT_cfg_parser.get_problem_name()
@@ -112,7 +123,7 @@ JT_int.lambda_factor = intrinsic_so_coupling
 print(JT_int.get_essential_input_string())
 
 print('-------------------------------------------------')
-print('Maximum number of energy quantums of vibrations in each direction = ' + str(order) )
+print('Maximum number of energy quanta of vibrations in each direction = ' + str(order) )
 
 print('-------------------------------------------------')
 print(JT_theory)
@@ -129,16 +140,6 @@ if intrinsic_so_coupling==0.0:
     JT_int.save_eigen_vals_vects_to_file( res_folder+ eig_vec_file_name,res_folder+ eig_val_file_name)
 
 
-    print('-------------------------------')
-
-    print('Eigen values of the Jahn-Teller interaction')
-
-    for x in JT_int.H_int.eigen_kets[0:10]:
-        print(str(round(x.eigen_val.real,4)) + ' meV') 
-
-
-    print('-------------------------------')
-
 
     #print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
 
@@ -146,7 +147,7 @@ if intrinsic_so_coupling==0.0:
 
     ground_1 = JT_int.H_int.eigen_kets[0]
 
-    ground_2 = JT_int.H_int.eigen_kets[2]
+    ground_2 = JT_int.H_int.eigen_kets[1]
 
 
     #2D degenrate ground state system spin-orbital perturbation
@@ -170,18 +171,21 @@ if intrinsic_so_coupling==0.0:
 
     deg_sys.add_perturbation(pert_ham_Lz)
 
-    print('p = '+ str( round(deg_sys.p_red_fact,4)) )
+    Ham_red_fact = deg_sys.p_red_fact
 
+    print('p = '+ str( round(Ham_red_fact,4)) )
 
+    JT_int.p_factor = Ham_red_fact
 
-
+    
+    
 
 
 
 if intrinsic_so_coupling!=0.0:
 
 
-    #point_defect_tree.insert_node('electron_system', spin_sys)
+    point_defect_tree.insert_node('electron_system', spin_sys)
 
 
 
@@ -242,6 +246,14 @@ if intrinsic_so_coupling!=0.0:
         
         plt.grid()
         plt.show()
+    
+    essential_data_res = JT_int.get_essential_theoretical_results()
+    essential_data_res['calculation name'] = [calc_name]
+
+    ess_data_df = pd.DataFrame(essential_data_res).set_index('calculation name')
+
+    ess_data_df.to_csv(res_folder + calc_name+'_DJT_pars_and_theoretical_results.csv',sep = ';')
+
     """
     print('-------------------------------')
 
@@ -254,7 +266,7 @@ if intrinsic_so_coupling!=0.0:
     """
 
 
-
+"""
 if intrinsic_so_coupling!=0.0 and(Bz!=0.0 or Bx!= 0.0 or By != 0.0):
 
 
@@ -264,29 +276,70 @@ if intrinsic_so_coupling!=0.0 and(Bz!=0.0 or Bx!= 0.0 or By != 0.0):
 
     JT_int.calc_reduction_factors()
 
-    print('p Ham reduction factor')
-
-    print( 'lambda_0 = ' + str(JT_int.p_factor) + ' meV')
-
-
 
 """
-if E_x !=0.0 or E_y != 0.0:
 
-    #JT_int.create_one_mode_hamiltonian()
+if intrinsic_so_coupling!=0.0 and JT_cfg_parser.mag_dir_vec!=None and len(JT_cfg_parser.mag_field_strengths)!=0:
+    
+    num_of_eigen_vals =  JT_int.system_tree.root_node.dim
 
-    JT_int.add_electric_field(E_x, E_y)
-    JT_int.H_int.calc_eigen_vals_vects()
-    print('-------------------------------')
 
-    print('q Ham reduction factor')
 
-    if JT_int.system_tree.find_subsystem('spin_system') == None:
-        print( 'lambda_0 = ' + str(round((JT_int.H_int.eigen_kets[1].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
-    else:
-        print( 'lambda_0 = ' + str(round((JT_int.H_int.eigen_kets[3].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
+    mag_field_res_dict = {  eig_state_prefix+str(i):[] for i in range( 1, num_of_eigen_vals+1 ) }
+    mag_field_res_dict[mag_field_label] = JT_cfg_parser.mag_field_strengths
+    
+    dir_vec:maths.col_vector = JT_cfg_parser.mag_dir_vec
+    
+    dir_vec_in_bases = dir_vec.basis_trf(symm_lattice.basis_vecs)
 
-"""
+    Bs= JT_cfg_parser.mag_field_strengths
+
+    print('------------------------------------------------')
+    print('Calculate magnetic field')
+    print('magnetic field direction vector:')
+    print(dir_vec)
+    print('magnetic field strengths (T):')
+    mag_field_str = ''
+    for B in Bs:
+        mag_field_str+=str(B) + ', '
+    print( mag_field_str)
+
+    for B in Bs:
+
+        B_field = B*dir_vec
+
+        JT_int.create_one_mode_DJT_hamiltonian()
+        JT_int.add_spin_orbit_coupling()
+        JT_int.add_magnetic_field(*B_field.tolist())
+    
+
+
+        JT_int.H_int.calc_eigen_vals_vects()
+
+
+        for i in range(0, num_of_eigen_vals):
+            ket_i:mf.ket_vector =  JT_int.H_int.eigen_kets[i]
+            eig_val = round(ket_i.eigen_val,4)
+            mag_field_res_dict[ eig_state_prefix + str(i+1) ].append(eig_val)
+
+
+    plt.rcParams['font.size'] = 20
+
+    for i in range(0, 2):
+
+        plt.plot(Bs, mag_field_res_dict[eig_state_prefix+str(i+1)], 'x')
+
+
+    res_df = pd.DataFrame(mag_field_res_dict).set_index('magnetic field (T)')
+    res_df.to_csv(res_folder + calc_name + '_magnetic_field_dependence.csv')
+
+    plt.xlabel('Magnetic field (T)')
+    plt.ylabel('energy (meV)')
+    plt.title( 'Splitting of the lowest eigen energy' )
+    plt.show()
+
+
+
 eig_vec_file_name = calc_name + '_eigen_vectors.csv'
 eig_val_file_name = calc_name + '_eigen_values.csv'
 
@@ -297,12 +350,6 @@ JT_int.save_eigen_vals_vects_to_file(res_folder + eig_vec_file_name,res_folder+e
 
 
 
-essential_data_res = JT_int.get_essential_theoretical_results()
-essential_data_res['calculation name'] = [calc_name]
-
-ess_data_df = pd.DataFrame(essential_data_res).set_index('calculation name')
-
-ess_data_df.to_csv(res_folder + calc_name+'_DJT_pars_and_theoretical_results.csv',sep = ';')
 
 input_data_res = JT_int.get_essential_input()
 
@@ -314,7 +361,4 @@ input_data_df = pd.DataFrame(input_data_res).set_index('calculation name')
 
 input_data_df.to_csv(res_folder + calc_name +'_essential_input.csv')
 
-
-
-#uw.plot_2D_APES(JT_int.JT_theory)
 

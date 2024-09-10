@@ -2,7 +2,7 @@ import xml.dom.minidom
 import utilities.VASP as V
 import pandas as pd
 from configparser import ConfigParser
-
+import utilities.maths as maths
 
 """
 def save_cfg_for_csv(xml_cfg:ConfigParser):
@@ -172,8 +172,8 @@ class xml_parser:
                 ion_pos_vecs.append(next(position_vecs_iterator))
             
             ions_arr.append(V.Ions( name=ion_name, vecs=ion_pos_vecs, m = ion_mass, cell_x = self.basis_vecs[0].x,cell_y = self.basis_vecs[0].y,cell_z = self.basis_vecs[0].z , basis_vecs=self.basis_vecs ))
-        
-        self.lattice = V.Lattice(energy = self.lattice_energy,cell_x=self.basis_vecs[0].x,cell_y=self.basis_vecs[1].y,cell_z=self.basis_vecs[2].z)
+        basis_col_vecs = [ maths.col_vector.from_list(basis_vec.tolist() ) for basis_vec in self.basis_vecs ]
+        self.lattice = V.Lattice(self.lattice_energy,basis_col_vecs)
         self.lattice.ions_arr = ions_arr
 
 

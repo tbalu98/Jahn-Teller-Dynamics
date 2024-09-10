@@ -1,7 +1,8 @@
 from configparser import ConfigParser
 import utilities.jahn_teller_theory as jt
 import utilities.VASP as V
-
+import utilities.maths as maths
+import numpy as np
 class Atom_config_parser:
     def __init__(self, config_file_name):
         config_file = open(config_file_name,'r')
@@ -114,7 +115,43 @@ int_soc_opt = 'intrinsic_spin-orbit_coupling'
 symm_latt_opt = 'symmetric_lattice'
 JT_latt_opt = 'Jahn-Teller_lattice'
 barr_latt_opt = 'barrier_lattice'
+dir_opt = 'direction vector'
+from_opt = 'from'
+to_opt = 'to'
+step_num_opt = 'step number'
+max_vib_quant = 'maximum number of vibrational quanta'
 class Jahn_Teller_config_parser:
+
+
+    def read_mag_field(self):
+        if self.config.has_section(mag_field):
+            self.get_mag_field_dir()
+            self.get_mag_fields_list()
+        else:
+            self.mag_dir_vec = None
+            self.mag_field_strengths = None
+
+    def get_mag_field_dir(self):
+        dir_str:str = self.get_option_of_field(mag_field,dir_opt )
+        
+        if dir_str!='':
+            dir_list = [ float(x) for x in dir_str.split(',')]
+            self.mag_dir_vec = maths.col_vector.from_list(dir_list).normalize()
+
+        else:
+            self.mag_dir_vec=None
+        
+
+    def get_mag_fields_list(self):
+        from_mag = float(self.get_option_of_field(mag_field, from_opt))
+        to_mag = float(self.get_option_of_field(mag_field, to_opt))
+
+        step_num = int(self.get_option_of_field(mag_field,step_num_opt))
+
+        self.mag_field_strengths = np.round(np.linspace(from_mag, to_mag, step_num ),4)
+
+
+
 
     def get_res_folder_name(self):
         if self.config.has_option(default_field, out_folder_opt):
@@ -157,6 +194,8 @@ class Jahn_Teller_config_parser:
         else:
             return 0.0,0.0
     
+
+
     def get_magnetic_field(self):
         if self.config.has_section(mag_field):
             return float(self.config[mag_field]['B_x'] if self.config.has_option(mag_field, 'B_x') else 0.0),float(self.config[mag_field]['B_y'] if self.config.has_option(mag_field, 'B_y') else 0.0), float(self.config[mag_field]['B_z'] if self.config.has_option(mag_field, 'B_z') else 0.0)
@@ -182,7 +221,8 @@ class Jahn_Teller_config_parser:
 
 
     def get_order(self):
-        return int(self.config['DEFAULT']['order'] if self.config.has_option('DEFAULT', 'order') else 12)
+        return int( self.get_option_of_field(default_field, max_vib_quant) )
+        #return int(self.config[default_field][ma] if self.config.has_option('DEFAULT', 'order') else 12)
 
 
     def build_JT_theory_new(self, data_folder_name):

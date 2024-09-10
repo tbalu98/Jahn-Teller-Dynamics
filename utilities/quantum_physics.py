@@ -236,6 +236,8 @@ class Exe_tree:
 
         res_str+='\n\tHam reduction factor = ' + str(round(self.p_factor,4)) 
         res_str+='\n\tTheoretical spin-orbit coupling = ' + str(round(self.lambda_Ham,4)) + ' meV'
+
+        """
         res_str+='\n\tp_12 = ' + str(round(self.p_12,4))
         res_str+='\n\tp_32 = ' + str(round(self.p_32,4))
         
@@ -243,7 +245,7 @@ class Exe_tree:
         res_str+='\n\tdelta_f_factor =' + str(round(self.delta_f_factor, 4)) 
         res_str+='\n\tf factor = ' + str(round(self.f_factor,4))
         res_str+='\n\tK_JT factor = ' + str(round(self.KJT_factor,4)) + ' meV'
-
+        """
         return res_str
 
 

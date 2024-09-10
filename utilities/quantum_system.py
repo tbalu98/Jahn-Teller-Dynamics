@@ -157,6 +157,9 @@ class quantum_system_node(node):
         b1 = mf.ket_vector( [ 1.0/2**0.5, 1.0/2**0.5 ] )
         b2 = mf.ket_vector( [ complex(1.0, 0.0)/(-2)**0.5, complex(-1.0, 0.0)/(-2)**0.5 ] )
         bs = [b1, b2]
+
+        
+
         el_sys_ops['X_orb'] = mf.MatrixOperator.pauli_x_mx_op()#.to_new_basis(bs)
         el_sys_ops['Y_orb'] = mf.MatrixOperator.pauli_y_mx_op()#.to_new_basis(bs)
         el_sys_ops['Z_orb'] = mf.MatrixOperator.pauli_z_mx_op()#.to_new_basis(bs)
@@ -169,12 +172,16 @@ class quantum_system_node(node):
         #el_sys_ops['Lz'] = mf.MatrixOperator.pauli_z_mx_op().new_basis_system(bs)
         el_sys_ops['Lz'] = mf.MatrixOperator.pauli_z_mx_op().to_new_basis(bs)
 
+        to_cmp_basis_trf = mf.MatrixOperator.basis_trf_matrix(bs)
+
+        el_sys_ops['C_tr'] = to_cmp_basis_trf
 
         #el_sys_ops['Lx'] = mf.MatrixOperator.pauli_y_mx_op()
         #el_sys_ops['Ly'] = mf.MatrixOperator.pauli_z_mx_op()
 
         orbital_system = quantum_system_node('orbital_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],
                                                                         qm_nums_names=['orbital'])  ,operators=el_sys_ops, dim= 2)
+
 
         return orbital_system
 
