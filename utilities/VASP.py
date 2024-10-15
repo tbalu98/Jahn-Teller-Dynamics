@@ -9,7 +9,31 @@ import pandas as pd
 from io import StringIO
 from typing import List
 import utilities.maths as maths
+import utilities.JT_config_file_parsing as cfg_parsing
 #Coordinate = collections.namedtuple('Coordinate', 'x y z')
+
+def list_of_nums_to_str(coeffs_list:list):
+    
+    res_str = ''
+
+    for coeff in coeffs_list[0:-1]:
+        res_str+=str(coeff)+', '
+
+    res_str+= str(coeffs_list[-1])
+    return res_str
+"""
+def list_to_str_list(coeffs_list:list):
+
+    res_str = ''
+
+    for coeff in coeffs_list[0:-1]:
+        res_str+=str(coeff)+', '
+
+    res_str+= str(coeffs_list[-1])
+    return res_str
+"""
+
+
 
 Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom', 'less_symm_geom_1', 'less_symm_geom_2', 'symm_geom_energy', 'less_symm' ])
 
@@ -36,7 +60,7 @@ class Vector:
     def length(self ):
         return math.sqrt(self.norm())
     def __repr__(self) -> str:
-        return str(self.x)  +' '  + str(self.y) + ' '  +str(self.z)
+        return str(self.x)  +', '  + str(self.y) + ', '  +str(self.z)
     
     def subtract(self, vec2):
         return Vector(self.x - vec2.x, self.y - vec2.y, self.z - vec2.z)
@@ -177,6 +201,55 @@ class Ions:
         return len(self)<= len(other)
 
 class Lattice:
+
+
+    def create_atom_structure_parameters(self):
+
+        atom_pars_dict = self.create_atom_pars_dict()
+        
+        atom_pars_dict[cfg_parsing.basis_vector_1_opt] = str(self.basis_vecs[0])
+        atom_pars_dict[cfg_parsing.basis_vector_1_opt] = str(self.basis_vecs[1])
+        atom_pars_dict[cfg_parsing.basis_vector_3_opt] = str(self.basis_vecs[2])
+        
+        return atom_pars_dict
+
+    def create_atom_pars_dict(self):
+        res_dict = {}
+
+        masses = [  ion.m for ion in self.ions_arr ]
+        names = [ion.name for ion in self.ions_arr]
+        numbers = [len(ion) for ion in self.ions_arr]
+
+
+
+        res_dict[cfg_parsing.mass_of_atoms_op] = list_of_nums_to_str(masses)
+        res_dict[cfg_parsing.names_of_atoms_op] = list_of_nums_to_str(names)
+        res_dict[cfg_parsing.num_of_atoms_op] = list_of_nums_to_str(numbers)
+
+        res_dict[cfg_parsing.basis_vector_1_opt] = str(self.basis_vecs[0])
+        res_dict[cfg_parsing.basis_vector_2_opt] = str(self.basis_vecs[1])
+        res_dict[cfg_parsing.basis_vector_3_opt] = str(self.basis_vecs[2])
+
+        return res_dict
+
+
+    def get_normalized_basis_vecs(self):
+        res_vecs = [vec.normalize() for vec in self.basis_vecs]
+        return res_vecs
+
+    def minimize_lattice(self):
+        vacancy_ion = self.ions_arr[0]
+        vacancy_ion_vec = vacancy_ion[0]
+        host_material = self.ions_arr[1]
+
+        host_vecs = sorted(host_material, key= lambda x: x.dist(vacancy_ion_vec) )[0:7]
+
+        new_latt = Lattice(energy=self.energy, basis_vecs=self.basis_vecs)
+
+        new_latt.ions_arr.append(self.ions_arr[0])
+        new_latt.ions_arr.append( Ions( host_material.name, host_vecs, host_material.m, basis_vecs=host_material.basis_vecs ))
+
+        return new_latt
     def __init__(self, energy=None ,basis_vecs = None):
         self.basis_vecs = basis_vecs
         #self.ions_arr = list[Ions]
@@ -263,7 +336,7 @@ class Lattice:
 
                 coord_vecs.append(Vector(x,y,z))
             
-        ions_arr.append(Ions(name = atom_name, vecs= coord_vecs, m = atom_mass, basis_vecs=basis_vecs))
+            ions_arr.append(Ions(name = atom_name, vecs= coord_vecs, m = atom_mass, basis_vecs=basis_vecs))
         """
         for index, row in df.iterrows():
             x = float(row['x_coordinates'])
