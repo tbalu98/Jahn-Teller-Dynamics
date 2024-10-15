@@ -4,7 +4,16 @@ from scipy.linalg import eig as eigs
 from scipy.ndimage.filters import minimum_filter
 import matplotlib.pyplot as plt
 import pandas as pd
-from numba import njit
+import warnings
+import itertools
+warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
+
+def meV_to_GHz(e):
+    return e*241.798935
+
+def GHz_to_meV(G):
+    return G/241.798935
+
 class APES_second_order:
 
     F:float
@@ -192,9 +201,18 @@ class col_vector:
     def normalize(self):
         return (1/self.length())*self
 
-    def from_list(coeff_list):
+    def from_list(coeff_list:list):
         coeffs_mx = np.matrix([coeff_list]).transpose()
         return col_vector(coeffs_mx)
+
+    def in_new_basis(self, basis_vecs:list):
+        coeffs = self.tolist()
+
+        res_vec = col_vector.from_list([ 0.0, 0.0, 0.0 ])
+
+        for coeff,basis_vec in zip(coeffs, basis_vecs):
+            res_vec+=coeff*basis_vec
+        return res_vec
 
     def from_file(file_name):
         coeffs = np.loadtxt(file_name)
@@ -234,6 +252,9 @@ class col_vector:
         else:
             return equal_matrix(self.coeffs, other.coeffs)
 
+    def round(self, dig_num):
+        return col_vector(coeffs=np.round(self.coeffs, dig_num))
+
     def __init__(self,coeffs:np.matrix):
         if coeffs.shape[1]==1:
             self.coeffs = coeffs
@@ -250,7 +271,14 @@ class col_vector:
         return str(self.coeffs)
 
     def __str__(self):
-        return str(self.coeffs)
+        coeffs_list = self.tolist()
+        res_str = ''
+
+        for coeff in coeffs_list[0:-1]:
+            res_str+=str(coeff)+', '
+
+        res_str+= str(coeffs_list[-1])
+        return res_str
 
     def __getitem__(self, key):
         return self.coeffs[key][0]
@@ -524,8 +552,8 @@ class Matrix:
         return Matrix(np.round( self.matrix, dec ))
 
     def change_type(self, type):
-        matrix = np.matrix( self.matrix, dtype = type )
-        return Matrix(matrix)
+        #matrix = np.matrix( self.matrix, dtype = type )
+        return Matrix(self.matrix.astype(type))
     def save_text(self, filename):
         np.savetxt(filename, self.matrix)
 

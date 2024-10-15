@@ -22,6 +22,17 @@ atom_data = namedtuple('atom_data', 'name mass number')
 class Jahn_Teller_Theory:
 
 
+
+
+     def from_JT_pars(self, E_JT, E_b, hw):
+          
+          jt_pars = Jahn_Teller_Theory()
+          jt_pars.E_JT_meV = E_JT
+          jt_pars.E_b = E_b
+          jt_pars.hw_meV = hw
+          
+          return jt_pars
+
      def build_jt_theory_from_csv(csv_filenames:list):
 
 
@@ -79,13 +90,72 @@ class Jahn_Teller_Theory:
 
           return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2), symm_lattice, less_symm_lattice_1, less_symm_lattice_2
 
+     def build_jt_theory_from_csv_and_pars(csv_filenames:list, basis_vecs:list[V.Vector], atom_names:list[str], atom_masses:list[float], number_of_atoms:list[int]):
+          
+
+          par_file_name =  csv_filenames[0] 
+          symm_lattice_coords_filename =  csv_filenames[1] 
+          JT_lattice_coords_filename = csv_filenames[2] 
+          barrier_lattice_coords_filename =  csv_filenames[3] if len(csv_filenames)==4 else None
+
+          at_parser = jt_parser.Atom_config_parser(par_file_name)
+
+  
+          basis_vec_1, basis_vec_2, basis_vec_3 =at_parser.get_basis_vectors()
+
+          basis_vecs = [basis_vec_1, basis_vec_2,basis_vec_3]
+          """
+          atom_1_name, atom_2_name = at_parser.get_names()
+
+
+    
+          mass_1, mass_2 = at_parser.get_masses()
+
+          mass_dict = {  atom_1_name: float( mass_1 ) , atom_2_name: float( mass_2)}
+          """
+
+
+          atom_data = namedtuple('atom_data', 'name mass number')
+
+          atom_names = at_parser.get_names()
+          atom_masses = at_parser.get_masses()
+          atom_numbers = at_parser.get_numbers()
+
+          #mass_dict = {  }
+          
+          atom_datas = []
+
+          for atom_name,atom_mass,atom_number in zip(atom_names, atom_masses, atom_numbers):
+               #mass_dict[atom_name] = float(atom_mass)
+               atom_datas.append( atom_data(atom_name, atom_mass, atom_number))
+
+          sym_lattice_energy = float(at_parser.get_lattice_energy('symm_lattice_energy'))
+          less_symm_lattice_1_energy = float(at_parser.get_lattice_energy('JT_lattice_energy'))
+          if barrier_lattice_coords_filename!=None:
+               less_symm_lattice_2_energy = float(at_parser.get_lattice_energy('barrier_lattice_energy'))
+               less_symm_lattice_2 = V.Lattice().read_from_coordinates_dataframe(barrier_lattice_coords_filename, atom_datas, basis_vecs,less_symm_lattice_2_energy)
+          else:
+               less_symm_lattice_2 = None
+
+
+
+
+          symm_lattice = V.Lattice().read_from_coordinates_dataframe(symm_lattice_coords_filename, atom_datas,basis_vecs,sym_lattice_energy)
+    
+          less_symm_lattice_1 = V.Lattice().read_from_coordinates_dataframe(JT_lattice_coords_filename, atom_datas, basis_vecs, less_symm_lattice_1_energy)
+    
+
+          return Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2), symm_lattice, less_symm_lattice_1, less_symm_lattice_2
+
+
 
      def build_jt_theory_from_vasprunxmls(filenames):
-          symm_lattice = utilities.xml_parser.xml_parser(filenames[0]).lattice
+
+          symm_lattice = utilities.xml_parser.xml_parser( filenames[0]).lattice
           less_symm_lattice_1 = utilities.xml_parser.xml_parser(filenames[1]).lattice
           less_symm_lattice_2 = utilities.xml_parser.xml_parser(filenames[2]).lattice if len(filenames)==3 else None
           JT_theory = Jahn_Teller_Theory(symm_lattice, less_symm_lattice_1, less_symm_lattice_2)
-
+          
           return JT_theory, symm_lattice, less_symm_lattice_1, less_symm_lattice_2
 
      def from_df(self, theory_data:pd.DataFrame):
@@ -143,7 +213,8 @@ class Jahn_Teller_Theory:
 
      def __init__(self, symm_lattice: V.Lattice=None, less_symm_lattice_1: V.Lattice=None, less_symm_lattice_2:V.Lattice=None):
           self.symm_lattice = symm_lattice
-          
+          self.intrinsic_soc:float
+          self.orbital_red_factor:float
           if less_symm_lattice_1!=None and less_symm_lattice_2!=None:
                self.JT_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy< less_symm_lattice_2.energy else less_symm_lattice_2
                self.barrier_lattice = less_symm_lattice_1 if less_symm_lattice_1.energy> less_symm_lattice_2.energy else less_symm_lattice_2
@@ -178,7 +249,7 @@ class Jahn_Teller_Theory:
                res_str+= '\n\t' + 'vibration energy quantum = '+ str(round(self.hw_meV,4)) + ' meV'+'\n'
 
                res_str+='\n\t' +  'Taylor coefficient:'
-               res_str+= '\n\t\t'+ 'F = ' + str(round(self.F,4)) 
+               res_str+= '\n\t\t'+ 'F = ' + str(round(float(self.F),4)) 
 
                return res_str
           
@@ -194,8 +265,8 @@ class Jahn_Teller_Theory:
                """
                res_str+= '\n\t' + 'vibration energy quantum = '+ str(round(self.hw_meV,4)) + ' meV'+'\n'
                res_str+='\n\t' +  'Taylor coefficients:'
-               res_str+= '\n\t\t'+ 'F = ' + str(round(self.F,4)) 
-               res_str+='\n\t\t' +'G = ' + str(round(self.G,4)) 
+               res_str+= '\n\t\t'+ 'F = ' + str(round(float(self.F),4)) 
+               res_str+='\n\t\t' +'G = ' + str(round(float(self.G),4)) 
                return res_str
           
           elif self.order_flag == 3:
@@ -235,7 +306,22 @@ class Jahn_Teller_Theory:
           
           self.K = (self.hw_meV/(6.582120e-13))**2
           self.K = self.hw_meV
+
+
+     def calc_paramters_until_second_order_from_JT_pars(self):
+          #self.calc_E_JT()
+          #self.calc_delta()
+
+
+          #self.calc_K()
           
+
+
+          #self.calc_hw()
+
+          self.K = self.hw_meV
+          
+          self.calc_Taylor_coeffs_K()
 
      def calc_paramters_until_second_order(self):
           self.calc_dists()

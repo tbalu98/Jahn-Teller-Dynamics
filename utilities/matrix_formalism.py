@@ -18,6 +18,11 @@ dtype = np.complex64
 
 class ket_vector:
 
+
+     def round(self, dig_num):
+          return ket_vector(self.coeffs.round(dig_num),self.eigen_val)
+
+
      def from_str_list(str_list: list[str], eigen_energy:float =None):
           coeffs = []
           for coeff_str in str_list:
@@ -29,6 +34,8 @@ class ket_vector:
      def normalize(self):
           length = self.abs_sq()
           return self/length
+
+
 
      def __init__(self, coeffs, eigen_val = None, name = '', subsys_name  = ''):
           self.name = name
@@ -348,13 +355,13 @@ class MatrixOperator:
           mx = np.matrix( [ [ complex(1.0, 0.0), complex(0.0, 0.0)]  , [ complex( 0.0, 0.0 ), complex( -1.0, 0.0)] ], dtype=dtype )
           return MatrixOperator(maths.Matrix(mx))
 
-     def save_eigen_vals_vects_to_file(self, bases_states:hilber_space_bases, eig_vec_filename, eig_vals_filename):
-          self.calc_eigen_vals_vects()
-    
+     def save_eigen_vals_vects_to_file(self, bases_states:hilber_space_bases, eig_vec_fn, eig_vals_fn):
+          eigen_vectors:eigen_vector_space = self.calc_eigen_vals_vects()
+          eigen_vectors.save(eig_vec_fn, eig_vals_fn)
           eig_vec_df, eig_val_df  = self.create_eigen_kets_vals_table(bases_states)
 
-          eig_vec_df.to_csv( eig_vec_filename,sep = ';')
-          eig_val_df.to_csv( eig_vals_filename,sep = ';')
+          eig_vec_df.to_csv( eig_vec_fn,sep = ';')
+          eig_val_df.to_csv( eig_vals_fn,sep = ';')
 
 
      def basis_trf_matrix( kets:list[ket_vector]):
@@ -411,7 +418,8 @@ class MatrixOperator:
           if type(other) is MatrixOperator:
                return MatrixOperator(self.matrix.__mul__(other.matrix),name= self.name, subsys_name=self.subsys_name)
           elif type(other) is ket_vector:
-               return ket_vector(self.matrix.__mul__(other.coeffs),name= self.name, subsys_name=self.subsys_name)
+               return ket_vector(self.matrix.__mul__(other.coeffs),eigen_val=other.eigen_val,name= self.name, subsys_name=self.subsys_name)
+
      
      def __rmul__(self, other):
           return MatrixOperator(self.matrix.__rmul__(other),name= self.name, subsys_name=self.subsys_name)
@@ -434,7 +442,9 @@ class MatrixOperator:
           self.subsys_name = subsys_name
           self.matrix = matrix
           self.matrix_class = type(matrix)
-     
+          self.quantum_state_bases:hilber_space_bases = None
+     def set_quantum_states(self, quantum_states:hilber_space_bases):
+          self.quantum_state_bases = quantum_states
      def create_id_matrix_op(dim, matrix_type=maths.Matrix):
           return MatrixOperator(matrix_type.create_eye(dim))
 
@@ -462,17 +472,19 @@ class MatrixOperator:
              
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
 
-     def calc_eigen_vals_vects(self, num_of_vals = None, ordering_type = None):
+     def calc_eigen_vals_vects(self, num_of_vals = None, ordering_type = None,quantum_states_bases:hilber_space_bases = None):
+          if quantum_states_bases!=None:
+               self.quantum_state_bases = quantum_states_bases
           eigen_vals, eigen_vects =  self.matrix.get_eig_vals(num_of_vals, ordering_type)
           
           self.eigen_kets = []
 
           for i in range(0, len(eigen_vals)):
                
-               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.matrix([eigen_vects[:,i]]))),eigen_vals[i].real) )
+               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.round(np.matrix([eigen_vects[:,i]]),4))),round(eigen_vals[i].real, 4)) )
 
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
-
+          return eigen_vector_space(self.quantum_state_bases,self.eigen_kets)
 
      def create_eigen_kets_vals_table(self, bases:hilber_space_bases)->pd.DataFrame:
 
@@ -786,3 +798,53 @@ class eigen_vectors:
                eigen_vectors.append(ket_vector.from_str_list(coeff_strs, eigen_energy))
 
           return eigen_vectors
+     
+class eigen_vector_space:
+     def __init__(self,hilbert_space:hilber_space_bases, eigen_kets:list[ket_vector]):
+          self.quantum_states_basis = hilbert_space
+          self.eigen_kets = eigen_kets
+     
+     def __getitem__(self, item_num)->ket_vector:
+          return self.eigen_kets[item_num]
+
+     def transform_vector_space(self, new_hilbert_space:hilber_space_bases,trf_mx):
+          return eigen_vector_space( new_hilbert_space, [  (trf_mx*eig_ket).round(4) for eig_ket in self.eigen_kets ]  )
+
+     def save(self, eig_vec_fn:str, eig_val_fn:str):
+          
+          eig_vec_df, eig_val_df  = self.create_eigen_kets_vals_table(self.quantum_states_basis)
+
+          eig_vec_df.to_csv( eig_vec_fn,sep = ';')
+          eig_val_df.to_csv( eig_val_fn,sep = ';')
+
+
+     def create_eigen_kets_vals_table(self, bases:hilber_space_bases)->pd.DataFrame:
+
+          eigen_kets_dict = {}
+          index_col_name = str(bases.qm_nums_names)
+          eigen_kets_dict[index_col_name] = list( map( lambda x: str(x), bases._ket_states ) )
+          eigen_vec_names = []
+          eigen_vals = []
+          for (i,eigen_ket) in zip( range(0, len(self.eigen_kets)) ,self.eigen_kets):
+
+               eigen_vec_name = 'eigenstate_' + str(i)
+
+               eigen_val = eigen_ket.eigen_val
+
+               eigen_vec_names.append(eigen_vec_name)
+               
+               eigen_vals.append(eigen_val)
+
+               eigen_kets_dict[eigen_vec_name] = eigen_ket.coeffs.tolist()
+
+
+          eig_vecs_df = pd.DataFrame.from_dict(eigen_kets_dict )
+          eig_vecs_df = eig_vecs_df.set_index(index_col_name)
+
+          eig_val_dict = {}
+          eig_val_dict['state_name'] = eigen_vec_names
+          eig_val_dict['eigenenergy'] = eigen_vals
+
+          eig_vals_df = pd.DataFrame.from_dict(eig_val_dict).set_index('state_name')
+
+          return eig_vecs_df, eig_vals_df
