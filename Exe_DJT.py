@@ -4,7 +4,6 @@ import utilities.JT_config_file_parsing as  JT_cfg
 
 arguments = sys.argv[1:]
 
-
 config_file_name = arguments[0]
 
 
