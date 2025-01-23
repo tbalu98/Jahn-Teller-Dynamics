@@ -30,11 +30,9 @@ class APES_second_order:
     
     def calc_apes_plus(self, rho, phi):
         return 0.5*self.K*rho**2 + rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
-        #return + rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
 
     def calc_apes_negativ(self, rho, phi):
         return 0.5*self.K*rho**2 - rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
-        #return  - rho*(self.F**2 + self.G**2*rho**2 + 2*self.F*self.G*rho*np.cos(3*phi))**0.5
 
     def calc_sec_order_potential(self, x,y):
         return self.F*(x -y) + self.G*(x**2 - y**2 +2*x*y)
@@ -122,7 +120,6 @@ class APES_second_order:
     def plot_polar_contour(values, zeniths ,azimuths):
 
         theta = np.radians(azimuths)
-        #theta = azimuths
         zeniths = np.array(zeniths)
     
         values = np.array(values)
@@ -138,15 +135,12 @@ class APES_second_order:
         plt.autumn()
         cb = fig.colorbar(cax)
         cb.set_label("Pixel reflectance")
-        #plt.plot()
         return fig, ax, cax
 
 
 
 def get_loc_min_indexes(data):
     minima = (data == minimum_filter(data, 3, mode='constant', cval=0.0))
-    # print(data)
-    # print(minima)
 
     print('min: \n'  +str(minima))
     res = np.where(1 == minima)
@@ -234,7 +228,6 @@ class col_vector:
 
         flatten_coeffs = np.reshape(self.coeffs,(len(self.coeffs)))
         return flatten_coeffs.tolist()[0]
-        #return self.coeffs.tolist()
 
     def zeros(dim):
         matrix = np.matrix(np.zeros(shape=( dim, 1 )), dtype=complex_number_typ)
@@ -246,7 +239,6 @@ class col_vector:
         self.coeffs.itemset((index, 0), item)
 
     def __eq__(self,other):
-        #return np.array_equal(self.coeffs , other.coeffs)
         if other==None:
             return False
         else:
@@ -403,7 +395,6 @@ class row_vector:
     
     def __eq__(self,other):
         return self.coeffs.tolist()==other.coeffs.tolist()
-        #return np.array_equal(self.coeffs, other.coeffs)
 
     def norm_square(self, to_index = None):
         coeffs_list = self.tolist()
@@ -434,7 +425,7 @@ class Matrix:
         
         matrix = np.matrix(raw_matrix, dtype=complex_number_typ)
 
-        return Matrix(matrix.transpose())
+        return Matrix(matrix)
     
     def from_row_vectors(bases: list[row_vector]):
         raw_matrix = []
@@ -444,8 +435,8 @@ class Matrix:
         return Matrix(matrix)
     
     def to_new_bases(self, bases: list[col_vector]):
-        V = Matrix.from_col_vectors(bases)
-        V_inv = V.calc_inverse()
+        V:Matrix = Matrix.from_col_vectors(bases)
+        V_inv:Matrix = V.calc_inverse()
 
         return V_inv*self*V
 
@@ -552,7 +543,6 @@ class Matrix:
         return Matrix(np.round( self.matrix, dec ))
 
     def change_type(self, type):
-        #matrix = np.matrix( self.matrix, dtype = type )
         return Matrix(self.matrix.astype(type))
     def save_text(self, filename):
         np.savetxt(filename, self.matrix)
@@ -577,7 +567,6 @@ class numeric_function:
 
 
 
-        # Get extreme points in each dir
         loc_min_xi_indexes = [ np.where(precision>abs( first_grad_i.val_data )) for first_grad_i in first_gradients ]
         
         extr_points_ij = []
@@ -591,8 +580,6 @@ class numeric_function:
 
 
 
-        #Consider the gradients according to the first variable
-        #Evaluate the gradients according to different variables as well
         extrenum_points = []
         for ext_points_0j in extr_points_ij[0]:
             is_extr_point = True
@@ -607,24 +594,7 @@ class numeric_function:
                 extrenum_points.append(ext_points_0j)
 
 
-        # Consider the gradients according to the first variable
-        # Is it an extrenum point everywhere else?
-        """
-        extrenum_points = []
 
-        for ext_points_0j in extr_points_ij[0]:
-
-            in_it = True
-
-            for extr_points_i in extr_points_ij[1:]:
-                if ext_points_0j in extr_points_i:
-                    in_it = True
-                else:
-                    in_it = False
-                    break
-            
-            extrenum_points.append(ext_points_0j) if in_it is True else None
-        """
         return [ self.transform_row_vec_to_point(ext_point) for ext_point in extrenum_points]
 
 

@@ -50,15 +50,10 @@ class contour_data():
         plt.xlim(x_valsor[0],x_valsor[-1])
         plt.ylim(y_valsor[0],y_valsor[-1])
         
-        #fig, (ax1, ax2) = plt.subplots(1, 2)
-        #fig.suptitle('Horizontally stacked subplots')
-        #ax1.plot(x, y)
-        #cs = ax1.contourf(x_matrix, y_matrix , data_mx,  cmap='jet', levels = levels )
         
 
         cs = plt.contourf(x_matrix, y_matrix , data_mx,  cmap='jet', levels = levels )
-        #cs = plt.contourf(x_matrix, y_matrix , data_mx )
-
+        
 
         cs.changed()
         return cs
@@ -82,16 +77,6 @@ class contour_data():
 
         data_mx = self.data_df.to_numpy(dtype = np.complex64)
 
-
-
-        #axis.set_xlim(x_valsor[0],x_valsor[-1])
-        #axis.set_xlim(y_valsor[0],y_valsor[-1])
-        
-        #fig, (ax1, ax2) = plt.subplots(1, 2)
-        #fig.suptitle('Horizontally stacked subplots')
-        #ax1.plot(x, y)
-        #cs = ax1.contourf(x_matrix, y_matrix , data_mx,  cmap='jet', levels = levels )
-        
 
         cs = axis.contourf(x_matrix, y_matrix , data_mx,  cmap='jet', levels = levels )
 

@@ -4,10 +4,7 @@ import pandas as pd
 from configparser import ConfigParser
 import utilities.maths as maths
 
-"""
-def save_cfg_for_csv(xml_cfg:ConfigParser):
-    xml_cfg.remove_section('vasprun.xml_files')
-"""
+
 
 def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder, xml_cfg:ConfigParser):
     
@@ -17,7 +14,6 @@ def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder,
     symm_lattice = lattices[0]
 
 
-#symm_lattice = VASP.Lattice().read_from_coordinates_dataframe('symm_latt.csv',{'Sn': 16, 'C': 12})
 
     xml_cfg.remove_section('vasprun.xml_files')
     xml_cfg.add_section('.csv_files')
@@ -52,44 +48,6 @@ def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder,
         less_symm_lattice_2=None
 
 
-
-
-    """
-    par_dict = {}
-
-    par_dict['atom_1_name'] = [symm_lattice.ions_arr[0].name]
-    par_dict['atom_2_name'] = [symm_lattice.ions_arr[1].name]
-
-    par_dict['atom_1_mass'] = [symm_lattice.ions_arr[0].m]
-    par_dict['atom_2_mass'] = [symm_lattice.ions_arr[1].m]
-
-    par_dict['symm_lattice_energy'] = [symm_lattice.energy]
-    par_dict['JT_lattice_energy'] = [less_symm_lattice_1.energy]
-    if less_symm_lattice_2!=None:
-
-        par_dict['barrier_lattice_energy'] = [less_symm_lattice_2.energy]
-
-    par_dict['basis_vec_1_x'] = [symm_lattice.ions_arr[0].basis_vecs[0].x]
-    par_dict['basis_vec_1_y'] = [symm_lattice.ions_arr[0].basis_vecs[0].y]
-    par_dict['basis_vec_1_z'] = [symm_lattice.ions_arr[0].basis_vecs[0].z]
-
-    par_dict['basis_vec_2_x'] = [symm_lattice.ions_arr[0].basis_vecs[1].x]
-    par_dict['basis_vec_2_y'] = [symm_lattice.ions_arr[0].basis_vecs[1].y]
-    par_dict['basis_vec_2_z'] = [symm_lattice.ions_arr[0].basis_vecs[1].z]
-
-    par_dict['basis_vec_3_x'] = [symm_lattice.ions_arr[0].basis_vecs[2].x]
-    par_dict['basis_vec_3_y'] = [symm_lattice.ions_arr[0].basis_vecs[2].y]
-    par_dict['basis_vec_3_z'] = [symm_lattice.ions_arr[0].basis_vecs[2].z]
-
-
-    par_df = pd.DataFrame(par_dict)
-
-    par_df.index.name = 'index'
-
-
-    par_df.to_csv(data_folder + problem_name +'_atomic_parameters.csv', sep = ';')
-    """
-
     par_cfg = ConfigParser()
 
     atom_names_dict = {}
@@ -104,8 +62,7 @@ def save_raw_data_from_xmls(lattices:list[V.Lattice], problem_name, data_folder,
 
 
 
-    #par_cfg['atom_names'] = { 'atom_1_name' : symm_lattice.ions_arr[0].name, 'atom_2_name':symm_lattice.ions_arr[1].name }
-    #par_cfg['atom_masses'] = { 'atom_1_mass':symm_lattice.ions_arr[0].m, 'atom_2_mass':symm_lattice.ions_arr[1].m}
+
     par_cfg['atom_names'] = atom_names_dict
     par_cfg['atom_masses'] = atom_mass_dict
     par_cfg['atom_numbers'] = atom_numbers_dict

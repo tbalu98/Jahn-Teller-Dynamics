@@ -1,11 +1,45 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
-
-
+study_materials/
+articles/
+data/
+hamiltonians/
+keys/
+matrices/
+good_scripts/
+octave/
+old_ones/
+past_publications/
+our_publications/
+past_results/
+PbV_data/
+PbV_results/
+SiC_results/
+SiC_data/
+SnV_data/
+stash/
+tests/
+result_plots/
+results/
+publications/
+books/
+.vscode/
+figs/
+data_for_Jahn-Teller-effect.zip
+Exe_JT_problem_master.py
+Exe_JT_problem_old.py
+README_old.md
+ZPL_shift_fancy_graphic.py
+octave_codes/
+pressure_dependence_publication_2024/
+Group_4_vacancies_script/
+isotope_effect_config_files/
+work_configfiles/
 ### Mine ###
 __pycache__/
 *.pyc
 *.OUTCAR
+
 
 ### VisualStudioCode ###
 .vscode/*

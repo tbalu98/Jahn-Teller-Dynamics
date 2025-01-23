@@ -10,7 +10,6 @@ from io import StringIO
 from typing import List
 import utilities.maths as maths
 import utilities.JT_config_file_parsing as cfg_parsing
-#Coordinate = collections.namedtuple('Coordinate', 'x y z')
 
 def list_of_nums_to_str(coeffs_list:list):
     
@@ -21,22 +20,6 @@ def list_of_nums_to_str(coeffs_list:list):
 
     res_str+= str(coeffs_list[-1])
     return res_str
-"""
-def list_to_str_list(coeffs_list:list):
-
-    res_str = ''
-
-    for coeff in coeffs_list[0:-1]:
-        res_str+=str(coeff)+', '
-
-    res_str+= str(coeffs_list[-1])
-    return res_str
-"""
-
-
-
-Control_data = collections.namedtuple('Control_data',[ 'case_name', 'symm_geom', 'less_symm_geom_1', 'less_symm_geom_2', 'symm_geom_energy', 'less_symm' ])
-
 
 
 class Vector:
@@ -143,11 +126,7 @@ class Ions:
         self.name = name
         self._vecs = vecs
         self.m = m
-        """
-        self.cell_x = cell_x
-        self.cell_y = cell_y
-        self.cell_z = cell_z
-        """
+
         self.basis_vecs = basis_vecs
 
     def __getitem__(self,i):
@@ -185,9 +164,7 @@ class Ions:
         dist_sq = 0.0
         for i,vec in zip(range(0,len(self._vecs)),self._vecs):
             dist = vec.get_min_dist_vec(ions2)[1]
-            #dist_vec = dist_vec.push_to_cell(self.cell_x,self.cell_y,self.cell_z)
-            #dist_vec = dist_vec.push_to_unit_cell()
-            #!
+
             unit_cell_dist_vec:Vector = vec.get_min_dist_vec(ions2)[0]
 
             dist_vec = unit_cell_dist_vec.to_natural_bases(self.basis_vecs)
@@ -252,15 +229,9 @@ class Lattice:
         return new_latt
     def __init__(self, energy=None ,basis_vecs = None):
         self.basis_vecs = basis_vecs
-        #self.ions_arr = list[Ions]
         self.ions_arr: List[Ions] = []
         self.energy = energy
-        """
-        self.cell_x = cell_x
-        self.cell_y = cell_y
-        self.cell_z = cell_z
-        """
-    
+   
     def push_vec_back_to_cell(self, vec:Vector):
         return vec.push_to_cell(self.cell_x, self.cell_y, self.cell_z)
 
@@ -279,19 +250,16 @@ class Lattice:
         x_coordinates = []
         y_coordinates = []
         z_coordinates = []
-        #atom_name = []
         
         for ion_arr in self.ions_arr:
             x_coordinates+=[ vec.x for vec in ion_arr ]
             y_coordinates+=[ vec.y for vec in ion_arr ]
             z_coordinates+=[ vec.z for vec in ion_arr ]
-            #atom_name +=[ion_arr.name for i in range(0,len(ion_arr._vecs))]
         
         res_dict = {}
         res_dict['x_coordinates'] = x_coordinates
         res_dict['y_coordinates'] = y_coordinates
         res_dict['z_coordinates'] = z_coordinates
-        #res_dict['atom_name'] = atom_name
 
         res_df = pd.DataFrame(res_dict)
         res_df.index.name = 'index'
@@ -303,16 +271,9 @@ class Lattice:
 
     def read_from_coordinates_dataframe(self,filename, atom_datas,basis_vecs,energy):
 
-        #ions_arr = [Ions(name=atom_data.name,vecs = [], m = atom_data.mass, basis_vecs=basis_vecs)  for atom_data in atom_datas   ]
         df = pd.read_csv(filename)
 
 
-        #atom_names = list(set(df['atom_name'].tolist()))
-
-
-        #basis_vecs = [Vector(1.0,0.0,0.0),Vector(0.0,1.0,0.0),Vector(0.0,0.0,1.0)]
-
-        #ions_arr = [ Ions(name = atom_type, vecs = [], m=atom_types[atom_type], basis_vecs=basis_vecs ) for atom_type in atom_names ]
         ions_arr = []
         to_index = 0
         from_index = 0
@@ -320,6 +281,7 @@ class Lattice:
             atom_name = atom_data.name
             atom_number = int(atom_data.number)
             atom_mass = float(atom_data.mass)
+            from_index = to_index
             to_index +=atom_number
 
             coord_vecs = []
@@ -331,23 +293,10 @@ class Lattice:
                 z = float(df['z_coordinates'][ind])
 
 
-            #for row in df.iterrows()[from_index:to_index]:
-
-
                 coord_vecs.append(Vector(x,y,z))
             
             ions_arr.append(Ions(name = atom_name, vecs= coord_vecs, m = atom_mass, basis_vecs=basis_vecs))
-        """
-        for index, row in df.iterrows():
-            x = float(row['x_coordinates'])
-            y = float(row['y_coordinates'])
-            z = float(row['z_coordinates'])
-            atom_type = row['atom_name']
 
-            ion_arr = list(filter(lambda x: x.name == atom_type,ions_arr))[0]
-
-            ion_arr._vecs.append(Vector(x,y,z))
-        """
 
         lattice = Lattice(energy, [ maths.col_vector.from_list(b.tolist()) for b in basis_vecs ] )
         lattice.ions_arr =  ions_arr
@@ -428,15 +377,7 @@ class Lattice:
     def same_type(self, other):
         return True
 
-    """
-    def calc_dist(self, other_lattice):
-        if self.same_type(other_lattice) == True:
-            lattice_dist = 0.0
-            for ions in self.ions_arr:
-                other_ions = other_lattice.get_ions(ions.name)
-                lattice_dist = lattice_dist + ions.calc_dist_sq(other_ions)*ions.m
-            return lattice_dist**0.5
-    """
+
     def calc_dist(self, other_lattice):
         if self.same_type(other_lattice) == True:
             lattice_dist = 0.0
@@ -453,7 +394,6 @@ class POSCAR_data:
 
 
     def __init__(self, path):
-        #Read from file:
         poscar_file = open(path, 'r')
         lines = poscar_file.readlines()
 
@@ -470,7 +410,6 @@ class POSCAR_data:
     def get_ions(self, lines):
         name_line = lines[5]
         numbers_line = lines[6]
-        #selective_dynamics = lines[7]
 
 
         names = self.convert_line_elements(name_line, str)
@@ -483,14 +422,12 @@ class POSCAR_data:
             coordinates = [self.get_coordinate_from_line( line ) for line in lines[line_num: line_num+number_of_ion]]
             line_num = new_line_num
             self.lattice.ions_arr.append(Ions(name, coordinates))
-            #self.ionss[name] = coordinates
 
 
 
 
 
     def get_scaling_factors(self, line):
-        #scaling_factors = self.get_all_numbers_from_line(line)
         scaling_factors = self.convert_line_elements(line, float)
         if (len(scaling_factors)==1 or len(scaling_factors) ==3 ) is True:
             self.scaling_factors = scaling_factors
@@ -532,18 +469,9 @@ class POSCAR_data:
             return float(x)
         
     def get_coordinate_from_line(self, line):
-        #numbers = self.get_all_numbers_from_line(line)
         numbers  =self.convert_line_elements(line, self.coordinate_conversion)
         position = Vector(numbers[0], numbers[1], numbers[2])
-        #if (len(numbers) == 3) is True:
         return self.a1.scale(position.x).add(self.a2.scale(position.y)).add(self.a3.scale(position.z))
 
-
-#        return Vector(numbers[0], numbers[1], numbers[2])
-        """
-        else:
-            print('Error in coordinates' + str( len(numbers) )  +  ' of argument in one line' )
-            sys.exit(-1)
-    """
     def error_message(exception: Exception):
         print(Exception)

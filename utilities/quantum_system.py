@@ -12,11 +12,9 @@ from typing import List
 
 from collections import namedtuple
 
-leaf_sys_signature = namedtuple('leaf_sys_signature','name dim qm_nums_names' )
 
 
 
-tmp_lst = []
 
 class node:
     def __init__(self, id,children:list  = None):
@@ -51,7 +49,6 @@ class node:
         left_side_leaves = res[0:avoid_index]
         right_side_leaves = res[avoid_index+1:]
 
-        #res.index(id)
 
         return left_side_leaves, res[avoid_index],right_side_leaves
 
@@ -61,7 +58,6 @@ class node:
     def find_leaves_avoid_imp(self, id ,res):
         
         if self.id==id:
-            #res.append('avoid_ found'+  ' ' + id)
             res.append(self)
                 
         elif self.has_child():
@@ -90,7 +86,7 @@ class node:
 
         self.find_node_imp(id, res, depths, new_depth_0=0)
         if len(res) == 0:
-            return None#, depths
+            return None
         elif len(res) == 1:
             return res[0]
 
@@ -103,7 +99,6 @@ class node:
         
         if self.id==data:
             res.append(self)
-            #new_depth+=1
             depths.append(new_depth)
             
         if self.has_child():
@@ -144,7 +139,6 @@ class tree:
 
             parent_node = self.root_node.find_node(parent_node_id)
             parent_node.add_child(new_child)
-        #parent_node.children.append(new_child)
 
 
 
@@ -154,30 +148,22 @@ class quantum_system_node(node):
     def create_2D_orbital_system_node():
         el_sys_ops = {}
 
-        b1 = mf.ket_vector( [ 1.0/2**0.5, 1.0/2**0.5 ] )
-        b2 = mf.ket_vector( [ complex(1.0, 0.0)/(-2)**0.5, complex(-1.0, 0.0)/(-2)**0.5 ] )
+        b1 = mf.ket_vector( [ 1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
+        b2 = mf.ket_vector( [  1.0/2**0.5, complex(1.0, 0.0)/(-2)**0.5 ] )
         bs = [b1, b2]
-
+        #bs = [ (1/2**0.5)*mf.ket_vector([1, complex(0,1)]), (1/2**0.5)*mf.ket_vector([ 1, complex(0,-1) ]) ]
         
 
         el_sys_ops['X_orb'] = mf.MatrixOperator.pauli_x_mx_op()#.to_new_basis(bs)
         el_sys_ops['Y_orb'] = mf.MatrixOperator.pauli_y_mx_op()#.to_new_basis(bs)
         el_sys_ops['Z_orb'] = mf.MatrixOperator.pauli_z_mx_op()#.to_new_basis(bs)
 
-        #el_sys_ops['Lz'] = -1*mf.MatrixOperator.pauli_y_mx_op()
-        #el_sys_ops['Lz'] = mf.MatrixOperator.pauli_x_mx_op()
-
-        #el_sys_ops['Lz'] = mf.MatrixOperator.create_Lz_op()
-
-        #el_sys_ops['Lz'] = mf.MatrixOperator.pauli_z_mx_op().new_basis_system(bs)
         el_sys_ops['Lz'] = mf.MatrixOperator.pauli_z_mx_op().to_new_basis(bs)
 
         to_cmp_basis_trf = mf.MatrixOperator.basis_trf_matrix(bs)
 
         el_sys_ops['C_tr'] = to_cmp_basis_trf
 
-        #el_sys_ops['Lx'] = mf.MatrixOperator.pauli_y_mx_op()
-        #el_sys_ops['Ly'] = mf.MatrixOperator.pauli_z_mx_op()
 
         orbital_system = quantum_system_node('orbital_system', base_states=mf.hilber_space_bases().from_qm_nums_list([ ['ex'],[ 'ey']],
                                                                         qm_nums_names=['orbital'])  ,operators=el_sys_ops, dim= 2)
@@ -185,7 +171,6 @@ class quantum_system_node(node):
 
         return orbital_system
 
-#Common quatum systems
 
     def create_spin_system_node():
     
@@ -201,12 +186,6 @@ class quantum_system_node(node):
         return spin_sys
 
 
-    def create_spin_orbit_system():
-        
-        orbital_system = quantum_system_node.create_2D_orbital_system_node()
-
-        spin_sys = quantum_system_node.create_spin_system_node()
-        electron_system = quantum_system_node('electron_system', children=[spin_sys, orbital_system])
 
 
         
@@ -235,21 +214,11 @@ class quantum_system_node(node):
     def create_hilbert_space(self):
         simple_systems = self.find_leaves()
 
-        """
-        children_system_bases = []
-        
-        
-        for sys in simple_systems:
-            if sys.base_states!=None:
-                children_system_bases.append(sys.base_states)
 
-        children_system_bases = list(map( lambda x:x.base_states , simple_systems))
-        """
         children_system_bases = [ x.base_states for x in simple_systems if x.base_states!=None ]
 
         self.base_states = mf.hilber_space_bases.kron_hilber_spaces(children_system_bases)
         self.dim = self.base_states.dim
-    #def find_operator(operator_id) -> node:
 
     def find_operator(self, operator_id):
         res = []
@@ -264,7 +233,6 @@ class quantum_system_node(node):
         
         if operator_id in self.operators:
             res.append(self)
-            #new_depth+=1
             depths.append(new_depth)
             
         if self.has_child():
@@ -286,7 +254,6 @@ class quantum_system_node(node):
 
         op = system.operators[operator_id]
 
-        ops_to_kron = []
 
         left_dims =  list(map(lambda x: x.dim, left_systems))
 
@@ -299,27 +266,11 @@ class quantum_system_node(node):
 
 
 
-        #right_dim = 1
-        
-
-
-        #left_dim = 1 * list( itertools.accumulate(left_systems , lambda x,y: x.dim*y.dim) )[-1]
-        #right_dim = 1*  list( itertools.accumulate(right_systems , lambda x,y: x.dim*y.dim) )[-1] != None
-        """
-        for left_sys in left_systems:
-            left_dim*=left_sys.dim
-
-        for right_sys in right_systems:
-            right_dim*=right_sys.dim
-        """
 
         I_left = mf.MatrixOperator.create_id_matrix_op(dim = left_dim)
         I_right = mf.MatrixOperator.create_id_matrix_op(dim = right_dim)
 
-        return I_left**op**I_right
-
-        #children_sys_node = list(filter( lambda x: x.id == system_id,self.children))
-    
+        return I_left**op**I_right    
 
 class quantum_system_tree(tree):
 
