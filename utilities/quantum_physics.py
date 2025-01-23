@@ -10,9 +10,8 @@ import utilities.quantum_system as qs
 import copy
 import utilities.VASP as VASP
 import pandas as pd
-phonon_sys_data = namedtuple('phonon_sys_data', 'mode dim order qm_nums_names')
 
-mode1data = phonon_sys_data(78, 2,5, [ 'mode_1_x, mode_1_y' ])
+
 
 Bohn_magneton_meV_T = 1.0
 Bohn_magneton_meV_T = 0.057883671
@@ -44,7 +43,6 @@ class one_mode_phonon_sys(qs.quantum_system_node):
     def create_complex_basis_trf(self):
         generator_ops = self.create_complex_basis_gen_op()
 
-        #bases_trf = self.mx_op_builder.create_basis_trf(generator_ops, self.calc_order).truncate_matrix(self.trunc_num)
         bases_trf = self.mx_op_builder.create_basis_trf(generator_ops, self.calc_order).truncate_matrix(self.trunc_num)
 
         return bases_trf
@@ -58,10 +56,7 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
         return self.mx_op_builder.create_new_basis2(generator_ops, self.calc_order-1)
     
-        #return self.mx_op_builder.create_new_basis(generator_ops, self.calc_order-1)
-        #return self.mx_op_builder.tree_basis_generation(generator_ops,self.calc_order)
 
-    # Braket quantum mechanics
     def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = ''):
         self.phonon_sys_name = phonon_sys_name
         self.mode = mode
@@ -81,7 +76,6 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
         self.calc_h_space_dim = self.calculation_bases.dim
 
-        #Aggregation
 
         self.names_dict = { name:num for name,num in zip(self.qm_nums_names , range(0, len(self.qm_nums_names))) }
         self.mx_op_builder = mf.braket_to_matrix_formalism(self.calculation_bases)
@@ -119,11 +113,6 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
         self.operators['YX'] = self.calc_pos_i_j_op('y','x')
 
-        
-    """
-    def get_signature(self) ->bf.quantum_subsystem_signature:
-        return bf.quantum_subsystem_signature(self.phonon_sys_name, self.calc_h_space_dim-self.trunc_num, self.qm_nums_names)
-    """
 
     def get_qm_num(self, state, key):
         if isinstance(state,bf.ket_state) or isinstance(state,bf.bra_state):
@@ -142,7 +131,6 @@ class one_mode_phonon_sys(qs.quantum_system_node):
             annil_braket_op = bf.annil_operator(self.names_dict[key],key)
             self.annil_braket_ops.append(annil_braket_op)
 
-    # Matrix quantum mechanics
     def calc_create_ops(self):
         self.create_mx_ops = {}
         for creator_braket_op in self.creator_braket_ops:
@@ -176,7 +164,6 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
     def calc_trunc_num(self):
         return self.over_est_H.matrix.count_occurrences(self.calc_order)
-        print('calc trunc num')
 
     def over_est_pos_i_j_op(self, qm_num_i, qm_num_j):
         pos_i_op = self.over_est_pos_i_op(qm_num_i)
@@ -205,21 +192,27 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 class Exe_tree:
 
+    
+    lambda_Ham:float = None
+    delta_p_factor:float = None
+    delta_f_factor:float = None
+    KJT_factor:float = None
+    
+    lambda_theory:float = None
+
     def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact):
         spatial_dim = 2
 
-    # Create the symm electron system
 
         orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
 
         electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
 
-        #spin_sys = qs.quantum_system_node.create_spin_system_node()
 
         mode_1 = one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
 
 
-        nuclei = qs.quantum_system_node('nuclei')#, children=[mode_1])
+        nuclei = qs.quantum_system_node('nuclei')
 
         point_defect_node = qs.quantum_system_node('point_defect', 
                                                 children = [ nuclei,electron_system])
@@ -228,7 +221,6 @@ class Exe_tree:
 
         point_defect_tree.insert_node('nuclei', mode_1)
 
-        #point_defect_tree.insert_node('electron_system', spin_sys)
 
         JT_int =  Exe_tree(point_defect_tree, JT_theory)
 
@@ -243,7 +235,6 @@ class Exe_tree:
     def create_spin_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact):
         spatial_dim = 2
 
-    # Create the symm electron system
 
         orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
 
@@ -254,7 +245,7 @@ class Exe_tree:
         mode_1 = one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
 
 
-        nuclei = qs.quantum_system_node('nuclei')#, children=[mode_1])
+        nuclei = qs.quantum_system_node('nuclei')
 
         point_defect_node = qs.quantum_system_node('point_defect', 
                                                 children = [ nuclei,electron_system])
@@ -272,16 +263,21 @@ class Exe_tree:
         return JT_int
 
 
+    def calc_energy_splitting(self):
+        self.lambda_theory = self.lambda_SOC+self.KJT_factor
+
+
     def calc_K_JT_factor(self):
 
         if self.H_int.eigen_kets!=None:
+            H_DJT =  self.system_tree.root_node.operators['H_DJT']
             
-            E_32 = self.H_int.eigen_kets[2]
+            E_32 = self.H_int.eigen_kets[3]
             E_12 = self.H_int.eigen_kets[0]
 
-            K_JT_32 =  self.H_int.calc_expected_val(E_32)
-            K_JT_12 =  self.H_int.calc_expected_val(E_12)
-            self.KJT_factor = K_JT_12-K_JT_32
+            K_JT_32 =  H_DJT.calc_expected_val(E_32)
+            K_JT_12 =  H_DJT.calc_expected_val(E_12)
+            self.KJT_factor = K_JT_32-K_JT_12
 
     def calc_reduction_factors(self):
         LzSz_op = self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
@@ -289,36 +285,33 @@ class Exe_tree:
         self.p_12 = -2*LzSz_op.calc_expected_val(self.H_int.eigen_kets[0])
 
         self.p_factor = abs((self.p_32+self.p_12)/2)
+        self.lambda_Ham = self.p_factor
+
         self.delta_p_factor = (self.p_32-self.p_12)/2
 
         self.f_factor = self.orbital_red_fact*self.p_factor
 
         self.delta_f_factor = self.orbital_red_fact*self.delta_p_factor
 
-        self.lambda_Ham = self.H_int.eigen_kets[2].eigen_val- self.H_int.eigen_kets[0].eigen_val.real
+        self.lambda_SOC = self.p_factor*self.intrinsic_soc
+
+        self.lambda_theory = self.H_int.eigen_kets[2].eigen_val- self.H_int.eigen_kets[0].eigen_val.real
 
 
     def get_essential_theoretical_results_string(self):
         res_str = 'Theoretical results:\n'
 
         res_str+='\n\tHam reduction factor = ' + str(round(self.p_factor,4)) 
-        res_str+='\n\tTheoretical spin-orbit coupling = ' + str(round(self.lambda_Ham,4)) + ' meV'
+        res_str+='\n\tTheoretical energy level splitting = ' + str(round(self.lambda_SOC,4)) + ' meV'
 
-        """
-        res_str+='\n\tp_12 = ' + str(round(self.p_12,4))
-        res_str+='\n\tp_32 = ' + str(round(self.p_32,4))
-        
-        res_str+='\n\tdelta_p factor =' + str(round(self.delta_p_factor,4)) 
-        res_str+='\n\tdelta_f_factor =' + str(round(self.delta_f_factor, 4)) 
-        res_str+='\n\tf factor = ' + str(round(self.f_factor,4))
-        res_str+='\n\tK_JT factor = ' + str(round(self.KJT_factor,4)) + ' meV'
-        """
+  
         return res_str
 
 
     def get_essential_theoretical_results(self):
         
-        temp_res_dict = {}
+        temp_res_dict = self.get_essential_input()
+
 
 
         if self.JT_theory.order_flag == 1 or self.JT_theory.order_flag == 2:
@@ -326,20 +319,18 @@ class Exe_tree:
         if self.JT_theory.order_flag==2:
             temp_res_dict['barrier energy (meV)'] = [self.JT_theory.delta_meV]
 
-        if self.JT_theory.order_flag == 1 or self.JT_theory.order_flag == 2:
-            temp_res_dict['high symmetric geometry-minimum energy geometry distance'] = [self.JT_theory.JT_dist]
-        if self.JT_theory.order_flag==2:
-            temp_res_dict['high symmetric geometry-saddle point geometry distance'] = [self.JT_theory.barrier_dist]
 
         
         temp_res_dict['vibrational energy quantum (meV)'] = [self.JT_theory.hw_meV]
         temp_res_dict['Ham reduction factor'] = [self.p_factor]
-        temp_res_dict['Theoretical spin-orbit coupling (meV)'] = [self.lambda_Ham] if self.lambda_Ham!=None else None
         
-        temp_res_dict['delta_p factor'] = [self.delta_p_factor] if self.delta_f_factor !=None else None
-        temp_res_dict['delta_f factor'] = [self.delta_f_factor] if self.delta_f_factor !=None else None
-        temp_res_dict['f factor'] = [self.f_factor] if self.delta_f_factor!=None else None
-        temp_res_dict['K_JT factor (meV)'] = [self.KJT_factor] if self.KJT_factor!=None else None
+        temp_res_dict['delta_p factor'] = [self.delta_p_factor] if self.delta_f_factor !=None else[ None]
+        temp_res_dict['delta_f factor'] = [self.delta_f_factor] if self.delta_f_factor !=None else [None]
+        temp_res_dict['f factor'] = [self.f_factor] if self.delta_f_factor!=None else [None]
+        temp_res_dict['Energy splitting due to dynamic Janh-Teller effect (meV)'] = [self.KJT_factor] if self.KJT_factor!=None else [None]
+
+        temp_res_dict['Energy splitting due to spin-orbit coupling (meV)'] = [self.lambda_SOC] if self.lambda_SOC!=None else [None]
+        temp_res_dict['Energy splitting (meV)'] = [self.lambda_theory] if self.lambda_theory!=None else [None]
 
         res_dict = {}
 
@@ -353,6 +344,7 @@ class Exe_tree:
         res_dict = self.get_essential_theoretical_results()
         res_df = pd.DataFrame(res_dict).set_index('attribute')
         res_df.to_csv(res_path)
+
 
 
     def get_essential_input_string(self):
@@ -373,17 +365,32 @@ class Exe_tree:
     def get_essential_input(self):
         res_dict = {}
 
-        res_dict['symmetric lattice energy (eV)'] = self.JT_theory.symm_lattice.energy
-        res_dict['Jahn-Teller distorted lattice energy (eV)'] = self.JT_theory.JT_lattice.energy
-        res_dict['Barrier distorted lattice energy (eV)'] = self.JT_theory.barrier_lattice.energy if self.JT_theory.order_flag==2 else None
+        if self.JT_theory.order_flag!= 3:
+            res_dict['symmetric lattice energy (eV)'] = [self.JT_theory.symm_lattice.energy] if self.JT_theory.symm_lattice!=None else [None]
+            res_dict['Jahn-Teller distorted lattice energy (eV)'] = [self.JT_theory.JT_lattice.energy] if self.JT_theory.JT_lattice!=None else [None]
+            res_dict['Barrier distorted lattice energy (eV)'] = [self.JT_theory.barrier_lattice.energy] if self.JT_theory.barrier_lattice!= None and self.JT_theory.order_flag==2 else [None]
 
-        res_dict['symmetric lattice - Jahn-Teller distorted lattice distance (Å √amu)'] = self.JT_theory.JT_dist
-        res_dict['symmetric lattice - barrier distorted lattice distance (Å √amu)'] = self.JT_theory.barrier_dist if self.JT_theory.order_flag==2 else None
-        res_dict['intrinsic spin-orbit coupling (meV)'] = self.intrinsic_soc
+        if self.JT_theory.order_flag == 1 or self.JT_theory.order_flag == 2:
+            res_dict['high symmetry - minimum energy configuration distance (Å √amu)'] = [self.JT_theory.JT_dist]
+        if self.JT_theory.order_flag==2:
+            res_dict['high symmetry - saddle point configuration distance (Å √amu)'] = [self.JT_theory.barrier_dist]
+
+
+        res_dict['intrinsic spin-orbit coupling (meV)'] = [self.intrinsic_soc]
         res_dict['orbital reduction factor '] = [self.orbital_red_fact]
 
         return res_dict
 
+    def save_essential_input(self,  res_folder:str,calc_name:str):
+        input_data_res = self.get_essential_input()
+
+
+        input_data_res['calculation name'] = [calc_name]
+
+
+        input_data_df = pd.DataFrame(input_data_res).set_index('calculation name')
+
+        input_data_df.to_csv(res_folder + calc_name +'_essential_input.csv')
 
 
     def get_base_state(self):
@@ -396,7 +403,6 @@ class Exe_tree:
         
         self.eig_vec_sys = self.H_int.calc_eigen_vals_vects(quantum_states_bases=self.system_tree.root_node.base_states)
         self.eig_vec_sys.save(eig_vec_fn, eig_val_fn)
-        #self.H_int.save_eigen_vals_vects_to_file(self.system_tree.root_node.base_states,eig_vec_file_name, eig_val_file_name, basis_trf_mx)
 
 
     def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory):
@@ -410,23 +416,23 @@ class Exe_tree:
         self.KJT_factor:float
         self.intrinsic_soc:float
         self.lambda_Ham:float
-
-
     
-    def create_minimal_model_DJT_H_int(self):
-        #H_ZJT=ZJTx*kron(eye(l),sz)+ZJTy*kron(eye(l),sx); #zeroJT for Hepp dissertation
+    def create_minimal_model_DJT_H_int(self, Bx, By, Bz):
 
-        """
-        sz = self.system_tree.create_operator('Z_orb', 'electron_system')
-        sx = self.system_tree.create_operator('X_orb', 'electron_system')
-        return self.ZJTx*sz + self.ZJTy*sx
-        """
+        Lz = self.system_tree.create_operator('Lz','point_defect','orbital_system')
+
+        Sz = self.system_tree.create_operator('Sz', 'point_defect','spin_system')
+        Sy = self.system_tree.create_operator('Sy', 'point_defect','spin_system')
+        Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
+
+
+        lambda_full = -float((self.lambda_Ham + self.KJT_factor))
+
+        return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz
+        
+
+    def to_minimal_model(self,B_field):
     
-        return  mf.MatrixOperator.create_null_matrix_op(dim = self.system_tree.root_node.dim)
-
-    def to_minimal_model(self,ZJTx, ZJTy):
-        self.ZJTx = ZJTx
-        self.ZJTy = ZJTy
 
         new_obj = copy.deepcopy(self)
 
@@ -439,10 +445,9 @@ class Exe_tree:
 
         new_obj.system_tree = qs.quantum_system_tree(point_defect)
 
-        #new_obj.lambda_factor = self.lambda_factor*self.p_factor#+self.KJT_factor
 
         new_obj.intrinsic_soc = self.intrinsic_soc
-        new_obj.H_int = self.create_minimal_model_DJT_H_int()
+        new_obj.H_int = new_obj.create_minimal_model_DJT_H_int(*B_field.tolist())
 
         return new_obj
 
@@ -450,7 +455,6 @@ class Exe_tree:
 
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
         Lz = self.system_tree.create_operator('Lz', 'orbital_system')
-        #Sz = self.system_tree.find_subsystem('spin_system').create_id_op()
         return Lz**Sz
     
     def add_spin_orbit_coupling(self):
@@ -460,13 +464,11 @@ class Exe_tree:
 
         self.H_int = self.H_int-self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
 
-
+    def get_spin_orbit_coupling_int_ham(self):
+        return self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
 
 
     def create_electric_field_interaction(self, E_x, E_y)->mf.MatrixOperator:
-
-        #Lz = self.system_tree.create_operator('Lz', 'orbital_system')
-        #Lx = self.system_tree.create_operator('sx', 'orbital_system')
 
         Z = self.system_tree.create_operator('Z_orb', 'orbital_system')
         X = self.system_tree.create_operator('X_orb', 'orbital_system')
@@ -482,8 +484,7 @@ class Exe_tree:
 
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
 
-        #H_mag = -2*delta*B_z*Sz
-        #H_mag = -2*delta*gl_factor*B_z*Sz
+
         H_mag = -2*delta*gl_factor*Bohn_magneton_meV_T*B_z*Sz
         
         return H_mag
@@ -505,7 +506,6 @@ class Exe_tree:
         return Bohn_magneton_meV_T * g_factor*(Bx*Sx + By*Sy + Bz*Sz)
 
     def add_model_magnetic_field(self,Bz):
-        #2*pd*(Bz*kron(kron(eye(l) ,s0),0.5*Sz))
 
         Sz_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id = 'point_defect', operator_sys='spin_system')
 
@@ -514,25 +514,27 @@ class Exe_tree:
         self.H_int = self.H_int+H_mag_model
 
 
-    def add_magnetic_field_to_many_state_model(self,Bx,By,Bz):
+    def create_DJT_SOC_mag_interaction(self,Bx,By,Bz)->MatrixOperator:
         
+        
+        H_DJT = self.system_tree.root_node.operators['H_DJT']
+
+        H_full_int = H_DJT + self.get_spin_orbit_coupling_int_ham()
 
         H_mag_spin = self.create_magnetic_field_spin_interaction(Bx, By, Bz)
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin'] = H_mag_spin
         H_mag_spin_point_def = self.system_tree.create_operator('H_mag_spin', subsys_id = 'point_defect', operator_sys='spin_system')
 
         H_mag_ang = self.create_magnetic_field_ang_interaction( Bz)
-        #H_mag_ang = self.create_magnetic_field_ang_interaction( Bz, self.gL_factor)
 
         self.system_tree.find_subsystem('orbital_system').operators['H_mag_ang'] = H_mag_ang
         H_mag_ang_point_def = self.system_tree.create_operator('H_mag_ang', subsys_id = 'point_defect', operator_sys='orbital_system')
 
-        self.H_int = self.H_int + H_mag_spin_point_def + H_mag_ang_point_def 
+        return H_full_int + H_mag_spin_point_def + H_mag_ang_point_def 
 
     def add_magnetic_field(self, Bx,By,Bz):
 
 
-        #self.delta_p_factor = 0.0
 
         H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_p_factor, self.orbital_red_fact)
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
@@ -543,7 +545,6 @@ class Exe_tree:
         H_mag_spin_point_def = self.system_tree.create_operator('H_mag_spin', subsys_id = 'point_defect', operator_sys='spin_system')
 
         H_mag_ang = self.create_magnetic_field_ang_interaction( Bz, self.f_factor)
-        #H_mag_ang = self.create_magnetic_field_ang_interaction( Bz, self.gL_factor)
 
         self.system_tree.find_subsystem('orbital_system').operators['H_mag_ang'] = H_mag_ang
         H_mag_ang_point_def = self.system_tree.create_operator('H_mag_ang', subsys_id = 'point_defect', operator_sys='orbital_system')
@@ -552,13 +553,11 @@ class Exe_tree:
 
     def create_spin_orbit_in_mag_field_ham(self, Bx, By, Bz):
         
-        #Spin-orbit Hamiltonian
         Lz = self.system_tree.create_operator('Lz', 'orbital_system')
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
 
         H_SO = self.intrinsic_soc*Lz**Sz
 
-        #Add magnetic field
 
         H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_p_factor, self.orbital_red_fact)
         self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
@@ -615,7 +614,6 @@ class Exe_tree:
         X = self.system_tree.create_operator('X', 'nuclei' )
         Y = self.system_tree.create_operator('Y', 'nuclei' )
 
-        #print('X dim' +str( X.dim))
         XX = self.system_tree.create_operator('XX', 'nuclei' )
         YY = self.system_tree.create_operator('YY', 'nuclei' )
         XY = self.system_tree.create_operator('XY', 'nuclei' )
@@ -623,32 +621,73 @@ class Exe_tree:
 
         K = self.system_tree.create_operator('K', 'nuclei')
 
-        #self.JT_theory.set_quantum(77.6)
-
-        #s0 = self.system_tree.create_operator('s0', 'electron_system')
         s0 = self.system_tree.find_subsystem('electron_system').create_id_op()
         sz = self.system_tree.create_operator('Z_orb', 'electron_system')
         sx = self.system_tree.create_operator('X_orb', 'electron_system')
 
 
-        
+
         self.H_int =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
-        
-        #self.H_int = 1000*self.system_tree.root_node.create_id_op()
-        #self.H_int =    self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
-
-        #return K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+        self.H_int.calc_eigen_vals_vects()
+        self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)
 
 
-"""
-class minimal_Exe_model(Exe_tree):
+
+
+class minimal_Exe_tree(Exe_tree):
+
+    
     def __init__(self, jt_theory):
         orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
         spin_sys = qs.quantum_system_node.create_spin_system_node()
 
         electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
 
-        super.__init__(qs.quantum_system_tree(electron_system),jt_theory)
-        self.H_int = maths.Matrix.create_zeros(dim = self.system_tree.root_node.dim)
+        point_defect_system = qs.quantum_system_node( 'point_defect', children= [electron_system])
 
-"""
+        system_tree = qs.quantum_system_tree(point_defect_system)
+
+        self.system_tree = system_tree
+        self.JT_theory = jt_theory
+        self.H_int:mf.MatrixOperator
+        self.p_factor:float
+        self.f_factor:float
+        self.orbital_red_fact:float
+        self.delta_p_factor:float
+        self.KJT_factor:float
+        self.intrinsic_soc:float
+        self.lambda_Ham:float
+
+    def set_reduction_factors(self, exe_tree:Exe_tree):
+        self.p_factor:float = exe_tree.p_factor
+        self.f_factor:float = exe_tree.f_factor
+        self.orbital_red_fact = exe_tree.orbital_red_fact
+        self.delta_p_factor:float = exe_tree.delta_p_factor
+        self.delta_f_factor:float = exe_tree.delta_f_factor
+        self.KJT_factor:float = exe_tree.KJT_factor
+        self.intrinsic_soc:float = exe_tree.intrinsic_soc
+        self.lambda_Ham:float = exe_tree.lambda_Ham
+        self.lambda_SOC = exe_tree.lambda_SOC
+
+
+    def from_Exe_tree(exe_tree:Exe_tree):
+        model_exe_tree = minimal_Exe_tree(exe_tree.JT_theory)
+        model_exe_tree.set_reduction_factors(exe_tree)
+        return model_exe_tree
+
+
+    def create_DJT_SOC_mag_interaction(self, Bx, By, Bz):
+        Lz = self.system_tree.create_operator('Lz','point_defect','orbital_system')
+
+        Sz = self.system_tree.create_operator('Sz', 'point_defect','spin_system')
+        Sy = self.system_tree.create_operator('Sy', 'point_defect','spin_system')
+        Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
+
+
+        lambda_full = -float((self.lambda_SOC + self.KJT_factor)) 
+
+        return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz
+        
+    def create_one_mode_DJT_hamiltonian(self, mode=0):
+        return 
+

@@ -22,14 +22,12 @@ gnd_sec = 'ground_state_parameters'
 ex_sec = 'excited_state_parameters'
 m_electron = 0.51e9
 m_el_D = 0.0005485833
-def meV_to_Hz(E):
-    return E/(4.13566770e-12)
+
 
 def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_pars = False):
 
     spatial_dim = 2
 
-# Create the symm electron system
 
     orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
 
@@ -38,10 +36,6 @@ def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_p
     spin_sys = qs.quantum_system_node.create_spin_system_node()
 
 
-
-
-
-#Extract data from config file
 
     JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser(config_file_name)
     order  = JT_cfg_parser.get_order()
@@ -55,7 +49,6 @@ def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_p
 
 
 
-    #Create dynamic JT theory
     JT_theory, symm_lattice, less_symm_lattice_1, less_symm_lattice_2 = JT_cfg_parser.build_JT_theory(data_folder)
 
 
@@ -64,7 +57,6 @@ def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_p
         utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2], calc_name)
 
 
-    #Calculate the parameters of Jahn-Teller theory
 
 
     print('Maximum number of energy quantums of vibrations in each direction:\n n = ' + str(order) )
@@ -73,7 +65,6 @@ def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_p
     print(JT_theory)
 
 
-#Create quantum system tree graph:
 
     mode_1 = qmp.one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
 
@@ -134,7 +125,6 @@ def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_p
     print( 'lambda_Ham = ' + str(round((JT_int.H_int.eigen_kets[2].eigen_val- JT_int.H_int.eigen_kets[0].eigen_val).real,4)) + ' meV')
 
 
-    # K_JT reduction factor
 
     print("K_JT expectation value:")
 
@@ -163,10 +153,9 @@ def calc_and_save_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree, JT_cfg_par
     for B_field,B in zip(B_fields, Bs):        
 
         B_field = B_field.in_new_basis(JT_int.JT_theory.symm_lattice.get_normalized_basis_vecs())
-        #print( str( B_field.tolist()[2] ) + "T" )
         JT_int.create_one_mode_DJT_hamiltonian()
-        JT_int.add_spin_orbit_coupling()  
-        JT_int.add_magnetic_field_to_many_state_model(*B_field.tolist())
+        #JT_int.add_spin_orbit_coupling()  
+        JT_int.H_int =  JT_int.create_DJT_SOC_mag_interaction(*B_field.tolist())
 
         fn_prefix = prefix_name + '_' + str(round(B, 4)) + 'T'
 
@@ -175,11 +164,6 @@ def calc_and_save_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree, JT_cfg_par
         elif JT_cfg_parser.eigen_states_type=='real':
             comp_eig_vecs = calc_and_save_eigen_vals_vecs(JT_int,fn_prefix+'_real', res_folder)
 
-        """
-        eig_val_dir = res_folder + fn_prefix + 'eigen_value.csv'
-        eig_vec_dir  = res_folder + fn_prefix + 'eigen_vector.csv'
-        JT_int.save_eigen_vals_vects_to_file(eig_vec_dir,eig_val_dir)
-        """
         for eig_ket, line_label in zip(comp_eig_vecs.eigen_kets, energy_labels):
             JT_int_Es_dict[line_label].append(maths.meV_to_GHz(eig_ket.eigen_val))
     
@@ -194,20 +178,19 @@ def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree):
     energy_labels = ['E0', 'E1', 'E2', 'E3']
     JT_int_Es_dict = { 'E0': [], 'E1': [], 'E2': [],'E3': []}
 
+    JT_int.create_one_mode_DJT_hamiltonian()
     for B_field in B_fields:        
 
 
         if JT_int.JT_theory.symm_lattice!=None:
             B_field = B_field.in_new_basis(JT_int.JT_theory.symm_lattice.get_normalized_basis_vecs())
-        #print( str( B_field.tolist()[2] ) + "T" )
-        JT_int.create_one_mode_DJT_hamiltonian()
-        JT_int.add_spin_orbit_coupling()  
-        JT_int.add_magnetic_field_to_many_state_model(*B_field.tolist())
 
-        JT_int.H_int.calc_eigen_vals_vects()
+        H_DJT_mag = JT_int.create_DJT_SOC_mag_interaction(*B_field.tolist())
+   
+        H_DJT_mag.calc_eigen_vals_vects()
         
 
-        for eig_ket, line_label in zip(JT_int.H_int.eigen_kets, energy_labels):
+        for eig_ket, line_label in zip(H_DJT_mag.eigen_kets, energy_labels):
             JT_int_Es_dict[line_label].append(maths.meV_to_GHz(eig_ket.eigen_val))
 
     return JT_int_Es_dict
@@ -227,21 +210,6 @@ def create_JT_int(JT_config_parser: cfg_parser.Jahn_Teller_config_parser , secti
 
 
         JT_int.add_spin_system()
-        
-    #JT_int.save_eigen_vals_vects_to_file( res_folder+ eig_vec_file_name,res_folder+ eig_val_file_name)
-
-
-
-
-
-    #print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
-
-
-
-
-
-
-
 
 
         JT_int.create_one_mode_DJT_hamiltonian()
@@ -256,7 +224,6 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
     LzSz_calc_num = JT_config_parser.get_calc_LzSz()
 
-    #B_fields = JT_config_parser.get_ma
 
     intrincis_soc  =  maths.GHz_to_meV(  JT_config_parser.get_spin_orbit_coupling(section_to_look_for))
     orbital_red_fact = JT_config_parser.get_gL_factor(section_to_look_for)
@@ -280,20 +247,6 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
 
         JT_int.add_spin_system()
-        
-    #JT_int.save_eigen_vals_vects_to_file( res_folder+ eig_vec_file_name,res_folder+ eig_val_file_name)
-
-
-
-
-
-    #print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
-
-
-
-
-
-
 
 
 
@@ -311,8 +264,6 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
         th_res_name = res_folder+ '/' + calc_name +  '_gnd_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
-        eig_vec_file_name = calc_name + '_eigen_vectors.csv'
-        eig_val_file_name = calc_name + '_eigen_values.csv'
 
         if JT_config_parser.eigen_states_type=='real':
             calc_and_save_eigen_vals_vecs(JT_int,calc_name, res_folder )
@@ -323,32 +274,24 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
             LzSz_res_df =  LzSz_operation(JT_int, LzSz_calc_num)
 
             LzSz_res_df.to_csv(res_folder+calc_name+'_LzSz_expected_values.csv')
-        """
-        B_fields = JT_config_parser.get_magnetic_field_vectors()
-        Bs = JT_config_parser.get_mag_field_strengths_list()
-        if B_fields!=None:
-            B_fields_interaction_dict = calc_magnetic_interaction(B_fields, JT_int)
-            B_fields_interaction_dict['magnetic field (T)'] = Bs
-            pd.DataFrame(B_fields_interaction_dict).set_index('magnetic field (T)').to_csv(res_folder + calc_name + '_magnetic_dependence.csv')
-        """
-            
+
         B_fields = JT_config_parser.get_magnetic_field_vectors()
         if B_fields!= None and JT_config_parser.is_ZPL_calculation() == False:
+            if JT_config_parser.is_model_hamiltonian()==True:
+                JT_int = qmp.minimal_Exe_tree.from_Exe_tree(JT_int)
+            
             calc_and_save_magnetic_interaction(B_fields, JT_int, JT_config_parser)
 
 
     elif intrincis_soc==0.0:
         JT_int.create_one_mode_DJT_hamiltonian()
 
-        eig_vec_file_name = calc_name + '_eigen_vectors_only_DJT.csv'
-        eig_val_file_name = calc_name + '_eigen_values_only_DJT.csv'
 
         no_soc_operation(JT_int)
         th_res_name = res_folder+ '/' + calc_name +  '_gnd_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
-    
-    #if JT_config_parser.is_save_raw_pars():
+        calc_and_save_eigen_vals_vecs(JT_int,calc_name+'_real', res_folder)
     JT_config_parser.save_raw_pars(JT_int)
 
 
@@ -376,7 +319,6 @@ def no_soc_operation(JT_int: qmp.Exe_tree ):
 
 
 
-    #print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
 
     eigen_kets = JT_int.calc_eigen_vals_vects()
 
@@ -385,7 +327,6 @@ def no_soc_operation(JT_int: qmp.Exe_tree ):
     ground_2 = eigen_kets[1]
 
 
-    #2D degenrate ground state system spin-orbital perturbation
 
     deg_sys = mf.degenerate_system_2D( [ground_1,ground_2] )
 
@@ -417,13 +358,12 @@ def no_soc_operation(JT_int: qmp.Exe_tree ):
     print('p = '+ str( round(Ham_red_fact,4)) )
 
     JT_int.p_factor = Ham_red_fact
-
+    JT_int.lambda_Ham = None
     
 
 
 def LzSz_operation(JT_int:qmp.Exe_tree,LzSz_calc_num:int):
 
-        #LzSz_calc_num = JT_config_parser.get_LzSz_exp_val_num()
     LzSz_op = JT_int.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
     state_names = [ 'eigenstate_' + str(i) for i in range(0, LzSz_calc_num) ]
     eigen_energies = [ x.eigen_val for x in JT_int.H_int.eigen_kets[0:LzSz_calc_num]]
@@ -454,7 +394,6 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False, section
     
     spatial_dim = 2
 
-# Create the symm electron system
 
     orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
 
@@ -466,7 +405,6 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False, section
 
 
 
-#Extract data from config file
 
     JT_cfg_parser = cfg_parser.Jahn_Teller_config_parser(config_file_name)
 
@@ -490,7 +428,6 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False, section
         utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2], calc_name)
 
 
-    #Calculate the parameters of Jahn-Teller theory
 
 
     print('-------------------------------------------------')
@@ -501,7 +438,6 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False, section
 
 
 
-#Create quantum system tree graph:
 
     mode_1 = qmp.one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
 
@@ -524,21 +460,8 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False, section
 
     JT_int.create_one_mode_DJT_hamiltonian()
     
-#JT_int.save_eigen_vals_vects_to_file( res_folder+ eig_vec_file_name,res_folder+ eig_val_file_name)
 
     JT_int.H_int.calc_eigen_vals_vects()
-
-
-
-
-#print( [  x.eigen_val for x in JT_int.H_int.eigen_kets ] )
-
-
-
-
-
-
-
 
 
     JT_int.create_one_mode_DJT_hamiltonian()
@@ -568,9 +491,6 @@ def plot_essential_data( jt_data: qmp.jt.Jahn_Teller_Theory):
         jt_latt_en = jt_data.JT_lattice.energy*1000
         barr_latt_en = jt_data.barrier_lattice.energy*1000
 
-        #jt_freq = meV_to_Hz(E_jt_osc)
-
-        #barr_freq = meV_to_Hz(E_barr_osc)
 
         k_jt = 0.5* E_jt_osc**2
         k_barr = 0.5*E_barr_osc**2
@@ -581,9 +501,7 @@ def plot_essential_data( jt_data: qmp.jt.Jahn_Teller_Theory):
         xs = np.linspace( x_from, x_to,1000 )
 
         jt_osc_pot = list(map( lambda x: k_jt*(x-jt_dist)**2 + jt_latt_en, xs ))
-        #print(k_jt)
         barr_osc_pot = list(map( lambda x: k_barr*(x+barr_dist)**2 + barr_latt_en , xs ))
-        #print(k_barr)
         plt.plot(xs, jt_osc_pot)
         plt.plot(xs, barr_osc_pot)
 
@@ -597,7 +515,6 @@ def plot_essential_data( jt_data: qmp.jt.Jahn_Teller_Theory):
         plt.show()
 
 def plot_3D_APES(jt_theory: qmp.jt.Jahn_Teller_Theory):
-    #plt.clf()
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     
@@ -612,23 +529,16 @@ def plot_3D_APES(jt_theory: qmp.jt.Jahn_Teller_Theory):
 
     R, Phi = np.meshgrid(r,phi)
 
-    #Z = ((R**2 - 1)**2)
 
-    # Express the mesh in the cartesian system.
     Z1 = 0.5*K*R**2 + R* ( F**2 + G**2*R**2 + 2*F*G*R*np.cos(3*Phi)  )**0.5
     Z2 = 0.5*K*R**2 - R* ( F**2 + G**2*R**2 + 2*F*G*R*np.cos(3*Phi)  )**0.5
 
-    # Express the mesh in the cartesian system.
     X, Y = R*np.cos(Phi), R*np.sin(Phi)
 
-    # Plot the surface.
     ax.plot_surface(X, Y, Z1, cmap=plt.cm.YlGnBu_r)
     ax.plot_surface(X, Y, Z2, cmap=plt.cm.YlGnBu_r)
 
-    #ax.plot_surface(X, Y, Z2, cmap=plt.cm.YlGnBu_r)
 
-    # Tweak the limits and add latex math labels.
-    #ax.set_zlim(0, 100000)
     ax.set_xlabel(r'$\phi_\mathrm{real}$')
     ax.set_ylabel(r'$\phi_\mathrm{im}$')
     ax.set_zlabel(r'$V(\phi)$')
@@ -636,22 +546,16 @@ def plot_3D_APES(jt_theory: qmp.jt.Jahn_Teller_Theory):
     plt.show()
 
 def plot_2D_APES(jt_theory: qmp.jt.Jahn_Teller_Theory):
-    #plt.clf()
     plt.rcParams['font.size'] = 14
     
 
     xs = np.linspace(-1,1, 1000)
 
     K = jt_theory.K
-    #K = jt_theory.K
     F,G = jt_theory.F, jt_theory.G
     
-    # Express the mesh in the cartesian system.
     
     ys2 = 0.5*K*xs**2 + xs* ( F**2 + G**2*xs**2 + 2*F*G*xs*np.cos(3*0)  )**0.5
-
-
-
 
     ys1 = 0.5*K*xs**2 - xs* ( F**2 + G**2*xs**2 + 2*F*G*xs*np.cos(3*0)  )**0.5 
     
@@ -672,9 +576,7 @@ def plot_2D_APES(jt_theory: qmp.jt.Jahn_Teller_Theory):
 
     E_barr_en_latt = E_JT-jt_theory.delta_meV
 
-    numerator = (1-2*jt_theory.delta_meV/(4*jt_theory.E_JT_meV-2*jt_theory.delta_meV))**2
 
-    denominator = (1+2*jt_theory.delta_meV/(4*jt_theory.E_JT_meV-2*jt_theory.delta_meV))**2
 
 
     print('')
@@ -689,7 +591,6 @@ def plot_2D_APES(jt_theory: qmp.jt.Jahn_Teller_Theory):
 
     plt.ylabel('energy (meV)')
 
-    # Plot the surface.
     plt.plot(xs,ys1)
     plt.plot(xs,ys2)
 
@@ -703,7 +604,6 @@ def plot_APES(F,G):
     X, Y = np.meshgrid(x, y)
 
     def f(x,y):
-        #return (x**2 + y**2)
         return F*(x+y) + G* ( (x**2-y**2) - 2*x*y )
     
     Z = f(X, Y)
@@ -762,14 +662,18 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
     JT_int_gnd.calc_reduction_factors()
     JT_int_gnd.calc_K_JT_factor()
+    JT_int_gnd.calc_energy_splitting()
+
     print('-------------------------------------------------')
     print(JT_int_gnd.get_essential_theoretical_results_string())
     
     th_res_name = results_folder+ '/' + calculation_name +  '_gnd_theoretical_results.csv'
     
     JT_int_gnd.save_essential_theoretical_results(th_res_name)
+
+    
+
     print('-------------------------------------------------')
-    #JT_int_gnd  = spin_orbit_JT_procedure_general(JT_config_parser,section_to_look_for= gnd_sec,save_raw_pars=save_raw_pars_from_cfg )
     print('Excited state:')
     JT_int_ex = create_JT_int(JT_config_parser, section_to_look_for=ex_sec)
 
@@ -781,6 +685,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
     JT_int_ex.calc_reduction_factors()
     JT_int_ex.calc_K_JT_factor()
+    JT_int_ex.calc_energy_splitting()
     print('-------------------------------------------------')
     print(JT_int_ex.get_essential_theoretical_results_string())
     th_res_name = results_folder+ '/' + calculation_name +  '_ex_theoretical_results.csv'
@@ -788,7 +693,6 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
     JT_int_ex.save_essential_theoretical_results(th_res_name)
     print('-------------------------------------------------')
 
-    #JT_int_ex  = spin_orbit_JT_procedure_general(JT_config_parser,section_to_look_for= ex_sec,save_raw_pars=save_raw_pars_from_cfg )
 
     if save_raw_pars_from_cfg==True:
         JT_config_parser.save_raw_pars_ZPL(JT_int_gnd, JT_int_ex)    
@@ -799,7 +703,17 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
     B_fields = JT_config_parser.get_magnetic_field_vectors()
 
+    if JT_config_parser.is_model_hamiltonian()==True:
+        JT_int_gnd = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_gnd)
+
     JT_int_gnd_Es_dict = calc_magnetic_interaction( B_fields, JT_int_gnd)
+
+    if JT_config_parser.is_model_hamiltonian()==True:
+
+        JT_int_ex = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_ex)
+
+
+
 
     JT_int_ex_Es_dict = calc_magnetic_interaction(B_fields, JT_int_ex)
 
@@ -830,7 +744,6 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
     zeroline= abs(A_transition[line_labels[0]][0]-energy_shift)
 
 
-    #[axes.tick_params(labeltop=True, labelright=True, right = True) for axes in axeses]
     [axes.set_xlim(B_min,B_max) for axes in axeses]
 
     [axes.tick_params(labeltop=False, bottom = False,labelright=True, right = True) for axes in axeses]

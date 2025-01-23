@@ -56,6 +56,7 @@ el_field = 'electric_field'
 ex_state_field = 'excited_state_parameters'
 gnd_state_field = 'ground_state_parameters'
 system_field = 'system_parameters'
+
 #Options:
 at_pat_opt = 'atom_parameters'
 out_folder_opt = 'output_folder'
@@ -96,7 +97,7 @@ atom_structure_field = 'atom_structure_parameters'
 mag_field_strength_csv_col =  'magnetic field (T)'
 single_case_section = 'system_parameters'
 eigen_states_opt = 'eigen_states'
-
+model_Hamiltonian_opt = 'model_Hamiltonian'
 
 
 class Jahn_Teller_config_parser:
@@ -132,9 +133,6 @@ class Jahn_Teller_config_parser:
 
         elif self.is_from_vasprun_xml(section_to_look_for):
             JT_theory = self.build_jt_theory_from_vasprunxmls(data_folder, section_to_look_for)
-            #if save_raw_pars == True:
-            #    pass
-                #utilities.xml_parser.save_raw_data_from_xmls([symm_lattice, less_symm_lattice_1, less_symm_lattice_2], calc_name)
 
         elif self.is_from_csv(section_to_look_for):
             JT_theory = self.build_jt_theory_from_csv_and_pars_data( section_to_look_for )
@@ -161,13 +159,30 @@ class Jahn_Teller_config_parser:
         else:
             return None
 
+    def get_field_vectors(self, field_name):
+
+        if self.config.has_section(field_name):
+
+            field_strengths = self.get_field_strengths_list()
+
+            basis_vectors = self.get_basis_col_vectors(field_name)
+
+            dir_vec = self.get_field_dir().normalize()
+
+            field_vecs =  [ F*dir_vec for F in field_strengths ]
+            if basis_vectors != None:
+
+                field_vecs = [ B_field.in_new_basis(basis_vectors) for B_field in field_vecs ]
+            return field_vecs
+        else:
+            return None
+
     def get_calc_LzSz(self):
         res_str = self.get_option_of_field(default_field, spectrum_range_opt)
         return int(res_str) if res_str!='' else 0
 
     def is_single_case(self):
         return self.config.has_section(single_case_section)
-        #return True if (self.config.has_section(gnd_state_field)==True and self.config.has_section(ex_state_field)==False )or (self.config.has_section(gnd_state_field)==False and self.config.has_section(ex_state_field)==True ) else False
 
     def save_raw_pars_section(self, JT_int:qmp.Exe_tree, section_to_cfg):
 
@@ -219,11 +234,12 @@ class Jahn_Teller_config_parser:
 
         new_ZPL_config = ConfigParser()
 
-        #new_ZPL_config.add_section(gnd_state_field)
+
         new_ZPL_config[gnd_state_field] = self.save_raw_pars_section(JT_int_gnd, gnd_state_field)
         new_ZPL_config[ex_state_field] = self.save_raw_pars_section(JT_int_ex, ex_state_field)
         new_ZPL_config[atom_structure_field] = JT_int_ex.JT_theory.symm_lattice.create_atom_pars_dict()
-        #new_ZPL_config.add_section(default_field)
+
+
         new_ZPL_config[default_field] = self.config[default_field]
         new_ZPL_config[default_field][save_raw_pars_opt] = 'false'
         new_ZPL_config.add_section(mag_field)
@@ -244,9 +260,7 @@ class Jahn_Teller_config_parser:
 
         new_config = ConfigParser()
 
-        #new_ZPL_config.add_section(gnd_state_field)
         new_config[single_case_section] = self.save_raw_pars_section(JT_int, single_case_section)
-        #new_ZPL_config.add_section(default_field)
         new_config[default_field] = self.config[default_field]
         new_config[default_field][save_raw_pars_opt] = 'false'
 
@@ -268,6 +282,13 @@ class Jahn_Teller_config_parser:
             return False
         else:
             return  True if self.config[default_field][save_raw_pars_opt] == 'true' else False
+
+
+    def is_model_hamiltonian(self):
+        if self.config.has_option(default_field, model_Hamiltonian_opt) ==False:
+            return False
+        else:
+            return  True if self.config[default_field][model_Hamiltonian_opt] == 'true' else False
 
 
     def get_basis_vector(self,section_id, option_id):
@@ -360,7 +381,6 @@ class Jahn_Teller_config_parser:
 
 
         for (atom_name,atom_mass,atom_number) in zip(atom_names, atom_masses, atom_numbers):
-               #mass_dict[atom_name] = float(atom_mass)
             atom_datas.append( atom_data(atom_name, atom_mass, atom_number))
 
         sym_lattice_energy = float(self.get_lattice_energy(section_to_look_for,symm_latt_energy_opt))
@@ -368,7 +388,6 @@ class Jahn_Teller_config_parser:
         if barr_latt_csv_fn!='':
             less_symm_lattice_2_energy = float(self.get_lattice_energy(section_to_look_for,saddle_point_latt_energy_opt))
             less_symm_lattice_2 = V.Lattice().read_from_coordinates_dataframe(barr_latt_csv_dir, atom_datas, basis_vecs,less_symm_lattice_2_energy)
-            #less_symm_lattice_2 = less_symm_lattice_2.minimize_lattice()
         else:
            less_symm_lattice_2 = None
 
@@ -376,16 +395,15 @@ class Jahn_Teller_config_parser:
 
 
         symm_lattice = V.Lattice().read_from_coordinates_dataframe(symm_latt_csv_dir, atom_datas,basis_vecs,sym_lattice_energy)
-        #symm_lattice = symm_lattice.minimize_lattice()
     
         less_symm_lattice_1 = V.Lattice().read_from_coordinates_dataframe(JT_latt_csv_dir, atom_datas, basis_vecs, less_symm_lattice_1_energy)
-        #less_symm_lattice_1 = less_symm_lattice_1.minimize_lattice()
     
-        #!!!!
         return jt.Jahn_Teller_Theory(symm_lattice,less_symm_lattice_1,less_symm_lattice_2)#, symm_lattice, less_symm_lattice_1, less_symm_lattice_2
 
     def is_ZPL_calculation(self):
         return True if self.config.has_section(gnd_state_field) and self.config.has_section(ex_state_field) else False
+
+
 
     def is_from_Taylor_coeffs(self, section_to_look_for:str):
         return True if self.config.has_option(section_to_look_for,F_opt) else False
@@ -428,6 +446,17 @@ class Jahn_Teller_config_parser:
         else:
             self.mag_dir_vec=None
 
+
+    def get_field_dir(self, field_name:str):
+        dir_str:str = self.get_option_of_field(field_name,dir_opt )
+        
+        if dir_str!='':
+            dir_list = [ float(x) for x in dir_str.split(',')]
+            return maths.col_vector.from_list(dir_list).normalize()
+
+        else:
+            return None
+
     def get_B_min(self):
         return float(self.get_option_of_field(mag_field,min_field_opt))
 
@@ -436,6 +465,18 @@ class Jahn_Teller_config_parser:
 
     def get_step_num(self):
         return int(self.get_option_of_field(mag_field,step_num_opt))
+
+    def get_field_min(self, field_name:str):
+        return float(self.get_option_of_field(field_name,min_field_opt))
+
+    def get_field_max(self, field_name:str):
+        return float(self.get_option_of_field(field_name,max_field_opt))
+
+
+    def get_field_step_num(self, field_name:str):
+        return int(self.get_option_of_field(field_name,step_num_opt))
+    
+
 
     def get_mag_field_strengths_list(self):
 
@@ -448,6 +489,16 @@ class Jahn_Teller_config_parser:
         self.mag_field_strengths = np.linspace(self.B_min, self.B_max, self.step_num )
 
         return self.mag_field_strengths
+
+    def get_field_strengths_list(self):
+
+
+        min = self.get_field_min()
+        max = self.get_field_max()
+
+        step_num = self.get_field_step_num()
+
+        return np.linspace(min, max, step_num )
 
 
 
@@ -486,19 +537,6 @@ class Jahn_Teller_config_parser:
         else:
             return str('')
 
-    def get_electric_field(self):
-        if self.config.has_section(el_field):
-            return float(self.config[el_field]['E_x'] if self.config.has_option('electric_field', 'E_x') else 0.0), float(self.config['electric_field']['E_y'] if self.config.has_option('electric_field', 'E_y') else 0.0)
-        else:
-            return 0.0,0.0
-    
-
-
-    def get_magnetic_field(self):
-        if self.config.has_section(mag_field):
-            return float(self.config[mag_field]['B_x'] if self.config.has_option(mag_field, 'B_x') else 0.0),float(self.config[mag_field]['B_y'] if self.config.has_option(mag_field, 'B_y') else 0.0), float(self.config[mag_field]['B_z'] if self.config.has_option(mag_field, 'B_z') else 0.0)
-        else:
-            return 0.0,0.0, 0.0
 
     def __init__(self, config_file_path):
         config_file = open(config_file_path,'r')
@@ -527,12 +565,10 @@ class Jahn_Teller_config_parser:
         self.eigen_states_type = self.get_eigen_state_type()
 
     def get_spin_orbit_coupling(self, section_to_look_for):
-        #if section_to_look_for == '':
         res_str = self.get_option_of_field(section_to_look_for, int_soc_opt)
 
         return float( res_str ) if res_str!= '' else 0.0
     
-        #return float(self.config[section_to_look_for][int_soc_opt] if self.config.has_section(section_to_look_for) else 0.0)
 
 
     def get_gL_factor(self, section_to_look_for = so_c_field):
@@ -541,7 +577,6 @@ class Jahn_Teller_config_parser:
 
     def get_order(self):
         return int( self.get_option_of_field(default_field, max_vib_quant) )
-        #return int(self.config[default_field][ma] if self.config.has_option('DEFAULT', 'order') else 12)
 
 
     def build_JT_theory_new(self, data_folder_name):
@@ -558,6 +593,7 @@ class Jahn_Teller_config_parser:
             hw = float(self.get_option_of_field(state_JT_field, hw_opt))
 
             JT_theory = jt.Jahn_Teller_Theory()
+            
             JT_theory.E_JT_meV = E_JT
             JT_theory.delta_meV = delta_meV
             JT_theory.hw_meV = hw

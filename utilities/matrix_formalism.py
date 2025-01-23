@@ -84,7 +84,7 @@ class ket_vector:
           if self.eigen_val == None:
                return str(self.coeffs)
           else:
-               return str('eigen_val: ') +str(self.eigen_val) + '\n'  +str(self.coeffs)
+               return str('eigen value: ') +str(self.eigen_val) + '\n'  +str(self.coeffs)
      
      def __getitem__(self,key):
           return self.coeffs[key]
@@ -327,17 +327,6 @@ class hilber_space_bases:
         else:
             return None
 
-
-
-
-
-     
-
-
-
-
-
-#Quantummechanical operator:
 class MatrixOperator:
 
      def tolist(self):
@@ -406,10 +395,10 @@ class MatrixOperator:
      
      def __radd__(self, other):
           if type(other)==int:
-               return self #+ MatrixOperator(maths.Matrix.create_eye(self.dim))
+               return self
           else:
                return self + other
-          #return MatrixOperator(self.matrix + other)
+
      
      def __sub__(self, other):
           return MatrixOperator(self.matrix-other.matrix,name= self.name, subsys_name=self.subsys_name)
@@ -481,7 +470,7 @@ class MatrixOperator:
 
           for i in range(0, len(eigen_vals)):
                
-               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.round(np.matrix([eigen_vects[:,i]]),4))),round(eigen_vals[i].real, 4)) )
+               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.round(np.matrix([eigen_vects[:,i]]),10))),round(eigen_vals[i].real, 10)) )
 
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
           return eigen_vector_space(self.quantum_state_bases,self.eigen_kets)
@@ -520,7 +509,6 @@ class MatrixOperator:
 
 
      def get_eigen_vect(self, i):
-        #return np.array(self.eigen_vects[i])
         return np.array(self.eigen_vects[:,i])
      
      def get_eigen_val(self, i):
@@ -626,17 +614,8 @@ class degenerate_system_2D(degenerate_system):
           else:
                return None
      
-     """
+
      def to_complex_basis(self, basis_trf_matrix:MatrixOperator):
-          #pass
-          phix = self.deg_ket_vectors[0]
-          phiy = self.deg_ket_vectors[1]
-          phiplus = basis_trf_matrix*(phix+complex(0.0,1.0)*phiy)/(2**0.5)
-          phiminus = basis_trf_matrix*(phix-complex(0.0,1.0)*phiy)/(2**0.5)
-          self.complex_deg_ket_vectors = [phiminus, phiplus]
-     """
-     def to_complex_basis(self, basis_trf_matrix:MatrixOperator):
-          #pass
           phix = self.deg_ket_vectors[0]
           phiy = self.deg_ket_vectors[1]
           phiplus = basis_trf_matrix*(phix+complex(0.0,1.0)*phiy)/(2**0.5)
@@ -694,13 +673,7 @@ class braket_to_matrix_formalism:
                          new_base = gen_ops[j]*base
 
                          if (new_base not in bases_vectors) and (new_base not in new_bases_vectors) :
-                              """
-                              if j==0:
-                                   op_1_count += 1
-                              else:
-                                   op_2_count += 1
-                              basis_vector_datas.append(bases_vectors_data())
-                              """
+
                               new_bases_vectors.append(new_base)
                bases_vectors+=new_bases_vectors
           
@@ -827,7 +800,7 @@ class eigen_vector_space:
           eigen_vals = []
           for (i,eigen_ket) in zip( range(0, len(self.eigen_kets)) ,self.eigen_kets):
 
-               eigen_vec_name = 'eigenstate_' + str(i)
+               eigen_vec_name = 'eigenstate_' + str(i+1)
 
                eigen_val = eigen_ket.eigen_val
 
