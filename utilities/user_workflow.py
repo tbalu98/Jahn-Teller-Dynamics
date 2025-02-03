@@ -198,7 +198,7 @@ def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree):
 
 def create_JT_int(JT_config_parser: cfg_parser.Jahn_Teller_config_parser , section_to_look_for = '',complex_trf=True ):
     order  = JT_config_parser.get_order()
-    intrincis_soc  =  maths.GHz_to_meV(  JT_config_parser.get_spin_orbit_coupling(section_to_look_for))
+    intrincis_soc  =  JT_config_parser.get_spin_orbit_coupling(section_to_look_for)
     orbital_red_fact = JT_config_parser.get_gL_factor(section_to_look_for)
 
 
@@ -225,7 +225,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
     LzSz_calc_num = JT_config_parser.get_calc_LzSz()
 
 
-    intrincis_soc  =  maths.GHz_to_meV(  JT_config_parser.get_spin_orbit_coupling(section_to_look_for))
+    intrincis_soc  =   JT_config_parser.get_spin_orbit_coupling(section_to_look_for)
     orbital_red_fact = JT_config_parser.get_gL_factor(section_to_look_for)
 
 
@@ -261,7 +261,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
         JT_int.calc_K_JT_factor()
         print('-------------------------------------------------')
         print(JT_int.get_essential_theoretical_results_string())
-        th_res_name = res_folder+ '/' + calc_name +  '_gnd_theoretical_results.csv'
+        th_res_name = res_folder+ '/' + calc_name +  '_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
 
@@ -410,7 +410,7 @@ def spin_orbit_JT_procedure(config_file_name:str, save_raw_pars = False, section
 
     order  = JT_cfg_parser.get_order()
     calc_name = JT_cfg_parser.get_prefix_name()
-    l  =  maths.GHz_to_meV(  JT_cfg_parser.get_spin_orbit_coupling(section_to_look_for))
+    l  = JT_cfg_parser.get_spin_orbit_coupling(section_to_look_for)
     gL = JT_cfg_parser.get_gL_factor(section_to_look_for)
 
     data_folder = JT_cfg_parser.get_data_folder_name()

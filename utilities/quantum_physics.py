@@ -197,6 +197,7 @@ class Exe_tree:
     delta_p_factor:float = None
     delta_f_factor:float = None
     KJT_factor:float = None
+    lambda_SOC:float = None
     
     lambda_theory:float = None
 
