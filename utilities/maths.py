@@ -423,7 +423,8 @@ class Matrix:
             base_trp = base.coeffs.transpose().tolist()[0]
             raw_matrix.append(base_trp)
         
-        matrix = np.matrix(raw_matrix, dtype=complex_number_typ)
+        #matrix = np.matrix(raw_matrix, dtype=complex_number_typ)
+        matrix = np.transpose(np.matrix(raw_matrix, dtype=complex_number_typ))
 
         return Matrix(matrix)
     
@@ -438,7 +439,8 @@ class Matrix:
         V:Matrix = Matrix.from_col_vectors(bases)
         V_inv:Matrix = V.calc_inverse()
 
-        return V_inv*self*V
+        #return V_inv*self*V
+        return V*self*V_inv
 
 
     def __str__(self):
