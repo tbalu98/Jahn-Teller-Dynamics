@@ -479,7 +479,8 @@ class Exe_tree:
 
         return H_el
     
-    
+    def create_strain_field_interaction(self, Stx, Sty, Stz):
+        pass
 
     def create_magnetic_field_spin_z_interaction(self, B_z, delta, gl_factor)->mf.MatrixOperator:
 
@@ -552,6 +553,7 @@ class Exe_tree:
 
         self.H_int = self.H_int + H_mag_spin_point_def + H_mag_ang_point_def + H_mag_spin_z_point_def
 
+    """
     def create_spin_orbit_in_mag_field_ham(self, Bx, By, Bz):
         
         Lz = self.system_tree.create_operator('Lz', 'orbital_system')
@@ -574,7 +576,7 @@ class Exe_tree:
 
 
         return  H_SO + H_mag_spin_z_el_sys + H_mag_spin_el_sys + H_mag_ang_el_sys
-
+    """
 
     def add_electric_field(self, E_x, E_y):
         H_el = self.create_electric_field_interaction(E_x, E_y)
