@@ -463,7 +463,7 @@ class Exe_tree:
         LzSz_op = self.create_spin_orbit_couping()
         self.system_tree.find_subsystem('electron_system').operators['LzSz'] = LzSz_op
 
-        self.H_int = self.H_int-self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
+        self.H_int = self.H_int+self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
 
     def get_spin_orbit_coupling_int_ham(self):
         return self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
@@ -520,6 +520,8 @@ class Exe_tree:
         
         
         H_DJT = self.system_tree.root_node.operators['H_DJT']
+
+
 
         H_full_int = H_DJT + self.get_spin_orbit_coupling_int_ham()
 
@@ -687,7 +689,7 @@ class minimal_Exe_tree(Exe_tree):
         Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
 
 
-        lambda_full = -float((self.lambda_SOC + self.KJT_factor)) 
+        lambda_full = float((self.lambda_SOC + self.KJT_factor)) 
 
         return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz
         

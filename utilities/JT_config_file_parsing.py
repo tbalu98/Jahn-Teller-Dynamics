@@ -143,6 +143,32 @@ class Jahn_Teller_config_parser:
     
     def get_magnetic_field_vectors(self):
 
+        Bs = self.get_mag_field_strengths_list()
+        """
+
+        M = [[0.7071 , -0.7071 , 0],
+      [0.4082 ,  0.4082,  -0.8165],
+      [0.5774,   0.5774,   0.5774]]
+
+        M = np.matrix(M)
+
+
+        B_fields = []
+
+        for B in Bs:
+
+    
+            B = float(B)
+            B_comp_vec = np.transpose(np.matrix( [0,0,B] ))
+
+            Bx = float(M[0,:]*B_comp_vec)
+            By = float(M[1,:]*B_comp_vec)
+            Bz = float(M[2,:]*B_comp_vec)
+
+            B_fields.append(maths.col_vector.from_list([Bx, By, Bz]))
+
+        return B_fields
+        """
         if self.config.has_section(mag_field):
 
             Bs = self.get_mag_field_strengths_list()
@@ -567,8 +593,9 @@ class Jahn_Teller_config_parser:
     def get_spin_orbit_coupling(self, section_to_look_for):
         res_str = self.get_option_of_field(section_to_look_for, int_soc_opt)
 
+        #return maths.GHz_to_meV( float( res_str )) if res_str!= '' else 0.0
         return float( res_str ) if res_str!= '' else 0.0
-    
+
 
 
     def get_gL_factor(self, section_to_look_for = so_c_field):
