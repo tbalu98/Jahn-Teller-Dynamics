@@ -8,6 +8,8 @@ import warnings
 import itertools
 warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
 
+
+
 def meV_to_GHz(e):
     return e*241.798935
 
@@ -180,6 +182,7 @@ def equal_matrix(a:np.matrix, b:np.matrix):
 class col_vector:
 
 
+
     def basis_trf(self,new_bases:list):
         new_bases_row_vectors = [ new_base.to_row_vector() for new_base in new_bases  ]
         basis_trf_mx =  Matrix.from_row_vectors(new_bases_row_vectors)
@@ -198,6 +201,7 @@ class col_vector:
     def from_list(coeff_list:list):
         coeffs_mx = np.matrix([coeff_list]).transpose()
         return col_vector(coeffs_mx)
+
 
     def in_new_basis(self, basis_vecs:list):
         coeffs = self.tolist()
@@ -314,7 +318,7 @@ class col_vector:
             magnitude+=abs(coeff)**2
         return float(magnitude)
     
-    
+
 
 class row_vector:
 
@@ -619,3 +623,5 @@ class numeric_function:
         new_coords+=val_in_point
 
         return row_vector(np.matrix(new_coords))
+    
+cartesian_basis = [ col_vector.from_list([1,0,0]), col_vector.from_list([0,1,0]), col_vector.from_list([0,0,1]) ]

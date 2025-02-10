@@ -16,6 +16,7 @@ from scipy.constants import physical_constants
 from copy import deepcopy
 import warnings
 import pandas as pd
+import os
 
 gnd_sec = 'ground_state_parameters'
 
@@ -182,8 +183,12 @@ def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree):
     for B_field in B_fields:        
 
 
-        if JT_int.JT_theory.symm_lattice!=None:
-            B_field = B_field.in_new_basis(JT_int.JT_theory.symm_lattice.get_normalized_basis_vecs())
+        if JT_int.JT_theory!= None and JT_int.JT_theory.symm_lattice!=None:
+
+            B_field:maths.col_vector = B_field.in_new_basis(JT_int.JT_theory.symm_lattice.get_normalized_basis_vecs())
+        
+        B_field = B_field.basis_trf(JT_int.get_normalized_basis_vecs())
+
 
         H_DJT_mag = JT_int.create_DJT_SOC_mag_interaction(*B_field.tolist())
    
@@ -201,11 +206,17 @@ def create_JT_int(JT_config_parser: cfg_parser.Jahn_Teller_config_parser , secti
     intrincis_soc  =  JT_config_parser.get_spin_orbit_coupling(section_to_look_for)
     orbital_red_fact = JT_config_parser.get_gL_factor(section_to_look_for)
 
+    orientation_basis = JT_config_parser.get_system_orientation_basis()
+
+    if JT_config_parser.is_from_model_Hamiltonian(section_to_look_for) is True:
+        return JT_config_parser.create_minimal_Exe_tree_from_cfg(section_to_look_for)
+        #JT_int = qmp.Exe_tree.
 
     JT_theory = JT_config_parser.create_Jahn_Teller_theory_from_cfg(section_to_look_for)
 
 
-    JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(JT_theory, order, intrincis_soc, orbital_red_fact)
+
+    JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(JT_theory, order, intrincis_soc, orbital_red_fact, orientation_basis)
     if intrincis_soc!=0.0:
 
 
@@ -277,7 +288,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
         B_fields = JT_config_parser.get_magnetic_field_vectors()
         if B_fields!= None and JT_config_parser.is_ZPL_calculation() == False:
-            if JT_config_parser.is_model_hamiltonian()==True:
+            if JT_config_parser.is_use_model_hamiltonian()==True:
                 JT_int = qmp.minimal_Exe_tree.from_Exe_tree(JT_int)
             
             calc_and_save_magnetic_interaction(B_fields, JT_int, JT_config_parser)
@@ -635,13 +646,32 @@ def calc_transition_energies(ex_Es:dict, gnd_Es:dict,ex_labels:list[str], gnd_la
     return transitions
 
 
+def model_ZPL_procedure(JT_config_parser: cfg_parser.Jahn_Teller_config_parser):
+    pass
+
+
+def create_directory(directory_path):
+    # Check if the directory exists
+    if not os.path.exists(directory_path):
+        # Create the directory
+        os.makedirs(directory_path)
+        
+
+
 def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
+
+    gnd_from_model_hamilton = JT_config_parser.is_from_model_Hamiltonian(gnd_sec)
+    ex_from_model_hamilton = JT_config_parser.is_from_model_Hamiltonian(ex_sec)
+
 
     calculation_name = JT_config_parser.get_prefix_name()
 
     save_raw_pars_from_cfg = JT_config_parser.is_save_raw_pars()
 
     results_folder = JT_config_parser.get_res_folder_name()
+
+    create_directory(results_folder)
+
 
     Bs = JT_config_parser.get_mag_field_strengths_list()
 
@@ -656,21 +686,20 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
     JT_int_gnd = create_JT_int(JT_config_parser, section_to_look_for=gnd_sec)
     print('Maximum number of energy quantums of vibrations in each direction = ' + str(JT_config_parser.max_vib_quant) )
 
-    print(JT_int_gnd.JT_theory)
+    if gnd_from_model_hamilton is False:
+        print(JT_int_gnd.JT_theory)
+        JT_int_gnd.calc_eigen_vals_vects()
 
-    JT_int_gnd.calc_eigen_vals_vects()
-
-    JT_int_gnd.calc_reduction_factors()
-    JT_int_gnd.calc_K_JT_factor()
-    JT_int_gnd.calc_energy_splitting()
+        JT_int_gnd.calc_reduction_factors()
+        JT_int_gnd.calc_K_JT_factor()
+        JT_int_gnd.calc_energy_splitting()
+        th_res_name = results_folder+ '/' + calculation_name +  '_gnd_theoretical_results.csv'
+    
+        JT_int_gnd.save_essential_theoretical_results(th_res_name)
 
     print('-------------------------------------------------')
     print(JT_int_gnd.get_essential_theoretical_results_string())
     
-    th_res_name = results_folder+ '/' + calculation_name +  '_gnd_theoretical_results.csv'
-    
-    JT_int_gnd.save_essential_theoretical_results(th_res_name)
-
     
 
     print('-------------------------------------------------')
@@ -681,16 +710,20 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
     print(JT_int_ex.JT_theory)
     print('-------------------------------------------------')
-    JT_int_ex.calc_eigen_vals_vects()
+    
+    if ex_from_model_hamilton is False:
+    
+        JT_int_ex.calc_eigen_vals_vects()
 
-    JT_int_ex.calc_reduction_factors()
-    JT_int_ex.calc_K_JT_factor()
-    JT_int_ex.calc_energy_splitting()
+        JT_int_ex.calc_reduction_factors()
+        JT_int_ex.calc_K_JT_factor()
+        JT_int_ex.calc_energy_splitting()
+        th_res_name = results_folder+ '/' + calculation_name +  '_ex_theoretical_results.csv'
+        
+        JT_int_ex.save_essential_theoretical_results(th_res_name)
+    
     print('-------------------------------------------------')
     print(JT_int_ex.get_essential_theoretical_results_string())
-    th_res_name = results_folder+ '/' + calculation_name +  '_ex_theoretical_results.csv'
-    
-    JT_int_ex.save_essential_theoretical_results(th_res_name)
     print('-------------------------------------------------')
 
 
@@ -698,24 +731,27 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
         JT_config_parser.save_raw_pars_ZPL(JT_int_gnd, JT_int_ex)    
 
 
+    if JT_config_parser.is_save_model_Hamiltonian_cfg() == True:
+        JT_config_parser.save_raw_pars_ZPL_model(JT_int_gnd, JT_int_ex)
+
     line_labels = ['line_0', 'line_1', 'line_2', 'line_3']
     JT_int_gnd_Es_dict = { 'E0': [], 'E1': [], 'E2': [],'E3': []}
 
     B_fields = JT_config_parser.get_magnetic_field_vectors()
 
-    if JT_config_parser.is_model_hamiltonian()==True:
+    if JT_config_parser.is_use_model_hamiltonian()==True:
         JT_int_gnd = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_gnd)
 
     JT_int_gnd_Es_dict = calc_magnetic_interaction( B_fields, JT_int_gnd)
 
-    if JT_config_parser.is_model_hamiltonian()==True:
+    if JT_config_parser.is_use_model_hamiltonian()==True:
 
         JT_int_ex = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_ex)
 
-
-
-
     JT_int_ex_Es_dict = calc_magnetic_interaction(B_fields, JT_int_ex)
+
+
+
 
 
 
