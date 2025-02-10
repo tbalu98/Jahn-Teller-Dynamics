@@ -148,8 +148,13 @@ class quantum_system_node(node):
     def create_2D_orbital_system_node():
         el_sys_ops = {}
 
-        b1 = mf.ket_vector( [ 1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
-        b2 = mf.ket_vector( [  1.0/2**0.5, complex(1.0, 0.0)/(-2)**0.5 ] )
+        b1 = mf.ket_vector( [  1.0/2**0.5, complex(1.0, 0.0)/(-2)**0.5 ] )
+        b2 = mf.ket_vector( [ 1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
+
+        b1 = mf.ket_vector( [  1.0/2**0.5, -complex(1.0, 0.0)/(-2)**0.5 ] )
+        b2 = mf.ket_vector( [ -1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
+
+
         bs = [b1, b2]
         #bs = [ (1/2**0.5)*mf.ket_vector([1, complex(0,1)]), (1/2**0.5)*mf.ket_vector([ 1, complex(0,-1) ]) ]
         

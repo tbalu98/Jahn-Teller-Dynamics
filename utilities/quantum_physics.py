@@ -198,10 +198,19 @@ class Exe_tree:
     delta_f_factor:float = None
     KJT_factor:float = None
     lambda_SOC:float = None
-    
+    JT_theory:jt.Jahn_Teller_Theory = None
     lambda_theory:float = None
 
-    def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact):
+    def set_orientation_basis(self, basis_vectors:list[maths.col_vector]):
+        self.basis_x = basis_vectors[0]
+        self.basis_y = basis_vectors[1]
+        self.basis_z = basis_vectors[2]
+
+    def get_normalized_basis_vecs(self):
+        return [self.basis_x.normalize(), self.basis_y.normalize(), self.basis_z.normalize()]
+
+    def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact, orientation_basis:list[maths.col_vector] = maths.cartesian_basis):
+        
         spatial_dim = 2
 
 
@@ -223,7 +232,7 @@ class Exe_tree:
         point_defect_tree.insert_node('nuclei', mode_1)
 
 
-        JT_int =  Exe_tree(point_defect_tree, JT_theory)
+        JT_int =  Exe_tree(point_defect_tree, JT_theory, orientation_basis)
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
@@ -406,7 +415,7 @@ class Exe_tree:
         self.eig_vec_sys.save(eig_vec_fn, eig_val_fn)
 
 
-    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory):
+    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory, orientation_basis = maths.cartesian_basis):
         self.system_tree = system_tree
         self.JT_theory = jt_theory
         self.H_int:mf.MatrixOperator
@@ -417,6 +426,7 @@ class Exe_tree:
         self.KJT_factor:float
         self.intrinsic_soc:float
         self.lambda_Ham:float
+        self.set_orientation_basis(orientation_basis)
     
     def create_minimal_model_DJT_H_int(self, Bx, By, Bz):
 
@@ -641,8 +651,24 @@ class Exe_tree:
 
 class minimal_Exe_tree(Exe_tree):
 
-    
-    def __init__(self, jt_theory):
+    def from_cfg_data(p_factor, intrinsic_soc, KJT,orbital_red_fact, delta_p_factor, orientation_basis:list[maths.col_vector]):
+        tree = minimal_Exe_tree(orientation_basis)
+        tree.p_factor = p_factor
+        tree.DFT_soc = intrinsic_soc
+        tree.orbital_red_fact = orbital_red_fact
+        tree.KJT_factor = KJT
+        tree.delta_p_factor = delta_p_factor
+
+        tree.lambda_theory = tree.p_factor*tree.DFT_soc + tree.KJT_factor
+        tree.delta_f_factor = tree.delta_p_factor*tree.orbital_red_fact
+        tree.f_factor = tree.p_factor*tree.orbital_red_fact
+        tree.lambda_SOC = tree.p_factor*tree.DFT_soc
+        
+        #tree.set_orientation_basis(orientation_basis)
+        return tree
+
+
+    def __init__(self,orientation_basis: list[maths.col_vector], jt_theory = None):
         orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
         spin_sys = qs.quantum_system_node.create_spin_system_node()
 
@@ -660,8 +686,9 @@ class minimal_Exe_tree(Exe_tree):
         self.orbital_red_fact:float
         self.delta_p_factor:float
         self.KJT_factor:float
-        self.intrinsic_soc:float
+        self.DFT_soc:float
         self.lambda_Ham:float
+        self.set_orientation_basis(orientation_basis)
 
     def set_reduction_factors(self, exe_tree:Exe_tree):
         self.p_factor:float = exe_tree.p_factor
@@ -670,13 +697,14 @@ class minimal_Exe_tree(Exe_tree):
         self.delta_p_factor:float = exe_tree.delta_p_factor
         self.delta_f_factor:float = exe_tree.delta_f_factor
         self.KJT_factor:float = exe_tree.KJT_factor
-        self.intrinsic_soc:float = exe_tree.intrinsic_soc
+        self.DFT_soc:float = exe_tree.intrinsic_soc
         self.lambda_Ham:float = exe_tree.lambda_Ham
         self.lambda_SOC = exe_tree.lambda_SOC
 
+    
 
     def from_Exe_tree(exe_tree:Exe_tree):
-        model_exe_tree = minimal_Exe_tree(exe_tree.JT_theory)
+        model_exe_tree = minimal_Exe_tree([exe_tree.basis_x,exe_tree.basis_y,exe_tree.basis_z], exe_tree.JT_theory)
         model_exe_tree.set_reduction_factors(exe_tree)
         return model_exe_tree
 

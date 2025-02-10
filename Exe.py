@@ -15,7 +15,6 @@ if JT_config_parser.is_ZPL_calculation():
 
 elif JT_config_parser.is_single_case():
 
-
     section_to_look_for = JT_cfg.single_case_section
 
     uw.spin_orbit_JT_procedure_general(JT_config_parser, section_to_look_for, complex_trf=True)
