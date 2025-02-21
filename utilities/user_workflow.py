@@ -241,6 +241,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
 
     res_folder = JT_config_parser.get_res_folder_name()
+    create_directory(res_folder)
     calc_name = JT_config_parser.get_prefix_name()
 
     JT_theory = JT_config_parser.create_Jahn_Teller_theory_from_cfg(section_to_look_for)
@@ -299,6 +300,9 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
 
         no_soc_operation(JT_int)
+
+        create_directory(res_folder)
+
         th_res_name = res_folder+ '/' + calc_name +  '_gnd_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
