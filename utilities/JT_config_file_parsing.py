@@ -354,11 +354,13 @@ class Jahn_Teller_config_parser:
 
         new_config[atom_structure_field] = JT_int.JT_theory.symm_lattice.create_atom_pars_dict()
 
-        new_config.add_section(mag_field)
-        new_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
-        new_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
-        new_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
-        new_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
+
+        if self.config.has_section(mag_field):
+            new_config.add_section(mag_field)
+            new_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
+            new_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
+            new_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
+            new_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
 
 
         with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
