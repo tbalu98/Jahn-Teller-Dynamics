@@ -47,7 +47,7 @@ class ZPL_config_parser:
 
 
 #Fields:
-default_field = 'essentials'
+essentials_field = 'essentials'
 so_c_field = 'spin_orbit_coupling'
 mag_field = 'magnetic_field'
 csv_field = '.csv_files'
@@ -100,10 +100,12 @@ eigen_states_opt = 'eigen_states'
 model_Hamiltonian_opt = 'model_Hamiltonian'
 orientation_vector_base = 'orientation_vector'
 Ham_red_opt = 'Ham_reduction_factor'
+f_factor_opt = 'f'
 delta_p_opt = 'delta_p'
 K_JT_opt = 'K_JT'
 save_model_Hamiltonian_cfg_opt = 'save_model_Hamiltonian_cfg'
-
+save_Taylor_coeffs_cfg_opt =  'save_taylor_coeffs_cfg'
+SOC_split_opt = 'spin-orbit_splitting_energy'
 
 class Jahn_Teller_config_parser:
 
@@ -111,10 +113,10 @@ class Jahn_Teller_config_parser:
         pass
 
     def is_real_eigen_vects(self):
-        return True if self.get_option_of_field(default_field,eigen_states_opt ) == 'real' else False
+        return True if self.get_option_of_field(essentials_field,eigen_states_opt ) == 'real' else False
 
     def is_complex_eigen_vects(self):
-        return True if self.get_option_of_field(default_field,eigen_states_opt ) == 'complex' else False
+        return True if self.get_option_of_field(essentials_field,eigen_states_opt ) == 'complex' else False
 
 
     def build_jt_theory_from_vasprunxmls(self,data_folder, section_to_look_for):
@@ -211,7 +213,7 @@ class Jahn_Teller_config_parser:
             return None
 
     def get_calc_LzSz(self):
-        res_str = self.get_option_of_field(default_field, spectrum_range_opt)
+        res_str = self.get_option_of_field(essentials_field, spectrum_range_opt)
         return int(res_str) if res_str!='' else 0
 
     def is_single_case(self):
@@ -274,8 +276,8 @@ class Jahn_Teller_config_parser:
         new_ZPL_config[atom_structure_field] = JT_int_ex.JT_theory.symm_lattice.create_atom_pars_dict()
 
 
-        new_ZPL_config[default_field] = self.config[default_field]
-        new_ZPL_config[default_field][save_raw_pars_opt] = 'false'
+        new_ZPL_config[essentials_field] = self.config[essentials_field]
+        new_ZPL_config[essentials_field][save_raw_pars_opt] = 'false'
         new_ZPL_config.add_section(mag_field)
         new_ZPL_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
         new_ZPL_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
@@ -285,6 +287,8 @@ class Jahn_Teller_config_parser:
 
         with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
+
+
 
     def save_raw_pars_ZPL_model(self, JT_int_gnd: qmp.Exe_tree, JT_int_ex: qmp.Exe_tree):
         
@@ -299,10 +303,10 @@ class Jahn_Teller_config_parser:
 
         new_ZPL_config = ConfigParser()
         #essentials
-        new_ZPL_config[default_field] = self.config[default_field]
-        new_ZPL_config[default_field][save_raw_pars_opt] = 'false'
-        new_ZPL_config[default_field][model_Hamiltonian_opt] = 'false'
-        new_ZPL_config[default_field][save_model_Hamiltonian_cfg_opt] = 'false'
+        new_ZPL_config[essentials_field] = self.config[essentials_field]
+        new_ZPL_config[essentials_field][save_raw_pars_opt] = 'false'
+        new_ZPL_config[essentials_field][model_Hamiltonian_opt] = 'false'
+        new_ZPL_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
 
         new_ZPL_config[gnd_state_field] = self.save_model_raw_pars_section(JT_int_gnd, gnd_state_field)
         new_ZPL_config[ex_state_field] = self.save_model_raw_pars_section(JT_int_ex, ex_state_field)
@@ -326,6 +330,45 @@ class Jahn_Teller_config_parser:
 
         #new_ZPL_config[mag_field][basis_vector_1_opt] = self.config[mag_field][ba]
 
+    def save_raw_pars_ZPL_Taylor(self, JT_int_gnd: qmp.Exe_tree, JT_int_ex: qmp.Exe_tree):
+        
+        if type(JT_int_ex) is qmp.minimal_Exe_tree or type(JT_int_gnd) is qmp.minimal_Exe_tree:
+            return
+        #if self.is_save_model_Hamiltonian_cfg() is False:
+        #    return
+        
+        problem_name = self.get_prefix_name()
+
+        new_ZPL_config = ConfigParser()
+        #essentials
+        new_ZPL_config[essentials_field] = self.config[essentials_field]
+        new_ZPL_config[essentials_field][save_raw_pars_opt] = 'false'
+        new_ZPL_config[essentials_field][model_Hamiltonian_opt] = 'false'
+        new_ZPL_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
+        new_ZPL_config[essentials_field][save_Taylor_coeffs_cfg_opt] = 'false'
+
+        new_ZPL_config[gnd_state_field] = self.save_Taylor_raw_pars_section(JT_int_gnd, gnd_state_field)
+        new_ZPL_config[ex_state_field] = self.save_Taylor_raw_pars_section(JT_int_ex, ex_state_field)
+
+
+        #save magnetic field
+        new_ZPL_config.add_section(mag_field)
+        new_ZPL_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
+        new_ZPL_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
+        new_ZPL_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
+        new_ZPL_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
+
+        new_ZPL_config[mag_field][basis_vector_1_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[0])
+        new_ZPL_config[mag_field][basis_vector_2_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[1])
+        new_ZPL_config[mag_field][basis_vector_3_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[2])
+
+
+
+        with open( self.config_file_dir +'/'+  problem_name+'_Taylor_coeffs.cfg', 'w') as xml_conf:
+            new_ZPL_config.write(xml_conf)
+
+
+
 
     def save_model_raw_pars_section(self, JT_int: qmp.minimal_Exe_tree, section_to_cfg):
         state_parameters_section = {}
@@ -337,8 +380,30 @@ class Jahn_Teller_config_parser:
         state_parameters_section[K_JT_opt] = JT_int.KJT_factor
 
         return state_parameters_section
+    
+    def save_Taylor_raw_pars_section(self, JT_int:qmp.Exe_tree, section_to_cfg):
+        state_parameters_section = {}
+        state_parameters_section[int_soc_opt] = self.get_spin_orbit_coupling(section_to_cfg)
+        state_parameters_section[orb_red_fact_op] = self.get_gL_factor(section_to_cfg)
         
+        state_parameters_section[F_opt] = JT_int.JT_theory.F
+        state_parameters_section[G_opt] = JT_int.JT_theory.G
 
+        state_parameters_section[hw_opt] = JT_int.JT_theory.hw_meV
+
+        return state_parameters_section
+
+
+    def add_magnetic_field_to_cfg(self,new_config:ConfigParser, JT_int:qmp.Exe_tree):
+
+
+        if self.config.has_section(mag_field):
+            new_config.add_section(mag_field)
+            new_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
+            new_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
+            new_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
+            new_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
+        return new_config
 
     def save_raw_pars(self, JT_int:qmp.Exe_tree):
         if self.is_save_raw_pars()==False:
@@ -349,58 +414,71 @@ class Jahn_Teller_config_parser:
         new_config = ConfigParser()
 
         new_config[single_case_section] = self.save_raw_pars_section(JT_int, single_case_section)
-        new_config[default_field] = self.config[default_field]
-        new_config[default_field][save_raw_pars_opt] = 'false'
+        new_config[essentials_field] = self.config[essentials_field]
+        new_config[essentials_field][save_raw_pars_opt] = 'false'
 
         new_config[atom_structure_field] = JT_int.JT_theory.symm_lattice.create_atom_pars_dict()
 
+        self.add_magnetic_field_to_cfg(new_config, JT_int)
 
+        """
         if self.config.has_section(mag_field):
             new_config.add_section(mag_field)
             new_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
             new_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
             new_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
             new_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
-
+        """
 
         with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_config.write(xml_conf)
 
     def is_save_raw_pars(self):
-        if self.config.has_option(default_field, save_raw_pars_opt) ==False:
+        if self.config.has_option(essentials_field, save_raw_pars_opt) ==False:
             return False
         else:
-            return  True if self.config[default_field][save_raw_pars_opt] == 'true' else False
+            return  True if self.config[essentials_field][save_raw_pars_opt] == 'true' else False
 
     def conditional_option(self, field_name:str, opt_name:str):
         if self.config.has_option(field_name, opt_name) == False:
             return False
         else:
-            return  True if self.config[default_field][opt_name] == 'true' else False
+            return  True if self.config[essentials_field][opt_name] == 'true' else False
 
     def is_save_model_Hamiltonian_cfg(self):
-        return self.conditional_option(default_field, save_model_Hamiltonian_cfg_opt)
+        return self.conditional_option(essentials_field, save_model_Hamiltonian_cfg_opt)
+    def is_save_Taylor_coeffs_cfg(self):
+        return self.conditional_option(essentials_field, save_Taylor_coeffs_cfg_opt)
 
 
     def is_use_model_hamiltonian(self):
-        if self.config.has_option(default_field, model_Hamiltonian_opt) ==False:
+        if self.config.has_option(essentials_field, model_Hamiltonian_opt) ==False:
             return False
         else:
-            return  True if self.config[default_field][model_Hamiltonian_opt] == 'true' else False
+            return  True if self.config[essentials_field][model_Hamiltonian_opt] == 'true' else False
 
+
+    def get_SOC_split(self,section):
+        return self.get_float_option_of_field(section, SOC_split_opt)
+        #return float(self.get_option_of_field(section, SOC_split_opt))
 
 
     def create_minimal_Exe_tree_from_cfg(self, section_to_look_for):
 
+
+        lambda_SOC = self.get_SOC_split(section_to_look_for)
+        
         p_factor = self.get_p_factor(section_to_look_for)
         lambda_DFT = self.get_spin_orbit_coupling(section_to_look_for)
         KJT = self.get_KJT(section_to_look_for)
         gL = self.get_gL_factor(section_to_look_for)
         delta_p = self.get_delta_p(section_to_look_for)
 
-        orientation_basis = self.get_basis_col_vectors(default_field)
+        f_factor = self.get_f_factor(section_to_look_for)
 
-        return qmp.minimal_Exe_tree.from_cfg_data(p_factor, lambda_DFT, KJT, gL, delta_p, orientation_basis)
+        orientation_basis = self.get_basis_col_vectors(essentials_field)
+
+        return qmp.minimal_Exe_tree.from_cfg_data( gL, delta_p, orientation_basis, p_factor, lambda_DFT, KJT, f_factor,lambda_SOC)
 
     def get_basis_vector(self,section_id, option_id):
         res:str = self.get_option_of_field(section_id, option_id)
@@ -427,7 +505,7 @@ class Jahn_Teller_config_parser:
         return maths.col_vector.from_list(coordinates)
     
     def get_system_orientation_basis(self):
-        return self.get_basis_col_vectors(default_field)
+        return self.get_basis_col_vectors(essentials_field)
 
     def get_basis_col_vectors(self, field_name) -> list[maths.col_vector]:
 
@@ -462,13 +540,18 @@ class Jahn_Teller_config_parser:
         return float(self.get_option_of_field(section_to_look_for, hw_opt))
 
     def get_p_factor(self, section_to_look_for):
-        return float(self.get_option_of_field(section_to_look_for, Ham_red_opt))
+        return self.get_float_option_of_field(section_to_look_for, Ham_red_opt)
+        #return float(self.get_option_of_field(section_to_look_for, Ham_red_opt))
+
+    def get_f_factor(self, secton_to_look_for):
+        return self.get_float_option_of_field(secton_to_look_for, f_factor_opt)
 
     def get_delta_p(self,section_to_look_for):
         return float(self.get_option_of_field(section_to_look_for, delta_p_opt))
 
     def get_KJT(self, section_to_look_for):
-        return float(self.get_option_of_field(section_to_look_for, K_JT_opt))
+        return self.get_float_option_of_field(section_to_look_for, K_JT_opt)
+        #return float(self.get_option_of_field(section_to_look_for, K_JT_opt))
 
     def build_JT_theory_from_Taylor_coeffs(self, section_to_look_for):
         F = self.get_F_coeff( section_to_look_for)
@@ -527,7 +610,7 @@ class Jahn_Teller_config_parser:
         return True if self.config.has_section(gnd_state_field) and self.config.has_section(ex_state_field) else False
 
     def is_from_model_Hamiltonian(self, section_to_look_for:str):
-        return True if self.config.has_option(section_to_look_for, Ham_red_opt) else False
+        return True if self.config.has_option(section_to_look_for, Ham_red_opt) or self.config.has_option(section_to_look_for, SOC_split_opt) else False
 
     def is_from_Taylor_coeffs(self, section_to_look_for:str):
         return True if self.config.has_option(section_to_look_for,F_opt) else False
@@ -627,8 +710,8 @@ class Jahn_Teller_config_parser:
 
 
     def get_res_folder_name(self):
-        if self.config.has_option(default_field, out_folder_opt):
-            return str(self.config[default_field][out_folder_opt]) + '/'
+        if self.config.has_option(essentials_field, out_folder_opt):
+            return str(self.config[essentials_field][out_folder_opt]) + '/'
         else:
             return str('')
     
@@ -638,6 +721,12 @@ class Jahn_Teller_config_parser:
             return str(self.config[field][option])
         else:
             return str('')
+
+    def get_float_option_of_field(self, field, option):
+        if self.config.has_option( field , option):
+            return float(str(self.config[field][option]))
+        else:
+            return None
 
     def get_LzSz_exp_val_num(self):
         res_str = self.get_option_of_field(so_c_field,spectrum_range_opt)
@@ -649,15 +738,15 @@ class Jahn_Teller_config_parser:
 
 
     def get_data_folder_name(self):
-        if self.config.has_option(default_field, in_folder_opt):
-            return str(self.config[default_field][in_folder_opt]) + '/'
+        if self.config.has_option(essentials_field, in_folder_opt):
+            return str(self.config[essentials_field][in_folder_opt]) + '/'
         else:
             return str('')
         
 
     def get_prefix_name(self):
-        if self.config.has_option(default_field,out_prefix_opt):
-            return str(self.config[default_field][out_prefix_opt] )
+        if self.config.has_option(essentials_field,out_prefix_opt):
+            return str(self.config[essentials_field][out_prefix_opt] )
         else:
             return str('')
 
@@ -673,8 +762,8 @@ class Jahn_Teller_config_parser:
         self.config.read_string(config_string)
         self.get_defult_values()
     def get_eigen_state_type(self):
-        if self.config.has_option(default_field, eigen_states_opt):
-            return self.get_option_of_field(default_field, eigen_states_opt)
+        if self.config.has_option(essentials_field, eigen_states_opt):
+            return self.get_option_of_field(essentials_field, eigen_states_opt)
         else:
             return 'real'
 
@@ -701,7 +790,7 @@ class Jahn_Teller_config_parser:
 
 
     def get_order(self):
-        return int( self.get_option_of_field(default_field, max_vib_quant) )
+        return int( self.get_option_of_field(essentials_field, max_vib_quant) )
 
 
     def build_JT_theory_new(self, data_folder_name):

@@ -688,9 +688,9 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
     print('-------------------------------------------------')
     print('Ground state:')
     JT_int_gnd = create_JT_int(JT_config_parser, section_to_look_for=gnd_sec)
-    print('Maximum number of energy quantums of vibrations in each direction = ' + str(JT_config_parser.max_vib_quant) )
 
     if gnd_from_model_hamilton is False:
+        print('Maximum number of energy quantums of vibrations in each direction = ' + str(JT_config_parser.max_vib_quant) )
         print(JT_int_gnd.JT_theory)
         JT_int_gnd.calc_eigen_vals_vects()
 
@@ -708,15 +708,15 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
     print('-------------------------------------------------')
     print('Excited state:')
-    JT_int_ex = create_JT_int(JT_config_parser, section_to_look_for=ex_sec)
-
-    print('Maximum number of energy quantums of vibrations in each direction = ' + str(JT_config_parser.max_vib_quant) )
-
-    print(JT_int_ex.JT_theory)
-    print('-------------------------------------------------')
     
+    JT_int_ex = create_JT_int(JT_config_parser, section_to_look_for=ex_sec)
     if ex_from_model_hamilton is False:
     
+
+        print('Maximum number of energy quantums of vibrations in each direction = ' + str(JT_config_parser.max_vib_quant) )
+
+        print(JT_int_ex.JT_theory)
+        print('-------------------------------------------------')
         JT_int_ex.calc_eigen_vals_vects()
 
         JT_int_ex.calc_reduction_factors()
@@ -737,6 +737,10 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
     if JT_config_parser.is_save_model_Hamiltonian_cfg() == True:
         JT_config_parser.save_raw_pars_ZPL_model(JT_int_gnd, JT_int_ex)
+
+    if JT_config_parser.is_save_Taylor_coeffs_cfg() == True:
+        JT_config_parser.save_raw_pars_ZPL_Taylor(JT_int_gnd, JT_int_ex)
+
 
     line_labels = ['line_0', 'line_1', 'line_2', 'line_3']
     JT_int_gnd_Es_dict = { 'E0': [], 'E1': [], 'E2': [],'E3': []}
