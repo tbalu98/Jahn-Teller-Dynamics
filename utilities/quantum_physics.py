@@ -311,8 +311,8 @@ class Exe_tree:
     def get_essential_theoretical_results_string(self):
         res_str = 'Theoretical results:\n'
 
-        res_str+='\n\tHam reduction factor = ' + str(round(self.p_factor,4)) 
-        res_str+='\n\tTheoretical energy level splitting = ' + str(round(self.lambda_SOC,4)) + ' meV'
+        res_str+='\n\tHam reduction factor = ' + str(round(self.p_factor,4)) if self.p_factor != None else ''
+        res_str+='\n\tTheoretical energy level splitting = ' + str(round(self.lambda_theory,4)) + ' meV'
 
   
         return res_str
@@ -360,13 +360,13 @@ class Exe_tree:
     def get_essential_input_string(self):
         res_str = 'Input data from ab initio calculations:\n'
 
-        res_str += '\tsymmetric lattice energy = ' + str(round(self.JT_theory.symm_lattice.energy,4))+ ' eV' +'\n'
-        res_str += '\tJahn-Teller distorted lattice energy '+ ' = ' +str( round(self.JT_theory.JT_lattice.energy,4))+ ' eV' +'\n'
-        res_str += '\tBarrier distorted lattice energy = ' +str( round(self.JT_theory.barrier_lattice.energy,4))+ ' eV' +'\n' if self.JT_theory.order_flag==2 else ''
+        res_str += '\tsymmetric geometry energy = ' + str(round(self.JT_theory.symm_lattice.energy,4))+ ' eV' +'\n'
+        res_str += '\tminimum geometry energy '+ ' = ' +str( round(self.JT_theory.JT_lattice.energy,4))+ ' eV' +'\n'
+        res_str += '\tsaddle point geometry energy = ' +str( round(self.JT_theory.barrier_lattice.energy,4))+ ' eV' +'\n' if self.JT_theory.order_flag==2 else ''
 
-        res_str+= '\tsymmetric lattice - Jahn-Teller distorted lattice distance = ' + str( round(self.JT_theory.JT_dist,4)) + ' Å √amu ' +'\n'
-        res_str+= '\tsymmetric lattice - barrier distorted lattice distance = '+str( round(self.JT_theory.barrier_dist,4)) + ' Å √amu ' +'\n' if self.JT_theory.order_flag==2 else ''
-        res_str+= '\tintrinsic spin-orbit coupling = ' + str(round(self.intrinsic_soc,4))+ ' meV' +'\n'
+        res_str+= '\tsymmetric - minimum geometry distance = ' + str( round(self.JT_theory.JT_dist,4)) + ' Å √amu ' +'\n'
+        res_str+= '\tsymmetric - saddle point geometry distance = '+str( round(self.JT_theory.barrier_dist,4)) + ' Å √amu ' +'\n' if self.JT_theory.order_flag==2 else ''
+        res_str+= '\DFT spin-orbit coupling = ' + str(round(self.intrinsic_soc,4))+ ' meV' +'\n'
         res_str+='\torbital reduction factor = '+ str(round(self.orbital_red_fact,4)) +'\n'
 
         return res_str
@@ -376,9 +376,9 @@ class Exe_tree:
         res_dict = {}
 
         if self.JT_theory.order_flag!= 3:
-            res_dict['symmetric lattice energy (eV)'] = [self.JT_theory.symm_lattice.energy] if self.JT_theory.symm_lattice!=None else [None]
-            res_dict['Jahn-Teller distorted lattice energy (eV)'] = [self.JT_theory.JT_lattice.energy] if self.JT_theory.JT_lattice!=None else [None]
-            res_dict['Barrier distorted lattice energy (eV)'] = [self.JT_theory.barrier_lattice.energy] if self.JT_theory.barrier_lattice!= None and self.JT_theory.order_flag==2 else [None]
+            res_dict['symmetric geometry energy (eV)'] = [self.JT_theory.symm_lattice.energy] if self.JT_theory.symm_lattice!=None else [None]
+            res_dict['minimum geometry energy (eV)'] = [self.JT_theory.JT_lattice.energy] if self.JT_theory.JT_lattice!=None else [None]
+            res_dict['saddle point geometry energy (eV)'] = [self.JT_theory.barrier_lattice.energy] if self.JT_theory.barrier_lattice!= None and self.JT_theory.order_flag==2 else [None]
 
         if self.JT_theory.order_flag == 1 or self.JT_theory.order_flag == 2:
             res_dict['high symmetry - minimum energy configuration distance (Å √amu)'] = [self.JT_theory.JT_dist]
@@ -386,7 +386,7 @@ class Exe_tree:
             res_dict['high symmetry - saddle point configuration distance (Å √amu)'] = [self.JT_theory.barrier_dist]
 
 
-        res_dict['intrinsic spin-orbit coupling (meV)'] = [self.intrinsic_soc]
+        res_dict['DFT spin-orbit coupling (meV)'] = [self.intrinsic_soc]
         res_dict['orbital reduction factor '] = [self.orbital_red_fact]
 
         return res_dict
@@ -651,19 +651,24 @@ class Exe_tree:
 
 class minimal_Exe_tree(Exe_tree):
 
-    def from_cfg_data(p_factor, intrinsic_soc, KJT,orbital_red_fact, delta_p_factor, orientation_basis:list[maths.col_vector]):
+    def from_cfg_data( orbital_red_fact, delta_p_factor, orientation_basis:list[maths.col_vector],p_factor = None, dft_soc = None,KJT = None,f_factor = None, soc_split_en = None ):
         tree = minimal_Exe_tree(orientation_basis)
         tree.p_factor = p_factor
-        tree.DFT_soc = intrinsic_soc
+        tree.DFT_soc = dft_soc
         tree.orbital_red_fact = orbital_red_fact
         tree.KJT_factor = KJT
         tree.delta_p_factor = delta_p_factor
+        tree.lambda_theory = p_factor*dft_soc if p_factor is not None and dft_soc is not None else None
 
-        tree.lambda_theory = tree.p_factor*tree.DFT_soc + tree.KJT_factor
-        tree.delta_f_factor = tree.delta_p_factor*tree.orbital_red_fact
-        tree.f_factor = tree.p_factor*tree.orbital_red_fact
-        tree.lambda_SOC = tree.p_factor*tree.DFT_soc
+        if KJT != None and p_factor!= None and dft_soc != None:
+            tree.lambda_theory = tree.p_factor*tree.DFT_soc + tree.KJT_factor
+            tree.f_factor = tree.p_factor*tree.orbital_red_fact
+            tree.lambda_SOC = tree.p_factor*tree.DFT_soc
+        elif soc_split_en!= 0.0:
+            tree.lambda_theory = soc_split_en
+            tree.f_factor = f_factor
         
+        tree.delta_f_factor = tree.delta_p_factor*tree.orbital_red_fact
         #tree.set_orientation_basis(orientation_basis)
         return tree
 
@@ -699,6 +704,7 @@ class minimal_Exe_tree(Exe_tree):
         self.KJT_factor:float = exe_tree.KJT_factor
         self.DFT_soc:float = exe_tree.intrinsic_soc
         self.lambda_Ham:float = exe_tree.lambda_Ham
+        self.lambda_theory = exe_tree.lambda_theory
         self.lambda_SOC = exe_tree.lambda_SOC
 
     
@@ -717,9 +723,9 @@ class minimal_Exe_tree(Exe_tree):
         Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
 
 
-        lambda_full = float((self.lambda_SOC + self.KJT_factor)) 
+        #lambda_full = float((self.lambda_SOC + self.KJT_factor)) 
 
-        return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz
+        return self.lambda_theory*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz
         
     def create_one_mode_DJT_hamiltonian(self, mode=0):
         return 
