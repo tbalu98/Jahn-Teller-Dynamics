@@ -151,8 +151,8 @@ class quantum_system_node(node):
         b1 = mf.ket_vector( [  1.0/2**0.5, complex(1.0, 0.0)/(-2)**0.5 ] )
         b2 = mf.ket_vector( [ 1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
 
-        b1 = mf.ket_vector( [  1.0/2**0.5, -complex(1.0, 0.0)/(-2)**0.5 ] )
-        b2 = mf.ket_vector( [ -1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
+        b1 = mf.ket_vector( [  -1.0/2**0.5, -complex(1.0, 0.0)/(-2)**0.5 ] )
+        b2 = mf.ket_vector( [ +1.0/2**0.5,-complex(1.0, 0.0)/(-2)**0.5 ] )
 
 
         bs = [b1, b2]
