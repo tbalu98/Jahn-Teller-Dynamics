@@ -152,7 +152,6 @@ class Jahn_Teller_config_parser:
     
     def get_magnetic_field_vectors(self):
 
-        Bs = self.get_mag_field_strengths_list()
         """
 
         M = [[0.7071 , -0.7071 , 0],
@@ -179,6 +178,7 @@ class Jahn_Teller_config_parser:
         return B_fields
         """
         if self.config.has_section(mag_field):
+            #Bs = self.get_mag_field_strengths_list()
 
             Bs = self.get_mag_field_strengths_list()
 
@@ -802,8 +802,10 @@ class Jahn_Teller_config_parser:
 
         if self.config.has_section(state_JT_field):
             E_JT = float(self.get_option_of_field(state_JT_field,EJT_opt ))
-            delta_meV =float(self.get_option_of_field(state_JT_field, E_barr_opt))
-
+            
+            delta_field = self.get_option_of_field(state_JT_field, E_barr_opt)
+            delta_meV =float(delta_field) if delta_field!='' else 0.0
+            #delta_meV = self.get_float_option_of_field(state_JT_field, E_barr_opt)
             hw = float(self.get_option_of_field(state_JT_field, hw_opt))
 
             JT_theory = jt.Jahn_Teller_Theory()
