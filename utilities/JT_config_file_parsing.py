@@ -106,6 +106,11 @@ K_JT_opt = 'K_JT'
 save_model_Hamiltonian_cfg_opt = 'save_model_Hamiltonian_cfg'
 save_Taylor_coeffs_cfg_opt =  'save_taylor_coeffs_cfg'
 SOC_split_opt = 'spin-orbit_splitting_energy'
+con_int_en_opt = 'conical_intersection_energy'
+con_int_loc_opt = 'conical_intersection_location'
+global_min_loc_opt = 'global_minimum_location'
+saddle_point_loc_opt = 'saddle_point_location'
+
 
 class Jahn_Teller_config_parser:
 
@@ -147,6 +152,8 @@ class Jahn_Teller_config_parser:
         elif self.is_from_Taylor_coeffs(section_to_look_for):
             JT_theory = self.build_JT_theory_from_Taylor_coeffs(section_to_look_for)
 
+        elif self.is_from_energy_distance_pairs(section_to_look_for):
+            JT_theory = self.build_JT_theories_from_energy_distance_pairs(section_to_look_for)
 
         return JT_theory
     
@@ -278,12 +285,15 @@ class Jahn_Teller_config_parser:
 
         new_ZPL_config[essentials_field] = self.config[essentials_field]
         new_ZPL_config[essentials_field][save_raw_pars_opt] = 'false'
-        new_ZPL_config.add_section(mag_field)
-        new_ZPL_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
+        new_ZPL_config[essentials_field][model_Hamiltonian_opt] = 'false'
+        new_ZPL_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
+
+        new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
+        """
         new_ZPL_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
         new_ZPL_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
         new_ZPL_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
-
+        """
 
         with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
@@ -313,6 +323,7 @@ class Jahn_Teller_config_parser:
 
 
         #save magnetic field
+        """
         new_ZPL_config.add_section(mag_field)
         new_ZPL_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
         new_ZPL_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
@@ -322,13 +333,35 @@ class Jahn_Teller_config_parser:
         new_ZPL_config[mag_field][basis_vector_1_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[0])
         new_ZPL_config[mag_field][basis_vector_2_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[1])
         new_ZPL_config[mag_field][basis_vector_3_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[2])
+        """
 
-
+        new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
 
         with open( self.config_file_dir +'/'+  problem_name+'_model.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
         #new_ZPL_config[mag_field][basis_vector_1_opt] = self.config[mag_field][ba]
+
+    def add_mag_field_to_cfg(self, new_config:ConfigParser, JT_int:qmp.Exe_tree):
+
+        new_config.add_section(mag_field)
+        new_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
+        new_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
+        new_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
+        new_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
+
+        basis_vectors = self.get_basis_col_vectors(mag_field)
+        if basis_vectors != None:
+            new_config[mag_field][basis_vector_1_opt] = str(basis_vectors[0])
+            new_config[mag_field][basis_vector_2_opt] = str(basis_vectors[1])
+            new_config[mag_field][basis_vector_3_opt] = str(basis_vectors[2])
+        elif JT_int.JT_theory.symm_lattice.basis_vecs != None:
+            pass
+            #new_config[mag_field][basis_vector_1_opt] = str(JT_int.JT_theory.symm_lattice.basis_vecs[0])
+            #new_config[mag_field][basis_vector_2_opt] = str(JT_int.JT_theory.symm_lattice.basis_vecs[1])
+            #new_config[mag_field][basis_vector_3_opt] = str(JT_int.JT_theory.symm_lattice.basis_vecs[2])
+
+        return new_config
 
     def save_raw_pars_ZPL_Taylor(self, JT_int_gnd: qmp.Exe_tree, JT_int_ex: qmp.Exe_tree):
         
@@ -618,6 +651,9 @@ class Jahn_Teller_config_parser:
     def is_from_JT_pars(self, section_to_look_for:str):
         return True if self.config.has_option(section_to_look_for,EJT_opt) else False
 
+    def is_from_energy_distance_pairs(self, section_ro_look_for:str):
+        return self.config.has_option(section_ro_look_for, con_int_en_opt)
+
     def is_from_csv(self, section_to_look_for:str):
         high_symm_latt_fn = self.get_option_of_field(section_to_look_for,symm_latt_opt)
         
@@ -826,5 +862,42 @@ class Jahn_Teller_config_parser:
 
             return JT_theory
 
+    def build_JT_theories_from_energy_distance_pairs(self, field_to_look_for):
+        con_int_en = self.get_float_option_of_field(field_to_look_for,con_int_en_opt)
+        con_int_loc = self.get_float_option_of_field(field_to_look_for,con_int_loc_opt)
+
+        saddle_point_en = self.get_float_option_of_field(field_to_look_for,saddle_point_latt_energy_opt)
+        saddle_point_loc = self.get_float_option_of_field(field_to_look_for, saddle_point_loc_opt)
+
+        minimum_en = self.get_float_option_of_field(field_to_look_for,min_energy_latt_energy_opt)
+        minimum_loc = self.get_float_option_of_field(field_to_look_for, global_min_loc_opt)
+
+        JT_en = abs(con_int_en-minimum_en)
+        barr_en = abs(saddle_point_en-minimum_en)
+
+        JT_dist = abs(con_int_loc-minimum_loc)
+        barr_dist = abs(con_int_loc - saddle_point_loc)
+
+        JT_theory = jt.Jahn_Teller_Theory()
+
+        JT_theory.E_JT_meV = JT_en
+        JT_theory.JT_dist = JT_dist
+        JT_theory.delta_meV = barr_en
+        JT_theory.barrier_dist = barr_dist
+
+        JT_theory.order_flag = 2
+
+        JT_theory.calc_hw()
 
 
+
+
+
+        JT_theory.calc_Taylor_coeffs_K()
+
+
+
+        JT_theory.orbital_red_fact = self.get_gL_factor(field_to_look_for)
+        JT_theory.intrinsic_soc = self.get_spin_orbit_coupling(field_to_look_for)
+        
+        return JT_theory
