@@ -69,6 +69,13 @@ class quantum_state:
 
 class bra_state:
 
+    def to_ket_state(self):
+        new_qm_state = copy.deepcopy(self.qm_state)
+        new_qm_state.amplitude = np.conj(self.qm_state.amplitude)
+        return ket_state(qm_state = new_qm_state)
+
+
+
     def calc_order(self):
         return self.qm_state.calc_order()
 

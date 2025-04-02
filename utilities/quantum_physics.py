@@ -202,6 +202,14 @@ class Exe_tree:
     lambda_theory:float = None
 
     def set_orientation_basis(self, basis_vectors:list[maths.col_vector]):
+        """
+        if self.JT_theory.symm_lattice.basis_vecs!=None:
+            
+            self.basis_x = basis_vectors[0].in_new_basis(self.JT_theory.symm_lattice.basis_vecs)
+            self.basis_y = basis_vectors[1].in_new_basis(self.JT_theory.symm_lattice.basis_vecs)
+            self.basis_z = basis_vectors[2].in_new_basis(self.JT_theory.symm_lattice.basis_vecs)
+        """
+
         self.basis_x = basis_vectors[0]
         self.basis_y = basis_vectors[1]
         self.basis_z = basis_vectors[2]
