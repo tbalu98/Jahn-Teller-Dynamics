@@ -227,7 +227,7 @@ class Jahn_Teller_Theory:
                res_str+= '\n\t' + 'vibration energy quantum = '+ str(round(self.hw_meV,4)) + ' meV'+'\n'
 
                res_str+='\n\t' +  'Taylor coefficient:'
-               res_str+= '\n\t\t'+ 'F = ' + str(round(float(self.F),4)) 
+               res_str+= '\n\t\t'+ 'F = ' + str(round(float(self.F),4)) +'meV'
 
                return res_str
           
@@ -240,9 +240,9 @@ class Jahn_Teller_Theory:
 
                res_str+= '\n\t' + 'vibration energy quantum = '+ str(round(self.hw_meV,4)) + ' meV'+'\n'
                res_str+='\n\t' +  'Taylor coefficients:'
-               res_str+= '\n\t\t'+ 'F = ' + str(round(float(self.F),4)) 
-               res_str+='\n\t\t' +'G = ' + str(round(float(self.G),4)) 
-               res_str += '\n\t\t' + 'K = '+ str(round(float(self.K),4))
+               res_str+= '\n\t\t'+ 'F = ' + str(round(float(self.F),4)) + ' meV'
+               res_str+='\n\t\t' +'G = ' + str(round(float(self.G),4)) + ' meV'
+               #res_str += '\n\t' + 'K = '+ str(round(float(self.K),4)) + ' meV'
                return res_str
           
           elif self.order_flag == 3:
