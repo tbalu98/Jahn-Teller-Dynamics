@@ -1,12 +1,12 @@
 import itertools
 import numpy as np
 import itertools
-from utilities.braket_formalism import  operator
-import utilities.maths as  maths
+from jahn_teller_dynamics.math.braket_formalism import  operator
+import jahn_teller_dynamics.math.maths as  maths
 import copy
 import math
 import pandas as pd
-import utilities.braket_formalism as  bf
+import jahn_teller_dynamics.math.braket_formalism as  bf
 
 from collections import namedtuple
 

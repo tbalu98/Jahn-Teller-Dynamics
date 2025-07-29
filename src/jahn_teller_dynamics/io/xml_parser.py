@@ -1,8 +1,8 @@
 import xml.dom.minidom
-import utilities.VASP as V
+import jahn_teller_dynamics.io.VASP as V
 import pandas as pd
 from configparser import ConfigParser
-import utilities.maths as maths
+import jahn_teller_dynamics.math.maths as maths
 
 
 

@@ -7,7 +7,30 @@ import pandas as pd
 import warnings
 import itertools
 warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
+from scipy.optimize import curve_fit
+import numpy as np
 
+
+
+def exp_func(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+def fit_function(x_data, y_data,p0,func):
+    # Initial parameter guesses
+    
+    # Fit exponential to data
+    popt, pcov = curve_fit(func, x_data, y_data, p0=p0)
+    
+    # Calculate R-squared value
+    residuals = y_data - func(x_data, *popt)
+    ss_res = np.sum(residuals**2)
+    ss_tot = np.sum((y_data - np.mean(y_data))**2)
+    r_squared = 1 - (ss_res / ss_tot)
+    
+    # Calculate parameter uncertainties
+    perr = np.sqrt(np.diag(pcov))
+    
+    return popt, r_squared, perr
 
 
 def meV_to_GHz(e):

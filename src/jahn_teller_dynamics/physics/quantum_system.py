@@ -2,11 +2,11 @@ import itertools
 import numpy as np
 import itertools
 #import utilities.braket_formalism as bf
-import utilities.maths as  maths
+import jahn_teller_dynamics.math.maths as  maths
 import copy
 import math
-import utilities.matrix_formalism as mf
-import utilities.braket_formalism as  bf
+import jahn_teller_dynamics.math.matrix_formalism as mf
+import jahn_teller_dynamics.math.braket_formalism as  bf
 import operator
 from typing import List
 

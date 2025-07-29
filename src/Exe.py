@@ -1,6 +1,6 @@
-import utilities.user_workflow as uw
+import jahn_teller_dynamics.io.user_workflow as uw
 import sys
-import utilities.JT_config_file_parsing as  JT_cfg
+import jahn_teller_dynamics.io.JT_config_file_parsing as  JT_cfg
 
 arguments = sys.argv[1:]
 
