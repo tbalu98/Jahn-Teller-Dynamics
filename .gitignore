@@ -21,6 +21,7 @@ stash/
 tests/
 result_plots/
 results/
+src/scripts_for_work/
 publications/
 books/
 .vscode/

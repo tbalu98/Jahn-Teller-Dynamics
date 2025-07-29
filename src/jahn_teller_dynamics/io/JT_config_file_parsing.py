@@ -1,11 +1,11 @@
 from configparser import ConfigParser
-import utilities.jahn_teller_theory as jt
-import utilities.VASP as V
-import utilities.maths as maths
+import jahn_teller_dynamics.physics.jahn_teller_theory as jt
+import jahn_teller_dynamics.io.VASP as V
+import jahn_teller_dynamics.math.maths as maths
 import numpy as np
-import utilities.quantum_physics as qmp
+import jahn_teller_dynamics.physics.quantum_physics as qmp
 from collections import namedtuple
-import utilities.xml_parser as xml_parser
+import jahn_teller_dynamics.io.xml_parser as xml_parser
 import os
 
 class ZPL_config_parser:

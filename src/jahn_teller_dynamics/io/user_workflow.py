@@ -1,29 +1,19 @@
-import utilities.JT_config_file_parsing
-import utilities.jahn_teller_theory as jt
-import utilities.maths as  maths
-import utilities.matrix_formalism as mf
+import jahn_teller_dynamics.io.JT_config_file_parsing
+import jahn_teller_dynamics.math.maths as  maths
 import numpy as np
 import matplotlib.pyplot as plt
-import utilities.quantum_physics as qmp
-import utilities.matrix_formalism as mf
-import utilities.braket_formalism as bf
-import utilities.quantum_system as qs
-#import old_ones.OUTCAR_parsing as parsing
-import utilities.xml_parser
-import sys
-import utilities.JT_config_file_parsing as cfg_parser
-from scipy.constants import physical_constants
-from copy import deepcopy
-import warnings
-import pandas as pd
+import jahn_teller_dynamics.physics.quantum_physics as qmp
+import jahn_teller_dynamics.physics.quantum_system as qs
+import jahn_teller_dynamics.io.xml_parser
+import jahn_teller_dynamics.io.JT_config_file_parsing as cfg_parser
 import os
+import pandas as pd
+
+import jahn_teller_dynamics.math.matrix_formalism as mf
 
 gnd_sec = 'ground_state_parameters'
 
 ex_sec = 'excited_state_parameters'
-m_electron = 0.51e9
-m_el_D = 0.0005485833
-
 
 def create_spin_orbit_coupled_DJT_int_from_file(config_file_name:str, save_raw_pars = False):
 
@@ -175,6 +165,18 @@ def calc_and_save_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree, JT_cfg_par
     return JT_int_Es_dict
 
 
+def plot_Es_dict(Es_dict:dict, Bs:list[float]):
+
+    fig, ax = plt.subplots()
+    Bs_mag = Es_dict[cfg_parser.mag_field_strength_csv_col]
+    keys = list(Es_dict.keys())[0:4]
+    for key in keys:
+        value = Es_dict[key]
+        ax.plot(Bs_mag, value, label=key)
+
+    ax.legend()
+    plt.show()
+
 def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree):
     energy_labels = ['E0', 'E1', 'E2', 'E3']
     JT_int_Es_dict = { 'E0': [], 'E1': [], 'E2': [],'E3': []}
@@ -292,7 +294,9 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
             if JT_config_parser.is_use_model_hamiltonian()==True:
                 JT_int = qmp.minimal_Exe_tree.from_Exe_tree(JT_int)
             
-            calc_and_save_magnetic_interaction(B_fields, JT_int, JT_config_parser)
+            JT_Es_dict = calc_and_save_magnetic_interaction(B_fields, JT_int, JT_config_parser)
+
+            plot_Es_dict(JT_Es_dict, B_fields)
 
 
     elif intrincis_soc==0.0:

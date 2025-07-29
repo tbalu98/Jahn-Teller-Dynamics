@@ -1,14 +1,14 @@
-import utilities.matrix_formalism as mf
-import utilities.braket_formalism as bf
-from utilities.matrix_formalism import MatrixOperator
+import jahn_teller_dynamics.math.matrix_formalism as mf
+import jahn_teller_dynamics.math.braket_formalism as bf
+from jahn_teller_dynamics.math.matrix_formalism import MatrixOperator
 import itertools
 from collections import namedtuple
 import numpy as np
-import utilities.jahn_teller_theory as  jt
-import utilities.maths as maths
-import utilities.quantum_system as qs
+import jahn_teller_dynamics.physics.jahn_teller_theory as  jt
+import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.physics.quantum_system as qs
 import copy
-import utilities.VASP as VASP
+import jahn_teller_dynamics.io.VASP as VASP
 import pandas as pd
 
 
@@ -152,6 +152,7 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         self.H_i_ops = []
         for qm_nums_name in self.qm_nums_names:
             self.H_i_ops.append(self.create_mx_ops[qm_nums_name]*self.annil_mx_ops[qm_nums_name] + 0.5*self.create_id_op())
+            #self.H_i_ops.append(self.create_mx_ops[qm_nums_name]*self.annil_mx_ops[qm_nums_name] )
 
 
     def over_est_H_op(self):
@@ -651,6 +652,8 @@ class Exe_tree:
 
 
         self.H_int =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+        #self.H_int =    self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+        
         self.H_int.calc_eigen_vals_vects()
         self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)
 

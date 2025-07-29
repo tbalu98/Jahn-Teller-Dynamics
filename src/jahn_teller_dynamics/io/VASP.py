@@ -8,8 +8,8 @@ import copy
 import pandas as pd
 from io import StringIO
 from typing import List
-import utilities.maths as maths
-import utilities.JT_config_file_parsing as cfg_parsing
+import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.io.JT_config_file_parsing as cfg_parsing
 
 def list_of_nums_to_str(coeffs_list:list):
     
@@ -388,7 +388,7 @@ class Lattice:
             return ((lattice_dist)**0.5)#*self.cell_x
 
 
-
+"""
 
 class POSCAR_data:
 
@@ -475,3 +475,6 @@ class POSCAR_data:
 
     def error_message(exception: Exception):
         print(Exception)
+
+
+"""
