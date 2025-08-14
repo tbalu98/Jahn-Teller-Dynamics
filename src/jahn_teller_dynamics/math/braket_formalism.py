@@ -1,7 +1,6 @@
 import math
 import copy
 
-from collections import namedtuple
 import numpy as np
 
 

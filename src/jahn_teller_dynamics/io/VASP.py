@@ -1,9 +1,6 @@
 import numpy as np
-import re
 import sys
-import collections
 import math
-import collections
 import copy
 import pandas as pd
 from io import StringIO
@@ -387,94 +384,3 @@ class Lattice:
                 lattice_dist = lattice_dist + self_ions.calc_dist_sq(other_ions)*(self_ions.m)
             return ((lattice_dist)**0.5)#*self.cell_x
 
-
-"""
-
-class POSCAR_data:
-
-
-    def __init__(self, path):
-        poscar_file = open(path, 'r')
-        lines = poscar_file.readlines()
-
-        self.build_data(lines)
-
-
-    def build_data(self, lines):
-        self.comment = lines[0]
-        scaling_factors_line = lines[1]
-        self.get_scaling_factors(scaling_factors_line)
-        self.get_lattice_vectors(lines)
-        self.get_ions(lines)
-
-    def get_ions(self, lines):
-        name_line = lines[5]
-        numbers_line = lines[6]
-
-
-        names = self.convert_line_elements(name_line, str)
-        numbers = self.convert_line_elements(numbers_line, int)
-        line_num = 9
-        self.lattice = Lattice()
-        
-        for name, number_of_ion in zip( names, numbers):
-            new_line_num = line_num + number_of_ion
-            coordinates = [self.get_coordinate_from_line( line ) for line in lines[line_num: line_num+number_of_ion]]
-            line_num = new_line_num
-            self.lattice.ions_arr.append(Ions(name, coordinates))
-
-
-
-
-
-    def get_scaling_factors(self, line):
-        scaling_factors = self.convert_line_elements(line, float)
-        if (len(scaling_factors)==1 or len(scaling_factors) ==3 ) is True:
-            self.scaling_factors = scaling_factors
-        else:
-            print('Error in the scaling factors! ' + str(len(scaling_factors)) + ' number of arguments')
-            sys.exit(-1)
-
-    def get_lattice_vectors(self, lines):
-        a1_line = lines[2]
-        a2_line = lines[3]
-        a3_line = lines[4]
-        
-        self.a1 = self.convert_line_elements(a1_line, float)
-        self.a2 = self.convert_line_elements(a2_line, float)
-        self.a3 = self.convert_line_elements(a3_line, float)
-
-        a1_coords = self.convert_line_elements(a1_line,float)
-        a2_coords = self.convert_line_elements(a2_line,float)
-        a3_coords = self.convert_line_elements(a3_line,float)
-
-        self.a1 = Vector(a1_coords[0], a1_coords[1], a1_coords[2])
-        self.a2 = Vector(a2_coords[0], a2_coords[1], a2_coords[2])
-        self.a3 = Vector(a3_coords[0], a3_coords[1], a3_coords[2])
-
-
-
-    def convert_line_elements(self, line: str, conv_fun):
-        str_elements =  line.split()
-        try:
-            return [ conv_fun(el) for el in  str_elements]
-        except ValueError:
-            print('Incorrect values in line:\n' + line)
-            sys.exit(-1)
-
-    def coordinate_conversion(self, x):
-        if (x == 'T' or x == 'F'):
-            return None
-        else:
-            return float(x)
-        
-    def get_coordinate_from_line(self, line):
-        numbers  =self.convert_line_elements(line, self.coordinate_conversion)
-        position = Vector(numbers[0], numbers[1], numbers[2])
-        return self.a1.scale(position.x).add(self.a2.scale(position.y)).add(self.a3.scale(position.z))
-
-    def error_message(exception: Exception):
-        print(Exception)
-
-
-"""

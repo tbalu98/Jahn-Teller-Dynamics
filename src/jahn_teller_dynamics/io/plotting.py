@@ -1,6 +1,48 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from matplotlib.colors import LogNorm
+
+# Generate mock data (replace with your data)
+def plot_zpl_intensity_scatter(magnetic_field, energy, intensity):
+    """
+    Plot ZPL intensity as a function of magnetic field and energy
+    
+    Parameters:
+    -----------
+    magnetic_field : np.ndarray
+        Magnetic field values in Tesla
+    energy : np.ndarray 
+        Energy values in eV
+    intensity : np.ndarray
+        2D array of intensity values with shape (len(magnetic_field), len(energy))
+    """
+    # Create a grid for scatter plot
+    B_grid, E_grid = np.meshgrid(magnetic_field, energy)
+    B_flat = B_grid.ravel()
+    E_flat = E_grid.ravel()
+    I_flat = intensity.T.ravel()  # Transpose to match meshgrid
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    sc = plt.scatter(
+        magnetic_field, energy, c=intensity, 
+        s=10,  # Marker size
+        cmap='jet', 
+        edgecolor='k', 
+        linewidth=0.0,
+        
+    )
+
+    # Labels and colorbar
+    plt.xlabel("Magnetic Field (T)")
+    plt.ylabel("Energy (eV)")
+    plt.title("ZPL Intensity vs. Magnetic Field and Energy")
+    cbar = plt.colorbar(sc, label="Intensity (a.u.)")
+    plt.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig("Discrete_Contour_Plot.pdf", dpi=300)
 
 class contour_data():
 

@@ -5,11 +5,8 @@ from scipy.ndimage.filters import minimum_filter
 import matplotlib.pyplot as plt
 import pandas as pd
 import warnings
-import itertools
 warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
 from scipy.optimize import curve_fit
-import numpy as np
-
 
 
 def exp_func(x, a, b, c):

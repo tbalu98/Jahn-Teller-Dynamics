@@ -4,7 +4,6 @@ import itertools
 from jahn_teller_dynamics.math.braket_formalism import  operator
 import jahn_teller_dynamics.math.maths as  maths
 import copy
-import math
 import pandas as pd
 import jahn_teller_dynamics.math.braket_formalism as  bf
 
@@ -92,7 +91,7 @@ class ket_vector:
           self.coeffs.set_val(index,val)
 
      def to_bra_vector(self):
-          return bra_vector( self.coeffs.to_row_vector() )
+          return bra_vector( self.coeffs.to_row_vector(), eigen_val = self.eigen_val )
       
      def __add__(self, other):
           if isinstance(other,ket_vector):
@@ -628,14 +627,14 @@ class degenerate_system_2D(degenerate_system):
 
           complex_pert_ham.calc_eigen_vals_vects()
 
-          return (complex_pert_ham.eigen_kets[1].eigen_val - complex_pert_ham.eigen_kets[0].eigen_val)/2
+          return (complex_pert_ham.eigen_kets[1].eigen_val - complex_pert_ham.eigen_kets[0].eigen_val)
           
      def add_perturbation(self, perturbation: MatrixOperator):
           pert_sys_mat =  super().add_perturbation(perturbation)
           pert_sys_mat.calc_eigen_vals_vects()
 
 
-          self.p_red_fact= abs(pert_sys_mat.eigen_kets[0].eigen_val-pert_sys_mat.eigen_kets[1].eigen_val)/2
+          self.p_red_fact= abs(pert_sys_mat.eigen_kets[0].eigen_val-pert_sys_mat.eigen_kets[1].eigen_val)
 
 
      def calc_p_factor(self, perturbation:MatrixOperator):

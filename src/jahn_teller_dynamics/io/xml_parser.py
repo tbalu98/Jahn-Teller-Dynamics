@@ -1,6 +1,5 @@
 import xml.dom.minidom
 import jahn_teller_dynamics.io.VASP as V
-import pandas as pd
 from configparser import ConfigParser
 import jahn_teller_dynamics.math.maths as maths
 

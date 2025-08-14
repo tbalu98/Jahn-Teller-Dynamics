@@ -159,31 +159,7 @@ class Jahn_Teller_config_parser:
     
     def get_magnetic_field_vectors(self):
 
-        """
 
-        M = [[0.7071 , -0.7071 , 0],
-      [0.4082 ,  0.4082,  -0.8165],
-      [0.5774,   0.5774,   0.5774]]
-
-        M = np.matrix(M)
-
-
-        B_fields = []
-
-        for B in Bs:
-
-    
-            B = float(B)
-            B_comp_vec = np.transpose(np.matrix( [0,0,B] ))
-
-            Bx = float(M[0,:]*B_comp_vec)
-            By = float(M[1,:]*B_comp_vec)
-            Bz = float(M[2,:]*B_comp_vec)
-
-            B_fields.append(maths.col_vector.from_list([Bx, By, Bz]))
-
-        return B_fields
-        """
         if self.config.has_section(mag_field):
             #Bs = self.get_mag_field_strengths_list()
 
@@ -200,7 +176,7 @@ class Jahn_Teller_config_parser:
             return B_fields
         else:
             return None
-
+        
     def get_field_vectors(self, field_name):
 
         if self.config.has_section(field_name):
@@ -289,11 +265,7 @@ class Jahn_Teller_config_parser:
         new_ZPL_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
 
         new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
-        """
-        new_ZPL_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
-        new_ZPL_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
-        new_ZPL_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
-        """
+
 
         with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
@@ -306,8 +278,6 @@ class Jahn_Teller_config_parser:
         JT_int_ex = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_ex)
 
 
-        #if self.is_save_model_Hamiltonian_cfg() is False:
-        #    return
         
         problem_name = self.get_prefix_name()
 
@@ -322,18 +292,7 @@ class Jahn_Teller_config_parser:
         new_ZPL_config[ex_state_field] = self.save_model_raw_pars_section(JT_int_ex, ex_state_field)
 
 
-        #save magnetic field
-        """
-        new_ZPL_config.add_section(mag_field)
-        new_ZPL_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
-        new_ZPL_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
-        new_ZPL_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
-        new_ZPL_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
 
-        new_ZPL_config[mag_field][basis_vector_1_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[0])
-        new_ZPL_config[mag_field][basis_vector_2_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[1])
-        new_ZPL_config[mag_field][basis_vector_3_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[2])
-        """
 
         new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
 
@@ -357,9 +316,6 @@ class Jahn_Teller_config_parser:
             new_config[mag_field][basis_vector_3_opt] = str(basis_vectors[2])
         elif JT_int.JT_theory.symm_lattice.basis_vecs != None:
             pass
-            #new_config[mag_field][basis_vector_1_opt] = str(JT_int.JT_theory.symm_lattice.basis_vecs[0])
-            #new_config[mag_field][basis_vector_2_opt] = str(JT_int.JT_theory.symm_lattice.basis_vecs[1])
-            #new_config[mag_field][basis_vector_3_opt] = str(JT_int.JT_theory.symm_lattice.basis_vecs[2])
 
         return new_config
 
@@ -367,8 +323,6 @@ class Jahn_Teller_config_parser:
         
         if type(JT_int_ex) is qmp.minimal_Exe_tree or type(JT_int_gnd) is qmp.minimal_Exe_tree:
             return
-        #if self.is_save_model_Hamiltonian_cfg() is False:
-        #    return
         
         problem_name = self.get_prefix_name()
 
@@ -454,14 +408,7 @@ class Jahn_Teller_config_parser:
 
         self.add_magnetic_field_to_cfg(new_config, JT_int)
 
-        """
-        if self.config.has_section(mag_field):
-            new_config.add_section(mag_field)
-            new_config[mag_field][min_field_opt] = self.config[mag_field][min_field_opt]
-            new_config[mag_field][max_field_opt] = self.config[mag_field][max_field_opt]
-            new_config[mag_field][step_num_opt] = self.config[mag_field][step_num_opt]
-            new_config[mag_field][dir_vec_opt] = self.config[mag_field][dir_vec_opt]
-        """
+
 
         with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_config.write(xml_conf)
@@ -493,7 +440,6 @@ class Jahn_Teller_config_parser:
 
     def get_SOC_split(self,section):
         return self.get_float_option_of_field(section, SOC_split_opt)
-        #return float(self.get_option_of_field(section, SOC_split_opt))
 
 
     def create_minimal_Exe_tree_from_cfg(self, section_to_look_for):
@@ -574,7 +520,6 @@ class Jahn_Teller_config_parser:
 
     def get_p_factor(self, section_to_look_for):
         return self.get_float_option_of_field(section_to_look_for, Ham_red_opt)
-        #return float(self.get_option_of_field(section_to_look_for, Ham_red_opt))
 
     def get_f_factor(self, secton_to_look_for):
         return self.get_float_option_of_field(secton_to_look_for, f_factor_opt)
@@ -584,7 +529,6 @@ class Jahn_Teller_config_parser:
 
     def get_KJT(self, section_to_look_for):
         return self.get_float_option_of_field(section_to_look_for, K_JT_opt)
-        #return float(self.get_option_of_field(section_to_look_for, K_JT_opt))
 
     def build_JT_theory_from_Taylor_coeffs(self, section_to_look_for):
         F = self.get_F_coeff( section_to_look_for)
@@ -747,7 +691,8 @@ class Jahn_Teller_config_parser:
 
     def get_res_folder_name(self):
         if self.config.has_option(essentials_field, out_folder_opt):
-            return str(self.config[essentials_field][out_folder_opt]) + '/'
+            folder_path = str(self.config[essentials_field][out_folder_opt])
+            return folder_path + '/'
         else:
             return str('')
     
@@ -775,7 +720,8 @@ class Jahn_Teller_config_parser:
 
     def get_data_folder_name(self):
         if self.config.has_option(essentials_field, in_folder_opt):
-            return str(self.config[essentials_field][in_folder_opt]) + '/'
+            folder_path = str(self.config[essentials_field][in_folder_opt])
+            return folder_path + '/'
         else:
             return str('')
         
@@ -788,8 +734,8 @@ class Jahn_Teller_config_parser:
 
 
     def __init__(self, config_file_path):
-        config_file = open(config_file_path,'r')
-        config_string = config_file.read()
+        with open(config_file_path,'r') as config_file:
+            config_string = config_file.read()
         self.config_file_path:str = config_file_path
 
         self.config_file_dir = os.path.dirname(config_file_path)
@@ -816,7 +762,6 @@ class Jahn_Teller_config_parser:
     def get_spin_orbit_coupling(self, section_to_look_for):
         res_str = self.get_option_of_field(section_to_look_for, int_soc_opt)
 
-        #return maths.GHz_to_meV( float( res_str )) if res_str!= '' else 0.0
         return float( res_str ) if res_str!= '' else 0.0
 
 
@@ -841,7 +786,6 @@ class Jahn_Teller_config_parser:
             
             delta_field = self.get_option_of_field(state_JT_field, E_barr_opt)
             delta_meV =float(delta_field) if delta_field!='' else 0.0
-            #delta_meV = self.get_float_option_of_field(state_JT_field, E_barr_opt)
             hw = float(self.get_option_of_field(state_JT_field, hw_opt))
 
             JT_theory = jt.Jahn_Teller_Theory()
