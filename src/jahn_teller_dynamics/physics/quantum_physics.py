@@ -676,8 +676,8 @@ class Exe_tree:
         fourth_order2 = 8*(XX*X*Y)
 
         #sz = -1*sz
-        self.H_int =   K** s0 + self.JT_theory.F*(X**sz - Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz + (2* XY)**sx) + self.JT_theory.H*(third_order1**sz + third_order2**sx) 
-        + self.JT_theory.J*(fourth_order1**sz + fourth_order2**sx) 
+        self.H_int =   K** s0 + self.JT_theory.F*(X**sz - Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz + (2* XY)**sx) #+ self.JT_theory.H*(third_order1**sz + third_order2**sx) 
+        #+ self.JT_theory.J*(fourth_order1**sz + fourth_order2**sx) 
 
         self.H_int.calc_eigen_vals_vects()
         self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)
