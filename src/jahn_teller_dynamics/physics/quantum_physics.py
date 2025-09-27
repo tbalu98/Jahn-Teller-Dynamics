@@ -9,6 +9,7 @@ import copy
 import pandas as pd
 
 
+hbar_meVs = 6.5821195e-13
 
 Bohn_magneton_meV_T = 1.0
 Bohn_magneton_meV_T = 0.057883671
@@ -175,15 +176,20 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         op.subsys_name = self.phonon_sys_name
         return op
 
+    def calc_pos_prefactor(self):
+        return 1.0
+        return (self.K/2)**0.5
+        #return (hbar_meVs/2)**0.5*self.K**-0.25
+        return (4.603275202*10**-13)/(2**0.5*self.K**0.25)
+
     def calc_pos_i_op(self, qm_num_name) -> mm.MatrixOperator:
 
-        return self.over_est_pos_i_op(qm_num_name).truncate_matrix(self.trunc_num)
-            
+        return self.calc_pos_prefactor()*self.over_est_pos_i_op(qm_num_name).truncate_matrix(self.trunc_num)
 
 
     def calc_pos_i_j_op(self, qm_num_name_1, qm_num_name_2):
 
-        return self.over_est_pos_i_j_op(qm_num_name_1, qm_num_name_2).truncate_matrix(self.trunc_num)
+        return self.calc_pos_prefactor()**2*self.over_est_pos_i_j_op(qm_num_name_1, qm_num_name_2).truncate_matrix(self.trunc_num)
 
 
 
@@ -663,8 +669,15 @@ class Exe_tree:
         sz = self.system_tree.create_operator('Z_orb', 'electron_system')
         sx = self.system_tree.create_operator('X_orb', 'electron_system')
 
+        third_order1 = X*( XX + YY )
+        third_order2 = Y*( XX + YY )
 
-        self.H_int =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
+        fourth_order1 = (5*XX*XX - 6*XX*YY-3*YY*YY)/5
+        fourth_order2 = 8*(XX*X*Y)
+
+        #sz = -1*sz
+        self.H_int =   K** s0 + self.JT_theory.F*(X**sz - Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz + (2* XY)**sx) + self.JT_theory.H*(third_order1**sz + third_order2**sx) 
+        + self.JT_theory.J*(fourth_order1**sz + fourth_order2**sx) 
 
         self.H_int.calc_eigen_vals_vects()
         self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)

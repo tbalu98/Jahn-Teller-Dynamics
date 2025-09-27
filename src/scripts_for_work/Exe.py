@@ -1,28 +1,23 @@
 #!/usr/bin/env python3
-
+"""
+Wrapper for the original Exe.py functionality.
+This makes the Exe.py logic available as an importable module.
+"""
 
 import sys
-import jahn_teller_dynamics.io.JT_config_file_parsing as  JT_cfg    
-import jahn_teller_dynamics.io.user_workflow as uw
-import traceback
-def main():
 
+import jahn_teller_dynamics.io.JT_config_file_parsing as  JT_cfg
+import jahn_teller_dynamics.io.user_workflow as uw
+
+
+def main():
+    """Main function that replicates the original Exe.py behavior."""
     arguments = sys.argv[1:]
     
     if not arguments:
         print("Error: No configuration file specified.")
         print("Usage: Exe <config_file>")
         sys.exit(1)
-    
-    if len(arguments) == 1 and arguments[0] == '--version':
-        try:
-            from importlib.metadata import version
-            print(f'jahn-teller-dynamics {version("jahn-teller-dynamics")}')
-        except:
-            print('jahn-teller-dynamics version unknown')
-        sys.exit(0)
-
-
     
     config_file_name = arguments[0]
     
@@ -43,8 +38,8 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
-        traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main() 
