@@ -1,5 +1,8 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
+acustic_phonons/
+src/scripts_for_work/
+Gergo_config_files/
 study_materials/
 articles/
 data/
@@ -21,7 +24,6 @@ stash/
 tests/
 result_plots/
 results/
-src/scripts_for_work/
 publications/
 books/
 .vscode/
@@ -260,3 +262,4 @@ __pycache__/
 
 *.pyc
 *.OUTCAR
+

@@ -6,7 +6,14 @@ import pandas as pd
 from io import StringIO
 from typing import List
 import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.io.JT_config_file_parsing as cfg_parsing
+
+basis_vector_1_opt = 'basis_vector_1'
+basis_vector_2_opt = 'basis_vector_2'
+basis_vector_3_opt = 'basis_vector_3'
+
+num_of_atoms_op = 'numbers_of_atoms'
+mass_of_atoms_op = 'masses_of_atoms'
+names_of_atoms_op = 'names_of_atoms'
 
 def list_of_nums_to_str(coeffs_list:list):
     
@@ -116,8 +123,20 @@ class Vector:
             new_z -= cell_z
 
         return Vector(new_x,new_y,new_z)            
+    def get_coords_arr(self):
+        return np.array([self.x,self.y,self.z])
 
+    def to_cartesian_coords(self, basis_vecs:list):
+        return Vector(self.x*basis_vecs[0].length() , self.y*basis_vecs[1].length() , self.z*basis_vecs[2].length())
 class Ions:
+    def get_gen_coords_arr(self):
+        return np.array([vec.to_cartesian_coords(self.basis_vecs).scale(self.m**0.5).tolist() for vec in self._vecs]).flatten()
+
+    def get_fractional_coords_arr(self):
+        return np.array([vec.tolist() for vec in self._vecs]).flatten()
+
+    def get_cartesian_coords_arr(self):
+        return np.array([vec.to_cartesian_coords(self.basis_vecs).tolist() for vec in self._vecs]).flatten()
 
     def __init__(self, name,  vecs, m=None, cell_x = None, cell_y = None, cell_z = None, basis_vecs = None):
         self.name = name
@@ -177,13 +196,16 @@ class Ions:
 class Lattice:
 
 
+    def sub_gen_coords_vector(self, other):
+        return self.get_gen_coords_vector() - other.get_gen_coords_vector()
+
     def create_atom_structure_parameters(self):
 
         atom_pars_dict = self.create_atom_pars_dict()
         
-        atom_pars_dict[cfg_parsing.basis_vector_1_opt] = str(self.basis_vecs[0])
-        atom_pars_dict[cfg_parsing.basis_vector_1_opt] = str(self.basis_vecs[1])
-        atom_pars_dict[cfg_parsing.basis_vector_3_opt] = str(self.basis_vecs[2])
+        atom_pars_dict[basis_vector_1_opt] = str(self.basis_vecs[0])
+        atom_pars_dict[basis_vector_1_opt] = str(self.basis_vecs[1])
+        atom_pars_dict[basis_vector_3_opt] = str(self.basis_vecs[2])
         
         return atom_pars_dict
 
@@ -196,13 +218,13 @@ class Lattice:
 
 
 
-        res_dict[cfg_parsing.mass_of_atoms_op] = list_of_nums_to_str(masses)
-        res_dict[cfg_parsing.names_of_atoms_op] = list_of_nums_to_str(names)
-        res_dict[cfg_parsing.num_of_atoms_op] = list_of_nums_to_str(numbers)
+        res_dict[mass_of_atoms_op] = list_of_nums_to_str(masses)
+        res_dict[names_of_atoms_op] = list_of_nums_to_str(names)
+        res_dict[num_of_atoms_op] = list_of_nums_to_str(numbers)
 
-        res_dict[cfg_parsing.basis_vector_1_opt] = str(self.basis_vecs[0])
-        res_dict[cfg_parsing.basis_vector_2_opt] = str(self.basis_vecs[1])
-        res_dict[cfg_parsing.basis_vector_3_opt] = str(self.basis_vecs[2])
+        res_dict[basis_vector_1_opt] = str(self.basis_vecs[0])
+        res_dict[basis_vector_2_opt] = str(self.basis_vecs[1])
+        res_dict[basis_vector_3_opt] = str(self.basis_vecs[2])
 
         return res_dict
 
@@ -228,7 +250,50 @@ class Lattice:
         self.basis_vecs = basis_vecs
         self.ions_arr: List[Ions] = []
         self.energy = energy
-   
+    
+    def gen_coords_to_cartesian_vector(self,vec:np.array):
+        
+        res_vec = []
+
+        i = 0
+        for ions in self.ions_arr:
+            for atom in ions:
+                res_vec.append( vec[i] /(ions.m)**0.5)
+                i+=1
+        return res_vec
+
+    def general_to_fractional_vector(self,vec:np.array):
+        
+        res_vec = []
+
+        i = 0
+        for ions in self.ions_arr:
+            for atom in ions:
+                for basis_vec in self.basis_vecs:
+                    res_vec.append( (vec[i] /((ions.m)**0.5*basis_vec.length())).real)
+                    i+=1
+        return res_vec
+
+
+    def cartesian_to_fractional_vector(self,vec:np.array):
+        ls = [self.basis_vecs[0].length(), self.basis_vecs[1].length(), self.basis_vecs[2].length()]
+        
+        res_vec = []
+        for i in range(0, len(vec)):
+            res_vec.append(vec[i]/ls[i%3])
+
+        return res_vec
+
+    def get_gen_coords_vector(self):
+        return np.concatenate([ion.get_gen_coords_arr() for ion in self.ions_arr])
+
+    def get_cartesian_coords_vector(self):
+        return np.concatenate([ion.get_cartesian_coords_arr() for ion in self.ions_arr])
+
+    def get_fractional_coords_vector(self):
+        return np.concatenate([ion.get_fractional_coords_arr() for ion in self.ions_arr])
+
+
     def push_vec_back_to_cell(self, vec:Vector):
         return vec.push_to_cell(self.cell_x, self.cell_y, self.cell_z)
 
