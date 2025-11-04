@@ -12,6 +12,9 @@ from scipy.optimize import curve_fit
 def exp_func(x, a, b, c):
     return a * np.exp(-b * x) + c
 
+def exp_func_2(x, a, b, c):
+    return a * 2**(-b * x) + c 
+
 def fit_function(x_data, y_data,p0,func):
     # Initial parameter guesses
     
@@ -201,7 +204,17 @@ def equal_matrix(a:np.matrix, b:np.matrix):
 
 class col_vector:
 
+    def load_from_file(file_name):
+        df = pd.read_csv(file_name)
 
+        columns = df.columns
+
+        col_vector_list = []   
+
+        for column in columns[1:]:
+            col_vector_list.append(col_vector(np.transpose(np.matrix(df[column].tolist()))))
+
+        return col_vector_list
 
     def basis_trf(self,new_bases:list):
         new_bases_row_vectors = [ new_base.to_row_vector() for new_base in new_bases  ]
@@ -225,8 +238,9 @@ class col_vector:
 
     def in_new_basis(self, basis_vecs:list):
         coeffs = self.tolist()
-
-        res_vec = col_vector.from_list([ 0.0, 0.0, 0.0 ])
+        dim = self.coeffs.shape[0]
+        res_vec = col_vector.from_list([0.0 for i in range(dim)])
+        #res_vec = col_vector.from_list([ 0.0, 0.0, 0.0 ])
 
         for coeff,basis_vec in zip(coeffs, basis_vecs):
             res_vec+=coeff*basis_vec

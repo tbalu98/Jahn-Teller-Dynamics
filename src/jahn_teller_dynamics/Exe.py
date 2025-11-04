@@ -37,14 +37,15 @@ def main():
         else:
             print("Error: Could not determine calculation type from config file.")
             sys.exit(1)
-            
-    except FileNotFoundError:
-        print(f"Error: Configuration file '{config_file_name}' not found.")
-        sys.exit(1)
+    
     except Exception as e:
         print(f"Error: {e}")
         traceback.print_exc()
         sys.exit(1)
+    
+
+    
+
 
 if __name__ == "__main__":
     main() 

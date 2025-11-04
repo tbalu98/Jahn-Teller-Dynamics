@@ -18,9 +18,9 @@ from collections import namedtuple
 
 class Jahn_Teller_Theory:
 
-     symm_lattice:V.Lattice
-     JT_lattice:V.Lattice
-     barrier_lattice:V.Lattice
+     symm_lattice:'V.Lattice'
+     JT_lattice:'V.Lattice'
+     barrier_lattice:'V.Lattice'
 
 
      def from_JT_pars(self, E_JT, E_b, hw):
