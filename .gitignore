@@ -1,5 +1,6 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
+research_data.md
 acustic_phonons/
 src/scripts_for_work/
 Gergo_config_files/
