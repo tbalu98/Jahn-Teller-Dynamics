@@ -7,8 +7,16 @@ import os
 def read_readme():
     readme_path = os.path.join(os.path.dirname(__file__), 'README.md')
     if os.path.exists(readme_path):
-        with open(readme_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        # Try different encodings (UTF-8, UTF-16 LE, UTF-16 BE)
+        encodings = ['utf-8', 'utf-16-le', 'utf-16-be']
+        for encoding in encodings:
+            try:
+                with open(readme_path, 'r', encoding=encoding) as f:
+                    return f.read()
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        # If all encodings fail, return empty string
+        return ""
     return ""
 
 # Read requirements
@@ -20,8 +28,8 @@ def read_requirements():
     return []
 
 setup(
-    name='jahn-teller-dynamics',
-    version='0.3.1',  # Update this as needed
+    name='jahn_teller_dynamics',
+    version='0.3.4',  # Update this as needed
     description='Dynamic Jahn-Teller Effect Calculator',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
