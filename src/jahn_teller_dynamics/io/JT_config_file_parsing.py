@@ -374,7 +374,7 @@ class Jahn_Teller_config_parser:
 
 
 
-        with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
+        with open( self.config_file_dir +  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_config.write(xml_conf)
 
     def is_save_raw_pars(self):
