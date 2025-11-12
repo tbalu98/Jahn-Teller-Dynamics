@@ -164,7 +164,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
         JT_int.calc_K_JT_factor()
         print('-------------------------------------------------')
         print(JT_int.get_essential_theoretical_results_string())
-        th_res_name = res_folder+ '/' + calc_name +  '_theoretical_results.csv'
+        th_res_name = res_folder + calc_name +  '_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
 
@@ -196,7 +196,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
         create_directory(res_folder)
 
-        th_res_name = res_folder+ '/' + calc_name +  '_gnd_theoretical_results.csv'
+        th_res_name = res_folder + calc_name +  '_gnd_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
         calc_and_save_eigen_vals_vecs(JT_int,calc_name+'_real', res_folder)
@@ -575,7 +575,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
         JT_int_gnd.calc_reduction_factors()
         JT_int_gnd.calc_K_JT_factor()
         JT_int_gnd.calc_energy_splitting()
-        th_res_name = results_folder+ '/' + calculation_name +  '_gnd_theoretical_results.csv'
+        th_res_name = results_folder + calculation_name +  '_gnd_theoretical_results.csv'
     
         JT_int_gnd.save_essential_theoretical_results(th_res_name)
 
@@ -600,7 +600,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
         JT_int_ex.calc_reduction_factors()
         JT_int_ex.calc_K_JT_factor()
         JT_int_ex.calc_energy_splitting()
-        th_res_name = results_folder+ '/' + calculation_name +  '_ex_theoretical_results.csv'
+        th_res_name = results_folder + calculation_name +  '_ex_theoretical_results.csv'
         
         JT_int_ex.save_essential_theoretical_results(th_res_name)
     

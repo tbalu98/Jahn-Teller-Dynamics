@@ -8,43 +8,6 @@ from collections import namedtuple
 import jahn_teller_dynamics.io.xml_parser as xml_parser
 import os
 
-class ZPL_config_parser:
-    def __init__(self, config_file_name):
-        config_file = open(config_file_name,'r')
-        config_string = config_file.read()
-
-        self.config = ConfigParser()
-        self.config.read_string(config_string)
-
-    def get_option_of_field(self, field, option):
-        if self.config.has_option( field , option):
-            return str(self.config[field][option])
-        else:
-            return str('')
-    
-    def get_calculation_name(self):
-        return self.get_option_of_field('DEFAULT', 'calculation_name')
-
-    def get_gnd_cfg_filename(self):
-        return self.get_option_of_field('DEFAULT', 'ground_state_cfg')
-    def get_cfg_data_folder(self):
-        return self.get_option_of_field('DEFAULT', 'cfg_data_folder') + '/'
-
-    def get_results_folder(self):
-        return self.get_option_of_field('DEFAULT', 'results_folder') + '/'
-
-    def get_ex_cfg_filename(self):
-        return self.get_option_of_field('DEFAULT', 'excited_state_cfg')
-    
-    def get_B_min(self):
-        return float(self.get_option_of_field('magnetic_field', 'B_min'))
-
-    def get_B_max(self):
-        return float(self.get_option_of_field('magnetic_field', 'B_max'))
-
-    def get_step_num(self):
-        return int(self.get_option_of_field('magnetic_field', 'step_num'))
-
 
 #Fields:
 essentials_field = 'essentials'
@@ -266,8 +229,9 @@ class Jahn_Teller_config_parser:
 
         new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
 
+        
 
-        with open( self.config_file_dir +'/'+  problem_name+'_csv.cfg', 'w') as xml_conf:
+        with open( self.config_file_dir +  problem_name+'_csv.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
 
@@ -296,7 +260,7 @@ class Jahn_Teller_config_parser:
 
         new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
 
-        with open( self.config_file_dir +'/'+  problem_name+'_model.cfg', 'w') as xml_conf:
+        with open( self.config_file_dir +  problem_name+'_model.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
         #new_ZPL_config[mag_field][basis_vector_1_opt] = self.config[mag_field][ba]
@@ -351,7 +315,7 @@ class Jahn_Teller_config_parser:
 
 
 
-        with open( self.config_file_dir +'/'+  problem_name+'_Taylor_coeffs.cfg', 'w') as xml_conf:
+        with open( self.config_file_dir +  problem_name+'_Taylor_coeffs.cfg', 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
 
