@@ -163,6 +163,8 @@ class quantum_system_node(node):
         el_sys_ops['Y_Alt'] = mm.MatrixOperator(maths.Matrix(np.matrix([[0.0j, 0.0j], [0.0j, 1.0+0.0j]],dtype=np.complex128)))
 
         el_sys_ops['Lz'] = mm.MatrixOperator.pauli_z_mx_op().to_new_basis(bs)
+        el_sys_ops['Lx'] = mm.MatrixOperator.pauli_x_mx_op().to_new_basis(bs)
+        el_sys_ops['Ly'] = mm.MatrixOperator.pauli_y_mx_op().to_new_basis(bs)
 
         to_cmp_basis_trf = mm.MatrixOperator.basis_trf_matrix(bs)
 

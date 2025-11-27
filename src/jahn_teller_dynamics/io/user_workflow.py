@@ -138,7 +138,12 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
     JT_theory = JT_config_parser.create_Jahn_Teller_theory_from_cfg(section_to_look_for)
 
 
-    JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(JT_theory, order, intrincis_soc, orbital_red_fact)
+    #JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(JT_theory, order, intrincis_soc, orbital_red_fact)
+
+    if JT_config_parser.is_from_model_Hamiltonian(section_to_look_for)==True:
+        JT_int = JT_config_parser.create_minimal_Exe_tree_from_cfg(section_to_look_for)
+    else:
+        JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(JT_theory, order, intrincis_soc, orbital_red_fact)
 
     print('-------------------------------------------------')
     print('Maximum number of energy quantums of vibrations in each direction = ' + str(order) )
@@ -574,7 +579,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
         JT_int_gnd.calc_reduction_factors()
         JT_int_gnd.calc_K_JT_factor()
-        JT_int_gnd.calc_energy_splitting()
+        #JT_int_gnd.calc_energy_splitting()
         th_res_name = results_folder + calculation_name +  '_gnd_theoretical_results.csv'
     
         JT_int_gnd.save_essential_theoretical_results(th_res_name)
@@ -599,7 +604,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
         JT_int_ex.calc_reduction_factors()
         JT_int_ex.calc_K_JT_factor()
-        JT_int_ex.calc_energy_splitting()
+        #JT_int_ex.calc_energy_splitting()
         th_res_name = results_folder + calculation_name +  '_ex_theoretical_results.csv'
         
         JT_int_ex.save_essential_theoretical_results(th_res_name)
