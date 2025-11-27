@@ -26,6 +26,7 @@ out_folder_opt = 'output_folder'
 in_folder_opt  = 'input_folder'
 spectrum_range_opt = 'spectrum_range'
 orb_red_fact_op = 'orbital_reduction_factor'
+delta_f_opt = 'delta_f'
 out_prefix_opt = 'output_prefix'
 int_soc_opt = 'DFT_spin-orbit_coupling'
 symm_latt_opt = 'high_symmetry_geometry'
@@ -65,6 +66,8 @@ orientation_vector_base = 'orientation_vector'
 Ham_red_opt = 'Ham_reduction_factor'
 f_factor_opt = 'f'
 delta_p_opt = 'delta_p'
+Yx_opt = 'Yx'
+Yy_opt = 'Yy'
 K_JT_opt = 'K_JT'
 save_model_Hamiltonian_cfg_opt = 'save_model_Hamiltonian_cfg'
 save_Taylor_coeffs_cfg_opt =  'save_taylor_coeffs_cfg'
@@ -114,6 +117,9 @@ class Jahn_Teller_config_parser:
 
         elif self.is_from_Taylor_coeffs(section_to_look_for):
             JT_theory = self.build_JT_theory_from_Taylor_coeffs(section_to_look_for)
+
+        elif self.is_from_model_Hamiltonian(section_to_look_for):
+            JT_theory = self.build_JT_theory_from_model_Hamiltonian_cfg(section_to_look_for)
 
         elif self.is_from_energy_distance_pairs(section_to_look_for):
             JT_theory = self.build_JT_theories_from_energy_distance_pairs(section_to_look_for)
@@ -231,7 +237,8 @@ class Jahn_Teller_config_parser:
 
         
 
-        with open( self.config_file_dir +  problem_name+'_csv.cfg', 'w') as xml_conf:
+        csv_cfg_name = os.path.join(self.config_file_dir, problem_name+'_csv.cfg')
+        with open( csv_cfg_name, 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
 
@@ -260,7 +267,8 @@ class Jahn_Teller_config_parser:
 
         new_ZPL_config = self.add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
 
-        with open( self.config_file_dir +  problem_name+'_model.cfg', 'w') as xml_conf:
+        model_cfg_name = os.path.join(self.config_file_dir, problem_name+'_model.cfg')
+        with open( model_cfg_name, 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
         #new_ZPL_config[mag_field][basis_vector_1_opt] = self.config[mag_field][ba]
@@ -315,7 +323,8 @@ class Jahn_Teller_config_parser:
 
 
 
-        with open( self.config_file_dir +  problem_name+'_Taylor_coeffs.cfg', 'w') as xml_conf:
+        taylor_cfg_name = os.path.join(self.config_file_dir, problem_name+'_Taylor_coeffs.cfg')
+        with open( taylor_cfg_name, 'w') as xml_conf:
             new_ZPL_config.write(xml_conf)
 
 
@@ -323,12 +332,14 @@ class Jahn_Teller_config_parser:
 
     def save_model_raw_pars_section(self, JT_int: qmp.minimal_Exe_tree, section_to_cfg):
         state_parameters_section = {}
-        state_parameters_section[int_soc_opt] = self.get_spin_orbit_coupling(section_to_cfg)
+        #state_parameters_section[SOC_split_opt] = self.get_spin_orbit_coupling(section_to_cfg)
+        state_parameters_section[SOC_split_opt] = JT_int.lambda_theory if JT_int.electron == True else -JT_int.lambda_theory
         state_parameters_section[orb_red_fact_op] = self.get_gL_factor(section_to_cfg)
         
-        state_parameters_section[Ham_red_opt] = JT_int.p_factor
-        state_parameters_section[delta_p_opt] = JT_int.delta_p_factor
-        state_parameters_section[K_JT_opt] = JT_int.KJT_factor
+        #state_parameters_section[Ham_red_opt] = JT_int.p_factor
+        state_parameters_section[delta_f_opt] = JT_int.delta_f_factor
+        state_parameters_section[f_factor_opt] = JT_int.f_factor
+        #state_parameters_section[K_JT_opt] = JT_int.KJT_factor
 
         return state_parameters_section
     
@@ -374,7 +385,8 @@ class Jahn_Teller_config_parser:
 
 
 
-        with open( self.config_file_dir +  problem_name+'_csv.cfg', 'w') as xml_conf:
+        csv_cfg_name = os.path.join(self.config_file_dir, problem_name+'_csv.cfg')
+        with open( csv_cfg_name, 'w') as xml_conf:
             new_config.write(xml_conf)
 
     def is_save_raw_pars(self):
@@ -400,7 +412,8 @@ class Jahn_Teller_config_parser:
             return False
         else:
             return  True if self.config[essentials_field][model_Hamiltonian_opt] == 'true' else False
-
+    def is_model_Hamiltonian(self):
+        pass
 
     def get_SOC_split(self,section):
         return self.get_float_option_of_field(section, SOC_split_opt)
@@ -409,19 +422,17 @@ class Jahn_Teller_config_parser:
     def create_minimal_Exe_tree_from_cfg(self, section_to_look_for):
 
 
-        lambda_SOC = self.get_SOC_split(section_to_look_for)
+        energy_split = self.get_SOC_split(section_to_look_for)
         
-        p_factor = self.get_p_factor(section_to_look_for)
-        lambda_DFT = self.get_spin_orbit_coupling(section_to_look_for)
-        KJT = self.get_KJT(section_to_look_for)
         gL = self.get_gL_factor(section_to_look_for)
-        delta_p = self.get_delta_p(section_to_look_for)
-
         f_factor = self.get_f_factor(section_to_look_for)
+        delta_f = self.get_delta_f(section_to_look_for)
+        Yx = self.get_Yx(section_to_look_for)
+        Yy = self.get_Yy(section_to_look_for)
 
         orientation_basis = self.get_basis_col_vectors(essentials_field)
 
-        return qmp.minimal_Exe_tree.from_cfg_data( gL, delta_p, orientation_basis, p_factor, lambda_DFT, KJT, f_factor,lambda_SOC)
+        return qmp.minimal_Exe_tree.from_cfg_data( energy_split,orientation_basis, gL, delta_f,  f_factor, Yx, Yy)
 
     def get_basis_vector(self,section_id, option_id):
         res:str = self.get_option_of_field(section_id, option_id)
@@ -491,6 +502,16 @@ class Jahn_Teller_config_parser:
     def get_delta_p(self,section_to_look_for):
         return float(self.get_option_of_field(section_to_look_for, delta_p_opt))
 
+    def get_delta_f(self,section_to_look_for):
+        return float(self.get_option_of_field(section_to_look_for, delta_f_opt))
+
+
+    def get_Yx(self, section_to_look_for):
+        return self.get_float_option_of_field(section_to_look_for, Yx_opt)
+
+    def get_Yy(self, section_to_look_for):
+        return self.get_float_option_of_field(section_to_look_for, Yy_opt)
+
     def get_KJT(self, section_to_look_for):
         return self.get_float_option_of_field(section_to_look_for, K_JT_opt)
 
@@ -508,6 +529,19 @@ class Jahn_Teller_config_parser:
             return None
         else:
             return [b1_vec, b2_vec, b3_vec]        
+
+    def build_JT_theory_from_model_Hamiltonian_cfg(self, section_to_look_for):
+
+        p_factor = self.get_p_factor(section_to_look_for)
+        lambda_DFT = self.get_spin_orbit_coupling(section_to_look_for)
+        KJT = self.get_KJT(section_to_look_for)
+        gL = self.get_gL_factor(section_to_look_for)
+        #delta_p = self.get_delta_p(section_to_look_for)
+        delta_f = self.get_delta_f(section_to_look_for)
+        Yx = self.get_Yx(section_to_look_for)
+        Yy = self.get_Yy(section_to_look_for)
+        f_factor = self.get_f_factor(section_to_look_for)
+        return jt.Jahn_Teller_Theory().from_model_parameters( lambda_DFT, KJT, gL, delta_f, Yx, Yy, f_factor)
 
     def build_jt_theory_from_csv_and_pars_data(self, section_to_look_for):
         data_folder =  self.get_data_folder_name()

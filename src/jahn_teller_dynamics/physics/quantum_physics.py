@@ -203,7 +203,8 @@ class Exe_tree:
     lambda_SOC:float = None
     JT_theory:jt.Jahn_Teller_Theory = None
     lambda_theory:float = None
-
+    electron:bool = False
+    p_factor:float = None
     def set_orientation_basis(self, basis_vectors:list[maths.col_vector]):
 
 
@@ -241,6 +242,7 @@ class Exe_tree:
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
+        JT_int.electron = True if intrinsic_soc > 0.0 else False
         return JT_int
 
     def add_spin_system(self):
@@ -275,6 +277,7 @@ class Exe_tree:
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
+        JT_int.electron = True if intrinsic_soc > 0.0 else False
         return JT_int
 
 
@@ -287,7 +290,7 @@ class Exe_tree:
         if self.H_int.eigen_kets!=None:
             H_DJT =  self.system_tree.root_node.operators['H_DJT']
             
-            E_32 = self.H_int.eigen_kets[3]
+            E_32 = self.H_int.eigen_kets[2]
             E_12 = self.H_int.eigen_kets[0]
 
             K_JT_32 =  H_DJT.calc_expected_val(E_32)
@@ -299,12 +302,12 @@ class Exe_tree:
         self.p_32 = 2*LzSz_op.calc_expected_val(self.H_int.eigen_kets[2])
         self.p_12 = -2*LzSz_op.calc_expected_val(self.H_int.eigen_kets[0])
 
-        self.p_factor = abs((self.p_32+self.p_12)/2)
+        self.p_factor = (self.p_32+self.p_12)/2
         self.lambda_Ham = self.p_factor
 
         self.delta_p_factor = (self.p_32-self.p_12)/2
 
-        self.f_factor = self.orbital_red_fact*self.p_factor
+        self.f_factor = -self.orbital_red_fact*self.p_factor
 
         self.delta_f_factor = self.orbital_red_fact*self.delta_p_factor
 
@@ -316,8 +319,8 @@ class Exe_tree:
     def get_essential_theoretical_results_string(self):
         res_str = 'Theoretical results:\n'
 
-        res_str+='\n\tHam reduction factor = ' + str(round(self.p_factor,4)) if self.p_factor != None else ''
-        res_str+='\n\tTheoretical energy level splitting = ' + str(round(self.lambda_theory,4)) + ' meV'
+        res_str+='\n\tHam reduction factor = ' + str(round(abs(self.p_factor),4)) if self.p_factor != None else ''
+        res_str+='\n\tTheoretical energy level splitting = ' + str(round(abs(self.lambda_theory),4)) + ' meV'
 
   
         return res_str
@@ -337,7 +340,7 @@ class Exe_tree:
 
         
         temp_res_dict['vibrational energy quantum (meV)'] = [self.JT_theory.hw_meV]
-        temp_res_dict['Ham reduction factor'] = [self.p_factor]
+        temp_res_dict['Ham reduction factor'] = [abs(self.p_factor)]
         
         temp_res_dict['delta_p factor'] = [self.delta_p_factor] if self.delta_f_factor !=None else[ None]
         temp_res_dict['delta_f factor'] = [self.delta_f_factor] if self.delta_f_factor !=None else [None]
@@ -345,7 +348,7 @@ class Exe_tree:
         temp_res_dict['Energy splitting due to dynamic Janh-Teller effect (meV)'] = [self.KJT_factor] if self.KJT_factor!=None else [None]
 
         temp_res_dict['Energy splitting due to spin-orbit coupling (meV)'] = [self.lambda_SOC] if self.lambda_SOC!=None else [None]
-        temp_res_dict['Energy splitting (meV)'] = [self.lambda_theory] if self.lambda_theory!=None else [None]
+        temp_res_dict['Energy splitting (meV)'] = [abs(self.lambda_theory)] if self.lambda_theory!=None else [None]
 
         res_dict = {}
 
@@ -687,24 +690,18 @@ class Exe_tree:
 
 class minimal_Exe_tree(Exe_tree):
 
-    def from_cfg_data( orbital_red_fact, delta_p_factor, orientation_basis:list[maths.col_vector],p_factor = None, dft_soc = None,KJT = None,f_factor = None, soc_split_en = None ):
-        tree = minimal_Exe_tree(orientation_basis)
-        tree.p_factor = p_factor
-        tree.DFT_soc = dft_soc
-        tree.orbital_red_fact = orbital_red_fact
-        tree.KJT_factor = KJT
-        tree.delta_p_factor = delta_p_factor
-        tree.lambda_theory = p_factor*dft_soc if p_factor is not None and dft_soc is not None else None
+    
 
-        if KJT != None and p_factor!= None and dft_soc != None:
-            tree.lambda_theory = tree.p_factor*tree.DFT_soc + tree.KJT_factor
-            tree.f_factor = tree.p_factor*tree.orbital_red_fact
-            tree.lambda_SOC = tree.p_factor*tree.DFT_soc
-        elif soc_split_en!= 0.0:
-            tree.lambda_theory = soc_split_en
-            tree.f_factor = f_factor
-        
-        tree.delta_f_factor = tree.delta_p_factor*tree.orbital_red_fact
+    def from_cfg_data(energy_split,orientation_basis, gL, delta_f,  f_factor, Yx, Yy):
+        tree = minimal_Exe_tree(orientation_basis)
+        tree.Yx = Yx
+        tree.Yy = Yy
+        #tree.orbital_red_fact = orbital_red_fact
+        tree.delta_f_factor = delta_f
+
+        tree.lambda_theory = energy_split
+        tree.f_factor = f_factor
+        tree.gL = gL
         return tree
 
 
@@ -728,6 +725,9 @@ class minimal_Exe_tree(Exe_tree):
         self.KJT_factor:float
         self.DFT_soc:float
         self.lambda_Ham:float
+        self.Yx:float = 0.0
+        self.Yy:float = 0.0
+        self.electron = True
         self.set_orientation_basis(orientation_basis)
 
     def set_reduction_factors(self, exe_tree:Exe_tree):
@@ -738,6 +738,7 @@ class minimal_Exe_tree(Exe_tree):
         self.delta_f_factor:float = exe_tree.delta_f_factor
         self.KJT_factor:float = exe_tree.KJT_factor
         self.DFT_soc:float = exe_tree.intrinsic_soc
+        self.electron = exe_tree.electron
         self.lambda_Ham:float = exe_tree.lambda_Ham
         self.lambda_theory = exe_tree.lambda_theory
         self.lambda_SOC = exe_tree.lambda_SOC
@@ -755,14 +756,16 @@ class minimal_Exe_tree(Exe_tree):
 
     def create_DJT_SOC_mag_interaction(self, Bx, By, Bz):
         Lz = self.system_tree.create_operator('Lz','point_defect','orbital_system')
-
+        Lx = self.system_tree.create_operator('Lx','point_defect','orbital_system')
+        Ly = self.system_tree.create_operator('Ly','point_defect','orbital_system')
         Sz = self.system_tree.create_operator('Sz', 'point_defect','spin_system')
         Sy = self.system_tree.create_operator('Sy', 'point_defect','spin_system')
         Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
 
 
 
-        return self.lambda_theory*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz #+ (self.p_32+self.p_12)*self.intrinsic_soc*0.25*mf.MatrixOperator.create_id_matrix_op(4)
+        return self.lambda_theory*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz #-self.Yx*Lx + self.Yy*Ly
+        #+ (self.p_32+self.p_12)*self.intrinsic_soc*0.25*mf.MatrixOperator.create_id_matrix_op(4)
         
     def create_one_mode_DJT_hamiltonian(self, mode=0):
         return MatrixOperator.create_null_matrix_op(dim = 4)

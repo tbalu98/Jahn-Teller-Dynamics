@@ -131,6 +131,17 @@ class Jahn_Teller_Theory:
           self.calc_Taylor_coeffs()
           return self
 
+     def from_model_parameters(self, lambda_DFT, KJT, gL, delta_f, Yx, Yy, f_factor):
+          #self.p_factor = p_factor
+          self.lambda_DFT = lambda_DFT
+          self.KJT = KJT
+          self.gL = gL
+          self.delta_f = delta_f
+          self.Yx = Yx
+          self.Yy = Yy
+          self.f_factor = f_factor
+          return self
+
      def __init__(self, symm_lattice: V.Lattice=None, less_symm_lattice_1: V.Lattice=None, less_symm_lattice_2:V.Lattice=None):
           self.symm_lattice = symm_lattice
           self.JT_lattice = None
@@ -162,6 +173,10 @@ class Jahn_Teller_Theory:
           self.G =  0.0
 
      def __repr__(self) -> str:
+          if self.order_flag == 0:
+               res_str = 'Model Hamiltonian parameters'
+               res_str += '\n\tHam reduction factor = ' + str(round(self.p_factor,4)) if self.p_factor != None else ''
+               res_str += '\n\t'
           if self.order_flag == 1:
 
                res_str = 'First order Jahn-Teller interaction parameters'
