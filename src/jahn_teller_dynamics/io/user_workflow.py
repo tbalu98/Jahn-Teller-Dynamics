@@ -65,7 +65,7 @@ def plot_Es_dict(Es_dict:dict, Bs:list[float]):
     ax.legend()
     plt.show()
 
-def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree):
+def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree, strain_fields = None):
     energy_labels = ['E0', 'E1', 'E2', 'E3']
     JT_int_Es_dict = { 'B_field': B_fields, 'E0': [], 'E1': [], 'E2': [],'E3': []}
     JT_int_eigen_kets_dict = { 'B_field': B_fields, 'E0': [], 'E1': [], 'E2': [],'E3': []}
@@ -82,7 +82,8 @@ def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree):
         
 
         H_DJT_mag = JT_int.create_DJT_SOC_mag_interaction(*B_field.tolist())
-   
+        if strain_fields != None:
+            H_DJT_mag = H_DJT_mag + JT_int.create_strain_field_interaction(*strain_fields.tolist())
         H_DJT_mag.calc_eigen_vals_vects()
         
 
@@ -512,13 +513,13 @@ def calc_transition_energies(ex_Es:dict, gnd_Es:dict,ex_labels:list[str], gnd_la
     return transitions
 
 
-def calc_transition_intensities(JT_int_gnd:qmp.Exe_tree, JT_int_ex:qmp.Exe_tree,  fields:list):
+def calc_transition_intensities(JT_int_gnd:qmp.Exe_tree, JT_int_ex:qmp.Exe_tree,  B_fields:list, strain_fields:list):
     points = []
-    ex_kets = JT_int_ex.calc_magnetic_interaction_eigen_kets(fields)
-    gnd_kets = JT_int_gnd.calc_magnetic_interaction_eigen_kets(fields)
+    ex_kets = JT_int_ex.calc_magnetic_interaction_eigen_kets(B_fields, strain_fields)
+    gnd_kets = JT_int_gnd.calc_magnetic_interaction_eigen_kets(B_fields, strain_fields)
     
-    for i in range(0, len(fields)):
-        B = fields[i].length()
+    for i in range(0, len(B_fields)):
+        B = B_fields[i].length()
 
         ex_kets_B = [ex_kets['E0'][i], ex_kets['E1'][i], ex_kets['E2'][i], ex_kets['E3'][i]]
         gnd_kets_B = [gnd_kets['E0'][i], gnd_kets['E1'][i], gnd_kets['E2'][i], gnd_kets['E3'][i]]
@@ -629,17 +630,18 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
     JT_int_gnd_Es_dict = { 'E0': [], 'E1': [], 'E2': [],'E3': []}
 
     B_fields = JT_config_parser.get_magnetic_field_vectors()
+    strain_fields = JT_config_parser.get_strain_field_vector()
 
     if JT_config_parser.is_use_model_hamiltonian()==True:
         JT_int_gnd = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_gnd)
 
-    JT_int_gnd_Es_dict, JT_int_gnd_eigen_kets_dict = calc_magnetic_interaction( B_fields, JT_int_gnd)
+    JT_int_gnd_Es_dict, JT_int_gnd_eigen_kets_dict = calc_magnetic_interaction( B_fields, JT_int_gnd, strain_fields)
 
     if JT_config_parser.is_use_model_hamiltonian()==True:
 
         JT_int_ex = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_ex)
 
-    JT_int_ex_Es_dict, JT_int_ex_eigen_kets_dict = calc_magnetic_interaction(B_fields, JT_int_ex)
+    JT_int_ex_Es_dict, JT_int_ex_eigen_kets_dict = calc_magnetic_interaction(B_fields, JT_int_ex, strain_fields)
 
     D_transition = calc_transition_energies(JT_int_ex_Es_dict, JT_int_gnd_Es_dict,['E0','E1'], ['E2','E3'], Bs)
     C_transition = calc_transition_energies(JT_int_ex_Es_dict, JT_int_gnd_Es_dict,['E0','E1'], ['E0','E1'], Bs)
