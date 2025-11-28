@@ -19,7 +19,7 @@ el_field = 'electric_field'
 ex_state_field = 'excited_state_parameters'
 gnd_state_field = 'ground_state_parameters'
 system_field = 'system_parameters'
-
+strain_field = 'strain_field'
 #Options:
 at_pat_opt = 'atom_parameters'
 out_folder_opt = 'output_folder'
@@ -68,6 +68,7 @@ f_factor_opt = 'f'
 delta_p_opt = 'delta_p'
 Yx_opt = 'Yx'
 Yy_opt = 'Yy'
+strain_vec_op = 'strain_vector'
 K_JT_opt = 'K_JT'
 save_model_Hamiltonian_cfg_opt = 'save_model_Hamiltonian_cfg'
 save_Taylor_coeffs_cfg_opt =  'save_taylor_coeffs_cfg'
@@ -126,6 +127,8 @@ class Jahn_Teller_config_parser:
 
         return JT_theory
     
+
+
     def get_magnetic_field_vectors(self):
 
 
@@ -161,6 +164,12 @@ class Jahn_Teller_config_parser:
 
                 field_vecs = [ B_field.in_new_basis(basis_vectors) for B_field in field_vecs ]
             return field_vecs
+        else:
+            return None
+
+    def get_strain_field_vector(self) -> maths.col_vector:
+        if self.config.has_section(strain_field):
+            return self.get_strain_dir_vector()
         else:
             return None
 
@@ -450,6 +459,10 @@ class Jahn_Teller_config_parser:
 
     def get_mag_dir_vector(self) -> maths.col_vector:
         coordinates = self.get_splitted_strs(mag_field, dir_vec_opt, float)
+        return maths.col_vector.from_list(coordinates)
+
+    def get_strain_dir_vector(self) -> maths.col_vector:
+        coordinates = self.get_splitted_strs(strain_field, strain_vec_op, float)
         return maths.col_vector.from_list(coordinates)
 
     def get_col_vector(self, field_name, opt_name) ->maths.col_vector:

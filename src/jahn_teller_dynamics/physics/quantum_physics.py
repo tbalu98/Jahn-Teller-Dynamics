@@ -497,8 +497,11 @@ class Exe_tree:
 
         return H_el
     
-    def create_strain_field_interaction(self, Stx, Sty, Stz):
-        pass
+    def create_strain_field_interaction(self, Yx:float, Yy:float, Yz:float)->mm.MatrixOperator:
+        Lx = self.system_tree.create_operator('Lx', 'point_defect','orbital_system')
+        Ly = self.system_tree.create_operator('Ly', 'point_defect','orbital_system')
+        Lz = self.system_tree.create_operator('Lz', 'point_defect','orbital_system')
+        return -Yx*Lx + Yy*Ly + Yz*Lz
 
     def create_magnetic_field_spin_z_interaction(self, B_z, delta, gl_factor)->mm.MatrixOperator:
 
@@ -553,7 +556,7 @@ class Exe_tree:
 
         return H_full_int + H_mag_spin_point_def + H_mag_ang_point_def 
 
-    def calc_magnetic_interaction_eigen_kets(self, B_fields):
+    def calc_magnetic_interaction_eigen_kets(self, B_fields, strain_fields = None):
 
         res_dict =  { 'B_field': B_fields, 'E0': [], 'E1': [], 'E2': [],'E3': []}
 
@@ -568,6 +571,9 @@ class Exe_tree:
 
             H_DJT_mag = self.create_DJT_SOC_mag_interaction(*B_field.tolist())
     
+            if strain_fields != None:
+                H_DJT_mag = H_DJT_mag + self.create_strain_field_interaction(*strain_fields.tolist())
+
             H_DJT_mag.calc_eigen_vals_vects()
 
    
@@ -764,7 +770,7 @@ class minimal_Exe_tree(Exe_tree):
 
 
 
-        return self.lambda_theory*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz #-self.Yx*Lx + self.Yy*Ly
+        return self.lambda_theory*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz 
         #+ (self.p_32+self.p_12)*self.intrinsic_soc*0.25*mf.MatrixOperator.create_id_matrix_op(4)
         
     def create_one_mode_DJT_hamiltonian(self, mode=0):
