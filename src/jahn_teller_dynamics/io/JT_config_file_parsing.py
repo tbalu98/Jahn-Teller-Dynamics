@@ -601,7 +601,7 @@ class Jahn_Teller_config_parser:
         return True if self.config.has_option(section_to_look_for, Ham_red_opt) or self.config.has_option(section_to_look_for, SOC_split_opt) else False
 
     def is_from_Taylor_coeffs(self, section_to_look_for:str):
-        return True if self.config.has_option(section_to_look_for,F_opt) else False
+        return True if self.config.has_option(section_to_look_for,F_opt) and self.config.has_option(section_to_look_for,hw_opt) else False
 
     def is_from_JT_pars(self, section_to_look_for:str):
         return True if self.config.has_option(section_to_look_for,EJT_opt) else False

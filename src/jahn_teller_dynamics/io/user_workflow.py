@@ -32,7 +32,9 @@ def calc_and_save_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree, JT_cfg_par
 
     for B_field,B in zip(B_fields, Bs):        
 
-        B_field = B_field.in_new_basis(JT_int.JT_theory.symm_lattice.get_normalized_basis_vecs())
+        lattice_basis_vecs = JT_int.get_lattice_basis_vecs()
+
+        B_field = B_field.in_new_basis(lattice_basis_vecs)
         JT_int.create_one_mode_DJT_hamiltonian()
         JT_int.H_int =  JT_int.create_DJT_SOC_mag_interaction(*B_field.tolist())
 
@@ -83,7 +85,7 @@ def calc_magnetic_interaction(B_fields, JT_int:qmp.Exe_tree, strain_fields = Non
 
         H_DJT_mag = JT_int.create_DJT_SOC_mag_interaction(*B_field.tolist())
         if strain_fields != None:
-            H_DJT_mag = H_DJT_mag + JT_int.create_strain_field_interaction(*strain_fields.tolist())
+            H_DJT_mag = H_DJT_mag + JT_int.create_strain_field_interaction(strain_fields.tolist())
         H_DJT_mag.calc_eigen_vals_vects()
         
 
@@ -194,6 +196,20 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
             #plot_Es_dict(JT_Es_dict, B_fields)
 
 
+    elif JT_config_parser.is_from_model_Hamiltonian(section_to_look_for)==True and intrincis_soc==0.0:
+        JT_int = JT_config_parser.create_minimal_Exe_tree_from_cfg(section_to_look_for)
+        #JT_int.create_one_mode_DJT_hamiltonian()
+        #th_res_name = res_folder + calc_name +  '_theoretical_results.csv'
+        #JT_int.save_essential_theoretical_results(th_res_name)
+        #calc_and_save_eigen_vals_vecs(JT_int,calc_name+'_real', res_folder)
+        #JT_config_parser.save_raw_pars(JT_int)
+        B_fields = JT_config_parser.get_magnetic_field_vectors()
+        
+        if B_fields!= None and JT_config_parser.is_ZPL_calculation() == False:
+            
+            JT_Es_dict = calc_and_save_magnetic_interaction(B_fields, JT_int, JT_config_parser)
+        
+        
     elif intrincis_soc==0.0:
         JT_int.create_one_mode_DJT_hamiltonian()
 
@@ -202,7 +218,7 @@ def spin_orbit_JT_procedure_general( JT_config_parser: cfg_parser.Jahn_Teller_co
 
         create_directory(res_folder)
 
-        th_res_name = res_folder + calc_name +  '_gnd_theoretical_results.csv'
+        th_res_name = res_folder + calc_name +  '_theoretical_results.csv'
     
         JT_int.save_essential_theoretical_results(th_res_name)
         calc_and_save_eigen_vals_vecs(JT_int,calc_name+'_real', res_folder)
@@ -500,8 +516,8 @@ def plot_APES(F,G):
 
 
 def calc_transition_energies(ex_Es:dict, gnd_Es:dict,ex_labels:list[str], gnd_labels:list[str], field_strengths:list):
-    line_labels = ['line_0', 'line_1', 'line_2', 'line_3']
-    transitions = {'magnetic field (T)': field_strengths,'line_0':[], 'line_1': [], 'line_2':[], 'line_3':[]}
+    line_labels = ['line_0 (GHz)', 'line_1 (GHz)', 'line_2 (GHz)', 'line_3 (GHz)']
+    transitions = {'magnetic field (T)': field_strengths,'line_0 (GHz)':[], 'line_1 (GHz)': [], 'line_2 (GHz)':[], 'line_3 (GHz)':[]}
     for i in range(0, len(field_strengths)):
         line_label_iter =  iter(line_labels)
 
@@ -626,7 +642,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
         JT_config_parser.save_raw_pars_ZPL_Taylor(JT_int_gnd, JT_int_ex)
 
 
-    line_labels = ['line_0', 'line_1', 'line_2', 'line_3']
+    line_labels = ['line_0 (GHz)', 'line_1 (GHz)', 'line_2 (GHz)', 'line_3 (GHz)']
     JT_int_gnd_Es_dict = { 'E0': [], 'E1': [], 'E2': [],'E3': []}
 
     B_fields = JT_config_parser.get_magnetic_field_vectors()
