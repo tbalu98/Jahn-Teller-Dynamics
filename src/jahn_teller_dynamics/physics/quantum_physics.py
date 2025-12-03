@@ -205,6 +205,13 @@ class Exe_tree:
     lambda_theory:float = None
     electron:bool = False
     p_factor:float = None
+
+    def get_lattice_basis_vecs(self):
+        if self.JT_theory!=None and self.JT_theory.symm_lattice!=None:
+            return self.JT_theory.symm_lattice.get_normalized_basis_vecs()
+        else:
+            return [maths.col_vector.from_list([1.0, 0.0, 0.0]), maths.col_vector.from_list([0.0, 1.0, 0.0]), maths.col_vector.from_list([0.0, 0.0, 1.0])]    
+            #return self.JT_theory.JT_lattice.get_normalized_basis_vecs()
     def set_orientation_basis(self, basis_vectors:list[maths.col_vector]):
 
 
@@ -497,10 +504,15 @@ class Exe_tree:
 
         return H_el
     
-    def create_strain_field_interaction(self, Yx:float, Yy:float, Yz:float)->mm.MatrixOperator:
+    def create_strain_field_interaction(self, strain_field:maths.col_vector)->mm.MatrixOperator:
+        
         Lx = self.system_tree.create_operator('Lx', 'point_defect','orbital_system')
         Ly = self.system_tree.create_operator('Ly', 'point_defect','orbital_system')
         Lz = self.system_tree.create_operator('Lz', 'point_defect','orbital_system')
+        Yx = strain_field[0] if len(strain_field) > 0 else 0.0
+        Yy = strain_field[1] if len(strain_field) > 1 else 0.0
+        Yz = strain_field[2] if len(strain_field) > 2 else 0.0
+        
         return -Yx*Lx + Yy*Ly + Yz*Lz
 
     def create_magnetic_field_spin_z_interaction(self, B_z, delta, gl_factor)->mm.MatrixOperator:
@@ -572,7 +584,7 @@ class Exe_tree:
             H_DJT_mag = self.create_DJT_SOC_mag_interaction(*B_field.tolist())
     
             if strain_fields != None:
-                H_DJT_mag = H_DJT_mag + self.create_strain_field_interaction(*strain_fields.tolist())
+                H_DJT_mag = H_DJT_mag + self.create_strain_field_interaction(strain_fields.tolist())
 
             H_DJT_mag.calc_eigen_vals_vects()
 

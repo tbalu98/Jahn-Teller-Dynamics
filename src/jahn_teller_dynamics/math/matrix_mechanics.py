@@ -634,7 +634,7 @@ class degenerate_system_2D(degenerate_system):
           pert_sys_mat.calc_eigen_vals_vects()
 
 
-          self.p_red_fact= abs(pert_sys_mat.eigen_kets[0].eigen_val-pert_sys_mat.eigen_kets[1].eigen_val)
+          self.p_red_fact= pert_sys_mat.eigen_kets[1].eigen_val-pert_sys_mat.eigen_kets[0].eigen_val
 
 
      def calc_p_factor(self, perturbation:MatrixOperator):
