@@ -596,7 +596,7 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
         JT_int_gnd.calc_reduction_factors()
         JT_int_gnd.calc_K_JT_factor()
-        #JT_int_gnd.calc_energy_splitting()
+
         th_res_name = results_folder + calculation_name +  '_gnd_theoretical_results.csv'
     
         JT_int_gnd.save_essential_theoretical_results(th_res_name)
@@ -711,8 +711,8 @@ def ZPL_procedure(JT_config_parser:cfg_parser.Jahn_Teller_config_parser):
 
 
     calculation_name_fn = calculation_name.replace(' ', '_')
-    pd.DataFrame(A_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_A_transitions.csv')
-    pd.DataFrame(B_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_B_transitions.csv')
+    pd.DataFrame(A_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_A_transitions.csv',sep = ';')
+    pd.DataFrame(B_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_B_transitions.csv',sep = ';')
 
-    pd.DataFrame(C_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_C_transitions.csv')
-    pd.DataFrame(D_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_D_transitions.csv')
+    pd.DataFrame(C_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_C_transitions.csv',sep = ';')
+    pd.DataFrame(D_transition).set_index('magnetic field (T)').to_csv(results_folder + calculation_name_fn+'_D_transitions.csv',sep = ';')

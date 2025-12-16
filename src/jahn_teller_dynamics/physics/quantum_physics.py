@@ -368,7 +368,7 @@ class Exe_tree:
     def save_essential_theoretical_results(self, res_path:str):
         res_dict = self.get_essential_theoretical_results()
         res_df = pd.DataFrame(res_dict).set_index('attribute')
-        res_df.to_csv(res_path)
+        res_df.to_csv(res_path,sep = ';')
 
 
 
@@ -405,7 +405,7 @@ class Exe_tree:
         res_dict['orbital reduction factor '] = [self.orbital_red_fact]
 
         return res_dict
-
+    """
     def save_essential_input(self,  res_folder:str,calc_name:str):
         input_data_res = self.get_essential_input()
 
@@ -415,8 +415,8 @@ class Exe_tree:
 
         input_data_df = pd.DataFrame(input_data_res).set_index('calculation name')
 
-        input_data_df.to_csv(res_folder + calc_name +'_essential_input.csv')
-
+        input_data_df.to_csv(res_folder + calc_name +'_essential_input.csv', sep = ';')
+    """
 
     def get_base_state(self):
         return self.system_tree.root_node.base_states
@@ -454,8 +454,7 @@ class Exe_tree:
 
         lambda_full = -float((self.lambda_Ham + self.KJT_factor))
         
-        return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz #+ (self.p_32-self.p_12)*self.intrinsic_soc*0.25*mf.MatrixOperator.create_id_matrix_op(4)
-        
+        return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz  
 
     def to_minimal_model(self,B_field):
     

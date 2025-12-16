@@ -199,14 +199,14 @@ class Jahn_Teller_config_parser:
         filenamebase = problem_name + '_' + section_to_cfg 
 
         symm_latt_geom_filename = filenamebase+'_'+ symm_latt_opt +'.csv'
-        df.to_csv(data_folder +   symm_latt_geom_filename)
+        df.to_csv(data_folder +   symm_latt_geom_filename, sep = ';')
         state_parameters_section[symm_latt_opt] = symm_latt_geom_filename
         
         state_parameters_section[symm_latt_energy_opt] = str(symm_geom.energy)
 
         less_symm_latt_geom_filename_1 = filenamebase+'_'+JT_latt_opt+'.csv'
         df =  min_energy_geom.to_coordinates_data_frame()
-        df.to_csv(data_folder + less_symm_latt_geom_filename_1)
+        df.to_csv(data_folder + less_symm_latt_geom_filename_1, sep = ';')
         state_parameters_section[JT_latt_opt] = less_symm_latt_geom_filename_1
         state_parameters_section[min_energy_latt_energy_opt] = str(min_energy_geom.energy)
 
@@ -216,7 +216,7 @@ class Jahn_Teller_config_parser:
             state_parameters_section[saddle_point_latt_energy_opt] = str(saddle_point_geom.energy)
             df =  saddle_point_geom.to_coordinates_data_frame()
             barrier_lattice_filename = filenamebase+'_' + barr_latt_opt+'.csv'
-            df.to_csv( data_folder + barrier_lattice_filename)
+            df.to_csv( data_folder + barrier_lattice_filename, sep = ';')
             state_parameters_section[barr_latt_opt] = barrier_lattice_filename
 
 
