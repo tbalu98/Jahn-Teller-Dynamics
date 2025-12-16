@@ -225,7 +225,7 @@ class Jahn_Teller_Theory:
           self.hw_meV = (self.hw_mG + self.hw_pG)/2
           
           
-          self.K = (self.hw_meV/(6.582120e-13))**2
+          #self.K = (self.hw_meV/(6.582120e-13))**2
           self.K = self.hw_meV
 
 

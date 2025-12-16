@@ -329,11 +329,11 @@ class Lattice:
 
     def save_to_coordinates_dataframe(self):
         res_df = self.to_coordinates_data_frame()
-        res_df.to_csv(self)
+        res_df.to_csv(self, sep = ';')
 
     def read_from_coordinates_dataframe(self,filename, atom_datas,basis_vecs,energy):
 
-        df = pd.read_csv(filename)
+        df = pd.read_csv(filename, sep = ';')
 
 
         ions_arr = []
