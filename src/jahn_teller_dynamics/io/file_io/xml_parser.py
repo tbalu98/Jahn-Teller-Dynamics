@@ -1,5 +1,5 @@
 import xml.dom.minidom
-import jahn_teller_dynamics.io.VASP as V
+import jahn_teller_dynamics.io.file_io.vasp as V
 from configparser import ConfigParser
 import jahn_teller_dynamics.math.maths as maths
 

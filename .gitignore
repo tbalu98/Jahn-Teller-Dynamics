@@ -9,6 +9,7 @@ articles/
 data/
 hamiltonians/
 keys/
+plans/
 matrices/
 good_scripts/
 octave/
@@ -43,7 +44,7 @@ work_configfiles/
 __pycache__/
 *.pyc
 *.OUTCAR
-
+research_data.md
 
 ### VisualStudioCode ###
 .vscode/*

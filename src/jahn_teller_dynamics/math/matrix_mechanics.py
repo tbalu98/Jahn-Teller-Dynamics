@@ -1,13 +1,13 @@
 import itertools
 import numpy as np
-import itertools
 from jahn_teller_dynamics.math.braket_formalism import  operator
 import jahn_teller_dynamics.math.maths as  maths
 import copy
 import pandas as pd
 import jahn_teller_dynamics.math.braket_formalism as  bf
-
+import math
 from collections import namedtuple
+from typing import Optional, List, Union
 
 
 
@@ -22,6 +22,7 @@ class ket_vector:
           return ket_vector(self.coeffs.round(dig_num),self.eigen_val)
 
 
+     @staticmethod
      def from_str_list(str_list: list[str], eigen_energy:float =None):
           coeffs = []
           for coeff_str in str_list:
@@ -30,25 +31,23 @@ class ket_vector:
 
           return ket_vector(coeffs, eigen_energy)
 
-     def normalize(self):
-          length = self.abs_sq()
-          return self/length
-
 
 
      def __init__(self, coeffs, eigen_val = None, name = '', subsys_name  = ''):
           self.name = name
           self.subsys_name = subsys_name
           self.eigen_val = eigen_val
-          if type(coeffs) is maths.col_vector:
+          if isinstance(coeffs, maths.col_vector):
                self.amplitudo = complex(1.0,0)
                self.coeffs = coeffs
                self.dim = len(self.coeffs.coeffs)
-          elif type(coeffs) is list:
+          elif isinstance(coeffs, list):
                self.amplitudo = complex(1.0,0)
 
                self.coeffs = maths.col_vector(np.matrix( [  [num] for num in coeffs ] ))
                self.dim = len(self.coeffs.coeffs)
+          else:
+               raise TypeError(f"coeffs must be maths.col_vector or list, got {type(coeffs)}")
      
      def to_dataframe(self, bases)->pd.DataFrame:
           ket_dict = {}
@@ -74,13 +73,15 @@ class ket_vector:
 
      def normalize(self):
           norm_factor = self.abs_sq()**0.5
+          if norm_factor == 0:
+               raise ValueError("Cannot normalize zero vector")
           return self/norm_factor
 
      def set_item(self, index, item):
           return ket_vector(self.coeffs.set_item(index, item))
 
      def __repr__(self):
-          if self.eigen_val == None:
+          if self.eigen_val is None:
                return str(self.coeffs)
           else:
                return str('eigen value: ') +str(self.eigen_val) + '\n'  +str(self.coeffs)
@@ -94,14 +95,19 @@ class ket_vector:
           return bra_vector( self.coeffs.to_row_vector(), eigen_val = self.eigen_val )
       
      def __add__(self, other):
-          if isinstance(other,ket_vector):
+          if isinstance(other, ket_vector):
                return ket_vector(self.coeffs + other.coeffs)
+          return NotImplemented
 
      def __sub__(self, other):
-          if isinstance(other,ket_vector):
+          if isinstance(other, ket_vector):
                return ket_vector(self.coeffs - other.coeffs)
+          return NotImplemented
+     
      def __rsub__(self, other):
-          return self-other
+          if isinstance(other, ket_vector):
+               return ket_vector(other.coeffs - self.coeffs)
+          return NotImplemented
 
      def __mul__(self, other):
           return ket_vector(self.coeffs* other)
@@ -115,8 +121,13 @@ class ket_vector:
      def __abs__(self):
           return abs(self.coeffs)
 
-     def __eq__(self,other):
-          return self.name == other.name and self.subsys_name == other.subsys_name and self.coeffs == other.coeffs and self.eigen_val == other.eigen_val
+     def __eq__(self, other):
+          if not isinstance(other, ket_vector):
+               return NotImplemented
+          return (self.name == other.name and 
+                  self.subsys_name == other.subsys_name and 
+                  self.coeffs == other.coeffs and 
+                  self.eigen_val == other.eigen_val)
 
      def round(self, dig):
           return ket_vector(coeffs=self.coeffs.round(dig), name = self.name, subsys_name = self.subsys_name, eigen_val = self.eigen_val)
@@ -132,7 +143,7 @@ class bases_system:
 
 class bra_vector:
 
-
+     @staticmethod
      def from_str_list(str_list: list[str], eigen_energy:float =None):
           coeffs = []
           for coeff_str in str_list:
@@ -143,21 +154,24 @@ class bra_vector:
 
      def __init__(self, coeffs, eigen_val:float = None):
           self.eigen_val = eigen_val
-          if type(coeffs) is maths.row_vector:
+          if isinstance(coeffs, maths.row_vector):
                self.coeffs = coeffs
                self.dim = len(self.coeffs.coeffs[0])
-          elif type(coeffs) is list:
+          elif isinstance(coeffs, list):
                self.coeffs = maths.row_vector(np.matrix( [  [num for num in coeffs ]  ] ) )
                self.dim = len(self.coeffs.coeffs[0])
+          else:
+               raise TypeError(f"coeffs must be maths.row_vector or list, got {type(coeffs)}")
           self.amplitudo = complex(1.0,0)
           
           
 
-     def __mul__(self, other:ket_vector):
-          if type(other) is ket_vector:
+     def __mul__(self, other):
+          if isinstance(other, ket_vector):
                return complex(self.coeffs*other.coeffs)
-          elif type(other) is MatrixOperator:
+          elif isinstance(other, MatrixOperator):
                return bra_vector(self.coeffs*other.matrix)
+          return NotImplemented
 
 
      def __rmul__(self, other:ket_vector):
@@ -175,19 +189,12 @@ class hilber_space_bases:
 
 
     def create_ket_vector(self, ket_states:list[bf.ket_state]):
-          
-
-          indexes = []
-          coefficients = []
-
           ket_vec = ket_vector(maths.col_vector(np.zeros((len(self._ket_states), 1), dtype=np.complex128  )))
 
           for ket_state in ket_states:
                ket_state_index = self.get_ket_state_index(ket_state)
-               indexes.append(ket_state_index)
                coeff = ket_state.qm_state.amplitude
-               coefficients.append(coeff)
-               ket_vec.set_val(ket_state_index,coeff )
+               ket_vec.set_val(ket_state_index, coeff)
 
           return ket_vec
                
@@ -195,7 +202,7 @@ class hilber_space_bases:
 
 
     def get_ket_index(self, find_ket_state):
-          for (i, ket_state) in  zip( range(0, self._ket_states) ,self._ket_states):
+          for (i, ket_state) in zip(range(0, len(self._ket_states)), self._ket_states):
                if find_ket_state == ket_state:
                     return i
           return None
@@ -206,6 +213,7 @@ class hilber_space_bases:
          return MatrixOperator.basis_trf_matrix(self.base_vectors[basis_name][0])
 
 
+    @staticmethod
     def kron_hilber_spaces(hilber_spaces:list):
         return list( itertools.accumulate(hilber_spaces , lambda x,y: x**y) )[-1]
 
@@ -259,22 +267,20 @@ class hilber_space_bases:
 
 
     def __init__(self, bra_states = None, ket_states = None, names = None):
-        
-
         self._ket_states = []
         self._bra_states = []
         self.base_vectors = {}
 
-        if bra_states == None:
+        if bra_states is None:
             self._bra_states = []
         else:
             self._bra_states = bra_states
 
-        if ket_states == None:
+        if ket_states is None:
             self._ket_states = []
         else:
             self._ket_states = ket_states
-        if names == None:
+        if names is None:
             self.qm_nums_names = []
         else:
             self.qm_nums_names = names
@@ -283,16 +289,13 @@ class hilber_space_bases:
     def savetxt(self, filename):
         txt = ''
 
-
         txt+=str(self.qm_nums_names) + "\n"
 
         for ket in self._ket_states:
             txt+= str(ket) + '\n'
 
-        text_file = open(filename, "w")
-
-        text_file.write(txt)
-        text_file.close()
+        with open(filename, "w") as text_file:
+            text_file.write(txt)
 
     def reduce_space(self, new_dim):
         return hilber_space_bases(self._bra_states[0:new_dim], self._ket_states[0:new_dim],names = self.qm_nums_names)
@@ -331,14 +334,17 @@ class MatrixOperator:
      def tolist(self):
           return self.matrix.tolist()
 
+     @staticmethod
      def pauli_x_mx_op():
           mx = np.matrix( [ [ complex(0.0, 0.0), complex(1.0, 0.0)]  , [ complex( 1.0, 0.0 ), complex( 0.0, 0.0)] ] , dtype=dtype)
           return MatrixOperator(maths.Matrix(mx))
 
+     @staticmethod
      def pauli_y_mx_op():
           mx = np.matrix( [ [ complex(0.0, 0.0), complex(0.0, -1.0)]  , [ complex( 0.0, 1.0 ), complex( 0.0, 0.0)] ], dtype=dtype )
           return MatrixOperator(maths.Matrix(mx))
      
+     @staticmethod
      def pauli_z_mx_op():
           mx = np.matrix( [ [ complex(1.0, 0.0), complex(0.0, 0.0)]  , [ complex( 0.0, 0.0 ), complex( -1.0, 0.0)] ], dtype=dtype )
           return MatrixOperator(maths.Matrix(mx))
@@ -352,6 +358,7 @@ class MatrixOperator:
           eig_val_df.to_csv( eig_vals_fn,sep = ';')
 
 
+     @staticmethod
      def basis_trf_matrix( kets:list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]).transpose())
 
@@ -359,9 +366,11 @@ class MatrixOperator:
      def calc_expected_val(self, ket:ket_vector)->float:
           return (ket.to_bra_vector()*self*ket).real
 
+     @staticmethod
      def from_ket_vectors(kets: list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_col_vectors([ ket.coeffs for ket in kets ]))
 
+     @staticmethod
      def from_bra_vectors(bras: list[ket_vector]):
           return MatrixOperator(maths.Matrix.from_row_vectors([ bra.coeffs for bra in bras ]))
 
@@ -373,13 +382,22 @@ class MatrixOperator:
           new_bases_matrix = self.matrix.to_new_bases(list(map(lambda x: x.coeffs  ,bases )))
           return MatrixOperator(new_bases_matrix.transpose(), name  = self.name, subsys_name=self.subsys_name)
 
+     @staticmethod
      def accumulate_operators(mx_ops, fun):
           return list( itertools.accumulate(mx_ops, fun) )[-1]
 
      def drop_base_states(self, indexes):
-          
-          np.delete(self.matrix,indexes,axis=0)
-          np.delete(self.matrix,indexes,axis=1)
+          # Note: This modifies the underlying matrix object if it supports in-place operations
+          # If not, you may need to reassign: self.matrix = self.matrix.drop_rows_cols(indexes)
+          # For now, we'll try to delete and reassign if the matrix supports it
+          try:
+               self.matrix = maths.Matrix(np.delete(self.matrix.matrix, indexes, axis=0))
+               self.matrix = maths.Matrix(np.delete(self.matrix.matrix, indexes, axis=1))
+          except AttributeError:
+               # If matrix doesn't have .matrix attribute, try direct deletion
+               new_matrix = np.delete(self.matrix, indexes, axis=0)
+               new_matrix = np.delete(new_matrix, indexes, axis=1)
+               self.matrix = maths.Matrix(new_matrix)
 
 
 
@@ -389,24 +407,28 @@ class MatrixOperator:
           return MatrixOperator(self.matrix.round(dig), name = self.name, subsys_name=self.subsys_name)
      def change_type(self, dtype):
           return MatrixOperator(self.matrix.change_type(dtype), name = self.name, subsys_name=self.subsys_name)
-     def __add__(self,other):
-          return MatrixOperator(self.matrix+ other.matrix,name= self.name, subsys_name=self.subsys_name)
+     def __add__(self, other):
+          if isinstance(other, MatrixOperator):
+               return MatrixOperator(self.matrix + other.matrix, name=self.name, subsys_name=self.subsys_name)
+          return NotImplemented
      
      def __radd__(self, other):
-          if type(other)==int:
+          if isinstance(other, (int, float, complex)):
                return self
-          else:
-               return self + other
+          return NotImplemented
 
      
      def __sub__(self, other):
-          return MatrixOperator(self.matrix-other.matrix,name= self.name, subsys_name=self.subsys_name)
+          if isinstance(other, MatrixOperator):
+               return MatrixOperator(self.matrix - other.matrix, name=self.name, subsys_name=self.subsys_name)
+          return NotImplemented
      
      def __mul__(self, other):
-          if type(other) is MatrixOperator:
-               return MatrixOperator(self.matrix.__mul__(other.matrix),name= self.name, subsys_name=self.subsys_name)
-          elif type(other) is ket_vector:
-               return ket_vector(self.matrix.__mul__(other.coeffs),eigen_val=other.eigen_val,name= self.name, subsys_name=self.subsys_name)
+          if isinstance(other, MatrixOperator):
+               return MatrixOperator(self.matrix.__mul__(other.matrix), name=self.name, subsys_name=self.subsys_name)
+          elif isinstance(other, ket_vector):
+               return ket_vector(self.matrix.__mul__(other.coeffs), eigen_val=other.eigen_val, name=self.name, subsys_name=self.subsys_name)
+          return NotImplemented
 
      
      def __rmul__(self, other):
@@ -417,13 +439,16 @@ class MatrixOperator:
           return MatrixOperator(self.matrix.__truediv__(other),name= self.name, subsys_name=self.subsys_name)
      
      def __pow__(self, other):
-          return MatrixOperator(self.matrix**other.matrix,name = self.name, subsys_name=self.subsys_name)
+          if isinstance(other, MatrixOperator):
+               return MatrixOperator(self.matrix**other.matrix, name=self.name, subsys_name=self.subsys_name)
+          return NotImplemented
      
      def __repr__(self):
           return self.matrix.__repr__()
 
      def from_sandwich_fun(self, states, sandwich_fun):
-          pass
+          # TODO: Implement sandwich function for creating matrix operators
+          raise NotImplementedError("from_sandwich_fun is not yet implemented")
 
      def __init__(self, matrix:maths.Matrix, name = "", subsys_name = ""):
           self.name = name
@@ -433,17 +458,20 @@ class MatrixOperator:
           self.quantum_state_bases:hilber_space_bases = None
      def set_quantum_states(self, quantum_states:hilber_space_bases):
           self.quantum_state_bases = quantum_states
+     
+     @staticmethod
      def create_id_matrix_op(dim, matrix_type=maths.Matrix):
           return MatrixOperator(matrix_type.create_eye(dim))
 
+     @staticmethod
      def create_null_matrix_op(dim, matrix_type=maths.Matrix):
           return MatrixOperator(matrix_type.create_zeros(dim))
 
      def __len__(self):
           return len(self.matrix)
 
+     @staticmethod
      def create_Lz_op(matrix_type=maths.Matrix):
-
           return MatrixOperator(matrix_type.create_Lz_mx())
 
 
@@ -508,10 +536,18 @@ class MatrixOperator:
 
 
      def get_eigen_vect(self, i):
-        return np.array(self.eigen_vects[:,i])
+        if not hasattr(self, 'eigen_kets') or self.eigen_kets is None:
+             raise AttributeError("Eigenvectors not calculated. Call calc_eigen_vals_vects() first.")
+        if i >= len(self.eigen_kets):
+             raise IndexError(f"Index {i} out of range for {len(self.eigen_kets)} eigenvectors")
+        return np.array(self.eigen_kets[i].coeffs.coeffs.flatten())
      
      def get_eigen_val(self, i):
-        return self.eigen_vals[i]
+        if not hasattr(self, 'eigen_kets') or self.eigen_kets is None:
+             raise AttributeError("Eigenvalues not calculated. Call calc_eigen_vals_vects() first.")
+        if i >= len(self.eigen_kets):
+             raise IndexError(f"Index {i} out of range for {len(self.eigen_kets)} eigenvalues")
+        return self.eigen_kets[i].eigen_val
 
      def multiply(self, other):
         return MatrixOperator(self.matrix.multiply(other.matrix))
@@ -608,17 +644,17 @@ class degenerate_system:
 
 class degenerate_system_2D(degenerate_system):
      def __init__(self, deg_ket_vectors: list):
-          if len(deg_ket_vectors)==2:
-               super().__init__(deg_ket_vectors)
-          else:
-               return None
+          if len(deg_ket_vectors) != 2:
+               raise ValueError(f"degenerate_system_2D requires exactly 2 ket vectors, got {len(deg_ket_vectors)}")
+          super().__init__(deg_ket_vectors)
      
 
      def to_complex_basis(self, basis_trf_matrix:MatrixOperator):
           phix = self.deg_ket_vectors[0]
           phiy = self.deg_ket_vectors[1]
-          phiplus = basis_trf_matrix*(phix+complex(0.0,1.0)*phiy)/(2**0.5)
-          phiminus = basis_trf_matrix*(phix-complex(0.0,1.0)*phiy)/(2**0.5)
+          sqrt_2 = math.sqrt(2.0)
+          phiplus = basis_trf_matrix*(phix+complex(0.0,1.0)*phiy)/sqrt_2
+          phiminus = basis_trf_matrix*(phix-complex(0.0,1.0)*phiy)/sqrt_2
           self.complex_deg_ket_vectors = [phiminus, phiplus]
      
 
@@ -745,6 +781,7 @@ class braket_to_matrix_formalism:
 
 class eigen_vectors:
 
+     @staticmethod
      def bra_from_csv(states_fn:str, energies_fn:str):
           energies_df = pd.read_csv(energies_fn, sep=';',index_col='state_name')
 
@@ -758,6 +795,7 @@ class eigen_vectors:
 
           return eigen_vectors
      
+     @staticmethod
      def ket_from_csv(states_fn:str, energies_fn:str):
           energies_df = pd.read_csv(energies_fn, sep=';',index_col='state_name')
 
