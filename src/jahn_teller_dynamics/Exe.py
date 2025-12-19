@@ -2,9 +2,10 @@
 
 
 import sys
-import jahn_teller_dynamics.io.JT_config_file_parsing as  JT_cfg    
-import jahn_teller_dynamics.io.user_workflow as uw
 import traceback
+import jahn_teller_dynamics.io.config.parser as new_jt_cfg
+from jahn_teller_dynamics.io.workflow.orchestrator import JTOrchestrator
+
 def main():
 
     arguments = sys.argv[1:]
@@ -27,16 +28,13 @@ def main():
     config_file_name = arguments[0]
     
     try:
-        JT_config_parser = JT_cfg.Jahn_Teller_config_parser(config_file_name)
+        # Create new config parser
+        new_jt_config_parser = new_jt_cfg.JTConfigParser(config_file_name)
+        
+        # Create orchestrator and run calculation
+        orchestrator = JTOrchestrator(new_jt_config_parser)
         print('Run an Exe calculation')
-        if JT_config_parser.is_ZPL_calculation():
-            uw.ZPL_procedure(JT_config_parser)
-        elif JT_config_parser.is_single_case():
-            section_to_look_for = JT_cfg.single_case_section
-            uw.spin_orbit_JT_procedure_general(JT_config_parser, section_to_look_for, complex_trf=True)
-        else:
-            print("Error: Could not determine calculation type from config file.")
-            sys.exit(1)
+        orchestrator.run()
     
     except Exception as e:
         print(f"Error: {e}")

@@ -1,11 +1,11 @@
 import itertools
 import numpy as np
-import itertools
-import jahn_teller_dynamics.math.maths as  maths
+import math
+import jahn_teller_dynamics.math.maths as maths
 import copy
 import jahn_teller_dynamics.math.matrix_mechanics as mm
 import operator
-from typing import List
+from typing import List, Optional
 
 from collections import namedtuple
 
@@ -21,16 +21,38 @@ class node:
         else:
             self.children = children
     def has_child(self):
-        if len(self.children)>0:
-            return True
-        else:
-            return False
+        """Check if node has children."""
+        return len(self.children) > 0
 
     def add_child(self, child):
         self.children.append(child)
 
     def get_depth(self, target_node):
+        """
+        Get depth of target_node in the tree.
+        
+        Args:
+            target_node: Node to find depth of
+            
+        Returns:
+            int: Depth of the node, or -1 if not found
+        """
         depth = 0
+        found = self._get_depth_impl(target_node, depth)
+        return found if found >= 0 else -1
+    
+    def _get_depth_impl(self, target_node, current_depth):
+        """Helper method for get_depth."""
+        if self == target_node or self.id == target_node:
+            return current_depth
+        
+        if self.has_child():
+            for child in self.children:
+                result = child._get_depth_impl(target_node, current_depth + 1)
+                if result >= 0:
+                    return result
+        
+        return -1
 
     def find_leaves_avoid(self, id):
         res = []
@@ -78,6 +100,16 @@ class node:
             res.append(self)
 
     def find_node(self, id):
+        """
+        Find node with given id in the tree.
+        
+        Args:
+            id: Node id to search for
+            
+        Returns:
+            node: First matching node, or None if not found
+            If multiple nodes have the same id, returns the first one found.
+        """
         res = []
         depths = []
 
@@ -85,6 +117,10 @@ class node:
         if len(res) == 0:
             return None
         elif len(res) == 1:
+            return res[0]
+        else:
+            # Multiple nodes found - return the first one (closest to root)
+            # Could also raise a warning here
             return res[0]
 
 
@@ -131,25 +167,48 @@ class tree:
     def __init__(self, root_node:node):
         self.root_node  = root_node
 
-    def insert_node(self, parent_node_id, new_child:node):
-        if self.root_node.find_node(new_child.id) ==None:
-
+    def insert_node(self, parent_node_id, new_child: node):
+        """
+        Insert a new child node into the tree.
+        
+        Args:
+            parent_node_id: ID of the parent node
+            new_child: New child node to insert
+            
+        Note:
+            If a node with the same id already exists in the tree, 
+            insertion is silently skipped (preserves original behavior).
+            
+        Raises:
+            ValueError: If parent node not found
+        """
+        # Only insert if node doesn't already exist (preserve original behavior)
+        if self.root_node.find_node(new_child.id) is None:
             parent_node = self.root_node.find_node(parent_node_id)
+            if parent_node is None:
+                raise ValueError(f"Parent node '{parent_node_id}' not found")
             parent_node.add_child(new_child)
 
 
 
 class quantum_system_node(node):
 
-
+    @staticmethod
     def create_2D_orbital_system_node():
+        """
+        Create a 2D orbital system node with E⊗e Jahn-Teller basis.
+        
+        Returns:
+            quantum_system_node: Orbital system with Pauli operators
+        """
         el_sys_ops = {}
-
-        b1 = mm.ket_vector( [  1.0/2**0.5, complex(1.0, 0.0)/(-2)**0.5 ] )
-        b2 = mm.ket_vector( [ 1.0/2**0.5,complex(-1.0, 0.0)/(-2)**0.5 ] )
-
-        b1 = mm.ket_vector( [  -1.0/2**0.5, -complex(1.0, 0.0)/(-2)**0.5 ] )
-        b2 = mm.ket_vector( [ +1.0/2**0.5,-complex(1.0, 0.0)/(-2)**0.5 ] )
+        sqrt_2 = math.sqrt(2.0)
+        sqrt_2_inv = 1.0 / sqrt_2
+        
+        # Create basis vectors for E⊗e system
+        # Note: (-2)**0.5 = i*sqrt(2), so we use complex(0, sqrt_2)
+        b1 = mm.ket_vector([-sqrt_2_inv, -complex(0.0, 1.0) * sqrt_2_inv])
+        b2 = mm.ket_vector([sqrt_2_inv, -complex(0.0, 1.0) * sqrt_2_inv])
 
 
         bs = [b1, b2]
@@ -177,8 +236,14 @@ class quantum_system_node(node):
 
         return orbital_system
 
-
+    @staticmethod
     def create_spin_system_node():
+        """
+        Create a spin-1/2 system node.
+        
+        Returns:
+            quantum_system_node: Spin system with S_x, S_y, S_z operators
+        """
     
         spin_sys_ops = {}
 
@@ -195,31 +260,45 @@ class quantum_system_node(node):
         id_op = mm.MatrixOperator.create_id_matrix_op(self.dim, matrix_type = matrix_type)
         return id_op
 
-    def __init__(self, id, base_states:mm.hilber_space_bases = None,operators = {},children:list  = None, dim = 1):
-        node.__init__(self, id, children )
-        self.operators = operators
-        self.base_states:mm.hilber_space_bases = base_states
-        if self.base_states!=None:
+    def __init__(self, id, base_states: mm.hilber_space_bases = None, operators=None, children: list = None, dim=1):
+        node.__init__(self, id, children)
+        self.operators = operators if operators is not None else {}
+        self.base_states: mm.hilber_space_bases = base_states
+        if self.base_states is not None:
             self.dim = self.base_states.dim
         else:
             self.dim = dim
-        if len(self.children)>=1:
+        if len(self.children) >= 1:
             self.create_hilbert_space()
 
     def create_hilbert_space(self):
         simple_systems = self.find_leaves()
 
 
-        children_system_bases = [ x.base_states for x in simple_systems if x.base_states!=None ]
+        children_system_bases = [x.base_states for x in simple_systems if x.base_states is not None]
 
         self.base_states = mm.hilber_space_bases.kron_hilber_spaces(children_system_bases)
         self.dim = self.base_states.dim
 
     def find_operator(self, operator_id):
+        """
+        Find the system node containing the specified operator.
+        
+        Args:
+            operator_id: Name of the operator to find
+            
+        Returns:
+            str: ID of the system node containing the operator
+            
+        Raises:
+            ValueError: If operator is not found
+        """
         res = []
         depths = []
 
         self.find_operator_imp(operator_id, res, depths, new_depth_0=0)
+        if len(res) == 0:
+            raise ValueError(f"Operator '{operator_id}' not found in any subsystem")
         return res[0].id
 
     def find_operator_imp(self,operator_id, res:list, depths:list, new_depth_0:int ):
@@ -238,25 +317,40 @@ class quantum_system_node(node):
 
 
 
-    def create_operator(self, operator_id = '', operator_system_id = ''):
+    def create_operator(self, operator_id='', operator_system_id=''):
+        """
+        Create operator tensor product: I_left ⊗ op ⊗ I_right.
+        
+        Args:
+            operator_id: Name of the operator
+            operator_system_id: ID of the system containing the operator
+            
+        Returns:
+            MatrixOperator: Tensor product operator
+            
+        Raises:
+            ValueError: If operator or system not found
+        """
 
         if operator_system_id == '':
             operator_system_id = self.find_operator(operator_id)
 
-        left_systems = []
-
-        left_systems, system, right_systems = self.find_leaves_avoid(operator_system_id) 
+        left_systems, system, right_systems = self.find_leaves_avoid(operator_system_id)
+        
+        if system is None:
+            raise ValueError(f"System '{operator_system_id}' not found")
+        
+        if operator_id not in system.operators:
+            raise ValueError(f"Operator '{operator_id}' not found in system '{operator_system_id}'")
 
         op = system.operators[operator_id]
 
 
-        left_dims =  list(map(lambda x: x.dim, left_systems))
+        left_dims = list(map(lambda x: x.dim, left_systems))
+        left_dim = list(itertools.accumulate(left_dims, operator.mul))[-1] if left_dims != [] else 1
 
-        left_dim = list(itertools.accumulate(left_dims,operator.mul ))[-1] if left_dims!=[] else 1
-
-        right_dims =  list(map(lambda x: x.dim, right_systems)) 
-
-        right_dim = list(itertools.accumulate(right_dims,operator.mul ))[-1] if right_dims!=[] else 1
+        right_dims = list(map(lambda x: x.dim, right_systems))
+        right_dim = list(itertools.accumulate(right_dims, operator.mul))[-1] if right_dims != [] else 1
 
 
 
