@@ -60,9 +60,14 @@ class ConfigWriter:
         self.paths = path_manager
         self.original_config = original_config
         self.config_file_dir = config_file_dir
-        # Directory for generated config files
+        # Directory for generated config files (created lazily when needed)
         self.generated_config_dir = os.path.join(config_file_dir, 'generated_config_files')
-        # Ensure the directory exists
+    
+    def _ensure_generated_config_dir(self) -> None:
+        """
+        Ensure the generated config files directory exists.
+        Called lazily only when a config file needs to be written.
+        """
         os.makedirs(self.generated_config_dir, exist_ok=True)
     
     def save_raw_pars(self, JT_int: qmp.Exe_tree) -> None:
@@ -74,6 +79,8 @@ class ConfigWriter:
         """
         if not self.reader.conditional_option(essentials_field, save_raw_pars_opt):
             return
+        
+        self._ensure_generated_config_dir()
         
         data_folder = self.paths.get_data_folder_name()
         problem_name = self.paths.get_prefix_name()
@@ -100,6 +107,8 @@ class ConfigWriter:
         """
         if not self.reader.conditional_option(essentials_field, save_model_Hamiltonian_cfg_opt):
             return
+        
+        self._ensure_generated_config_dir()
         
         # Convert to minimal Exe_tree if needed
         if not isinstance(JT_int, qmp.minimal_Exe_tree):
@@ -135,6 +144,7 @@ class ConfigWriter:
             JT_int_gnd: Exe_tree for ground state
             JT_int_ex: Exe_tree for excited state
         """
+        self._ensure_generated_config_dir()
         problem_name = self.paths.get_prefix_name()
         
         new_ZPL_config = ConfigParser()
@@ -166,6 +176,7 @@ class ConfigWriter:
             JT_int_gnd: Exe_tree for ground state
             JT_int_ex: Exe_tree for excited state
         """
+        self._ensure_generated_config_dir()
         # Convert to minimal Exe_tree if needed
         if not isinstance(JT_int_gnd, qmp.minimal_Exe_tree):
             JT_int_gnd = qmp.minimal_Exe_tree.from_Exe_tree(JT_int_gnd)
@@ -208,6 +219,7 @@ class ConfigWriter:
         if isinstance(JT_int_ex, qmp.minimal_Exe_tree) or isinstance(JT_int_gnd, qmp.minimal_Exe_tree):
             return
         
+        self._ensure_generated_config_dir()
         problem_name = self.paths.get_prefix_name()
         
         new_ZPL_config = ConfigParser()
@@ -250,6 +262,7 @@ class ConfigWriter:
         if isinstance(JT_int, qmp.minimal_Exe_tree):
             return
         
+        self._ensure_generated_config_dir()
         problem_name = self.paths.get_prefix_name()
         
         new_config = ConfigParser()
