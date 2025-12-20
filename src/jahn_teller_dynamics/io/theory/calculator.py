@@ -272,12 +272,18 @@ class JT_Calculator:
         # Remove B_field from CSV since we're using field strengths instead
         energy_dep_dict.pop("B_field", None)
         
+        # Rename energy columns from E0, E1, E2, E3 to eigenstate1 (GHz), eigenstate2 (GHz), etc.
+        renamed_dict = {mag_field_strength_csv_col: energy_dep_dict[mag_field_strength_csv_col]}
+        for i, old_label in enumerate(energy_labels, 1):
+            if old_label in energy_dep_dict:
+                renamed_dict[f'eigenstate_{i} (GHz)'] = energy_dep_dict[old_label]
+        
         energy_dep_path = os.path.join(
             res_folder, prefix_name + '_magnetic_field_dependence_of_energy_states.csv'
         )
-        df = pd.DataFrame(energy_dep_dict).set_index(mag_field_strength_csv_col)
+        df = pd.DataFrame(renamed_dict).set_index(mag_field_strength_csv_col)
         df.to_csv(energy_dep_path, sep=csv_writer.separator, index=csv_writer.index)
-
+        
         return JT_int_Es_dict
 
     def calc_and_transform_eigen_states(self) -> Any:
@@ -406,8 +412,8 @@ class JT_Calculator:
         import jahn_teller_dynamics.physics.quantum_system as qs
         
         JT_int = self.JT_int
-        
         eigen_kets = JT_int.calc_eigen_vals_vects()
+        #JT_int.calc_reduction_factors()
         
         ground_1 = eigen_kets[0]
         ground_2 = eigen_kets[1]
@@ -435,7 +441,7 @@ class JT_Calculator:
         
         Ham_red_fact = deg_sys.p_red_fact
         
-        print('p = ' + str(round(Ham_red_fact, 4)))
+        print('\n\t\tHam reduction factor = ' + str(round(Ham_red_fact, 4)))
         
         JT_int.p_factor = Ham_red_fact
         JT_int.lambda_Ham = None

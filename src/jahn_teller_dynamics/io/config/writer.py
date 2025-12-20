@@ -60,6 +60,10 @@ class ConfigWriter:
         self.paths = path_manager
         self.original_config = original_config
         self.config_file_dir = config_file_dir
+        # Directory for generated config files
+        self.generated_config_dir = os.path.join(config_file_dir, 'generated_config_files')
+        # Ensure the directory exists
+        os.makedirs(self.generated_config_dir, exist_ok=True)
     
     def save_raw_pars(self, JT_int: qmp.Exe_tree) -> None:
         """
@@ -83,7 +87,7 @@ class ConfigWriter:
         
         self._add_magnetic_field_to_cfg(new_config, JT_int)
         
-        csv_cfg_name = os.path.join(self.config_file_dir, problem_name + '_csv.cfg')
+        csv_cfg_name = os.path.join(self.generated_config_dir, problem_name + '_csv_generated.cfg')
         with open(csv_cfg_name, 'w') as config_file:
             new_config.write(config_file)
     
@@ -107,12 +111,15 @@ class ConfigWriter:
         new_config[single_case_section] = self._save_model_raw_pars_section(JT_int, single_case_section)
         new_config[essentials_field] = self.original_config[essentials_field]
         new_config[essentials_field][save_raw_pars_opt] = 'false'
-        new_config[essentials_field][model_Hamiltonian_opt] = 'false'
         new_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
+        new_config[essentials_field][save_Taylor_coeffs_cfg_opt] = 'false'
+        # Remove model_hamiltonian option if it exists - it should not be included in saved model config files
+        if model_Hamiltonian_opt in new_config[essentials_field]:
+            del new_config[essentials_field][model_Hamiltonian_opt]
         
         self._add_mag_field_to_cfg(new_config, JT_int)
         
-        model_cfg_name = os.path.join(self.config_file_dir, problem_name + '_model.cfg')
+        model_cfg_name = os.path.join(self.generated_config_dir, problem_name + '_model_generated.cfg')
         with open(model_cfg_name, 'w') as config_file:
             new_config.write(config_file)
     
@@ -143,7 +150,7 @@ class ConfigWriter:
         
         self._add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
         
-        csv_cfg_name = os.path.join(self.config_file_dir, problem_name + '_csv.cfg')
+        csv_cfg_name = os.path.join(self.generated_config_dir, problem_name + '_csv_generated.cfg')
         with open(csv_cfg_name, 'w') as config_file:
             new_ZPL_config.write(config_file)
     
@@ -170,15 +177,18 @@ class ConfigWriter:
         new_ZPL_config = ConfigParser()
         new_ZPL_config[essentials_field] = self.original_config[essentials_field]
         new_ZPL_config[essentials_field][save_raw_pars_opt] = 'false'
-        new_ZPL_config[essentials_field][model_Hamiltonian_opt] = 'false'
         new_ZPL_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
+        new_ZPL_config[essentials_field][save_Taylor_coeffs_cfg_opt] = 'false'
+        # Remove model_hamiltonian option if it exists - it should not be included in saved model config files
+        if model_Hamiltonian_opt in new_ZPL_config[essentials_field]:
+            del new_ZPL_config[essentials_field][model_Hamiltonian_opt]
         
         new_ZPL_config[gnd_state_field] = self._save_model_raw_pars_section(JT_int_gnd, gnd_state_field)
         new_ZPL_config[ex_state_field] = self._save_model_raw_pars_section(JT_int_ex, ex_state_field)
         
         self._add_mag_field_to_cfg(new_ZPL_config, JT_int_gnd)
         
-        model_cfg_name = os.path.join(self.config_file_dir, problem_name + '_model.cfg')
+        model_cfg_name = os.path.join(self.generated_config_dir, problem_name + '_model_generated.cfg')
         with open(model_cfg_name, 'w') as config_file:
             new_ZPL_config.write(config_file)
     
@@ -225,9 +235,37 @@ class ConfigWriter:
                 new_ZPL_config[mag_field][basis_vector_2_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[1])
                 new_ZPL_config[mag_field][basis_vector_3_opt] = str(JT_int_gnd.JT_theory.symm_lattice.basis_vecs[2])
         
-        taylor_cfg_name = os.path.join(self.config_file_dir, problem_name + '_Taylor_coeffs.cfg')
+        taylor_cfg_name = os.path.join(self.generated_config_dir, problem_name + '_Taylor_coeffs_generated.cfg')
         with open(taylor_cfg_name, 'w') as config_file:
             new_ZPL_config.write(config_file)
+    
+    def save_raw_pars_Taylor(self, JT_int: qmp.Exe_tree) -> None:
+        """
+        Save Taylor coefficients config for a single case calculation.
+        
+        Args:
+            JT_int: Exe_tree instance containing calculation results
+        """
+        # Skip if already minimal Exe_tree
+        if isinstance(JT_int, qmp.minimal_Exe_tree):
+            return
+        
+        problem_name = self.paths.get_prefix_name()
+        
+        new_config = ConfigParser()
+        new_config[essentials_field] = self.original_config[essentials_field]
+        new_config[essentials_field][save_raw_pars_opt] = 'false'
+        new_config[essentials_field][model_Hamiltonian_opt] = 'false'
+        new_config[essentials_field][save_model_Hamiltonian_cfg_opt] = 'false'
+        new_config[essentials_field][save_Taylor_coeffs_cfg_opt] = 'false'
+        
+        new_config[single_case_section] = self._save_Taylor_raw_pars_section(JT_int, single_case_section)
+        
+        self._add_mag_field_to_cfg(new_config, JT_int)
+        
+        taylor_cfg_name = os.path.join(self.generated_config_dir, problem_name + '_Taylor_coeffs_generated.cfg')
+        with open(taylor_cfg_name, 'w') as config_file:
+            new_config.write(config_file)
     
     # ==================== Helper Methods ====================
     
@@ -299,7 +337,7 @@ class ConfigWriter:
         state_parameters_section[SOC_split_opt] = str(
             JT_int.lambda_theory if JT_int.electron else -JT_int.lambda_theory
         )
-        state_parameters_section[orb_red_fact_op] = str(self.params.get_gL_factor(section_to_cfg))
+        # Note: orbital_reduction_factor is NOT saved - it's an input parameter
         state_parameters_section[delta_f_opt] = str(JT_int.delta_f_factor)
         state_parameters_section[f_factor_opt] = str(JT_int.f_factor)
         

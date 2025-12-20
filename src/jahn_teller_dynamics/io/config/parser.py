@@ -356,6 +356,10 @@ class JTConfigParser:
         """Save model Hamiltonian parameters for a single case calculation."""
         return self.writer.save_model_pars(JT_int)
     
+    def save_raw_pars_Taylor(self, JT_int):
+        """Save Taylor coefficients config for a single case calculation."""
+        return self.writer.save_raw_pars_Taylor(JT_int)
+    
     def save_raw_pars_ZPL(self, JT_int_gnd, JT_int_ex):
         """Save raw parameters for a ZPL calculation."""
         return self.writer.save_raw_pars_ZPL(JT_int_gnd, JT_int_ex)

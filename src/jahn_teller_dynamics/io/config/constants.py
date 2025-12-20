@@ -104,7 +104,7 @@ strain_vec_op = 'strain_vector'
 orientation_vector_base = 'orientation_vector'
 
 # Eigenstate options
-eigen_states_opt = 'eigen_states'
+eigen_states_opt = 'orbital_basis_states'
 
 # Model and save options
 model_Hamiltonian_opt = 'model_Hamiltonian'

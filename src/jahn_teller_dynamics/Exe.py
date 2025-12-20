@@ -33,7 +33,7 @@ def main():
         
         # Create orchestrator and run calculation
         orchestrator = JTOrchestrator(new_jt_config_parser)
-        print('Run an Exe calculation')
+        print('Run an E⊗e dynamic Jahn-Teller calculation')
         orchestrator.run()
     
     except Exception as e:
