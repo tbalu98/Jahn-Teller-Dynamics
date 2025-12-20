@@ -332,9 +332,18 @@ class JTOrchestrator:
         - Model Hamiltonian parameters (if save_model_hamiltonian_cfg is true)
         - Taylor coefficients config (if save_taylor_coeffs_cfg is true)
         
+        Note: For ZPL calculations, parameter saving is handled by save_all_ZPL_outputs()
+        and should not be done here to avoid duplicate files with wrong section names.
+        
         Args:
             JT_int: Exe_tree instance containing calculation results
         """
+        # Skip individual parameter saving for ZPL calculations
+        # ZPL calculations handle saving via save_all_ZPL_outputs() which uses
+        # correct section names (ground_state_parameters, excited_state_parameters)
+        if self.config.is_ZPL_calculation():
+            return
+        
         if self.config.is_save_raw_pars():
             self.config.save_raw_pars(JT_int)
         
