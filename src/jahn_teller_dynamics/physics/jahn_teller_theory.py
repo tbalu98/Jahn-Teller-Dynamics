@@ -173,7 +173,7 @@ class Jahn_Teller_Theory:
           if self.order_flag == 0:
                res_str = 'Model Hamiltonian parameters'
                #res_str += '\n\tHam reduction factor = ' + str(round(self.p_factor,4)) if self.p_factor != None else ''
-               res_str += '\n\tEnergy splitting = ' + str(round(self.lambda_DFT,4)) + ' meV'
+               res_str += '\n\tEnergy splitting = ' + str(abs(round(self.lambda_DFT,4))) + ' meV'
                res_str += ('\n\tOrbital reduction factor = ' + str(round(self.gL,4))) if self.gL != 0.0 and self.gL is not None else ''
                res_str += '\n\tDelta f factor = ' + str(round(self.delta_f,4)) + ' meV'
                res_str += '\n\tYx = ' + str(round(self.Yx,4)) if self.Yx is not None else ''

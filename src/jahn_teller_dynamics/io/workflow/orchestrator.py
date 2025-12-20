@@ -96,22 +96,39 @@ class JTOrchestrator:
         B_fields = self.config.get_magnetic_field_vectors()
         strain_fields = self.config.get_strain_field_vector()
         
-        gnd_energies, _ = ground_state['calculator'].calc_magnetic_interaction(
-            B_fields, strain_fields
-        )
-        ex_energies, _ = excited_state['calculator'].calc_magnetic_interaction(
-            B_fields, strain_fields
-        )
+        if B_fields is not None:
+            print('-------------------------------------------------')
+            print('Calculating magnetic field effect...')
+            B_field_strengths = self.config.get_mag_field_strengths_list()
+            print(f'  Magnetic field range: {B_field_strengths[0]:.2f} - {B_field_strengths[-1]:.2f} T ({len(B_field_strengths)} steps)')
+            if strain_fields is not None:
+                print(f'  Strain field: {strain_fields.tolist()}')
+            
+            print('  Calculating ground state magnetic field dependence...')
+            gnd_energies, _ = ground_state['calculator'].calc_magnetic_interaction(
+                B_fields, strain_fields
+            )
+            print('  Calculating excited state magnetic field dependence...')
+            ex_energies, _ = excited_state['calculator'].calc_magnetic_interaction(
+                B_fields, strain_fields
+            )
+            print('  Completed magnetic field calculations')
+        else:
+            gnd_energies = None
+            ex_energies = None
         
-        # Calculate transition energies
-        Bs = self.config.get_mag_field_strengths_list()
-        transitions = self._calculate_all_transitions(ex_energies, gnd_energies, Bs)
-        
-        # Plot results
-        self._plot_zpl_transitions(transitions, Bs, calculation_name)
-        
-        # Save transition data
-        self._save_transition_data(transitions)
+        # Calculate transition energies (only if magnetic field is present)
+        if B_fields is not None:
+            Bs = self.config.get_mag_field_strengths_list()
+            transitions = self._calculate_all_transitions(ex_energies, gnd_energies, Bs)
+            
+            # Plot results
+            self._plot_zpl_transitions(transitions, Bs, calculation_name)
+            
+            # Save transition data
+            self._save_transition_data(transitions)
+        else:
+            transitions = None
         
         return {
             'ground_state': ground_state,
@@ -135,11 +152,18 @@ class JTOrchestrator:
         # Handle magnetic field calculations if requested
         B_fields = self.config.get_magnetic_field_vectors()
         if B_fields is not None and not self.config.is_ZPL_calculation():
+            print('-------------------------------------------------')
+            print('Calculating magnetic field effect...')
+            B_field_strengths = self.config.get_mag_field_strengths_list()
+            print(f'  Magnetic field range: {B_field_strengths[0]:.2f} - {B_field_strengths[-1]:.2f} T ({len(B_field_strengths)} steps)')
+            
             if self.config.is_use_model_hamiltonian():
                 result['JT_int'] = qmp.minimal_Exe_tree.from_Exe_tree(result['JT_int'])
             
             strain_fields = self.config.get_strain_field_vector()
-            B_field_strengths = self.config.get_mag_field_strengths_list()
+            if strain_fields is not None:
+                print(f'  Strain field: {strain_fields.tolist()}')
+            
             energies_dict = result['calculator'].calc_and_save_magnetic_interaction(
                 B_fields,
                 B_field_strengths,
@@ -150,6 +174,7 @@ class JTOrchestrator:
                 strain_fields
             )
             result['magnetic_interaction'] = energies_dict
+            print('  Completed magnetic field calculation')
         
         return result
     
@@ -290,10 +315,12 @@ class JTOrchestrator:
         
         create_directory(self.config.get_res_folder_name())
         
-        th_res_name = '_theoretical_results.csv'
+        th_res_name = 'theoretical_results.csv'
         self.csv_writer.write_theoretical_results_to_output(JT_int, th_res_name)
         self.csv_writer.write_eigen_vectors_and_values_to_output(
-            JT_int.calc_eigen_vals_vects()
+            JT_int.calc_eigen_vals_vects(),
+            eigen_vec_suffix=section + '_eigen_vectors.csv',
+            eigen_val_suffix=section + '_eigen_values.csv'
         )
     
     def _save_parameters_if_requested(self, JT_int: qmp.Exe_tree) -> None:
@@ -303,6 +330,7 @@ class JTOrchestrator:
         This method checks the configuration flags and saves:
         - Raw parameters (if save_raw_parameters is true)
         - Model Hamiltonian parameters (if save_model_hamiltonian_cfg is true)
+        - Taylor coefficients config (if save_taylor_coeffs_cfg is true)
         
         Args:
             JT_int: Exe_tree instance containing calculation results
@@ -312,6 +340,9 @@ class JTOrchestrator:
         
         if self.config.is_save_model_Hamiltonian_cfg():
             self.config.save_model_pars(JT_int)
+        
+        if self.config.is_save_Taylor_coeffs_cfg():
+            self.config.save_raw_pars_Taylor(JT_int)
     
     def LzSz_process(
         self,

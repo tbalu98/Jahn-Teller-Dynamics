@@ -29,7 +29,7 @@ def read_requirements():
 
 setup(
     name='jahn_teller_dynamics',
-    version='0.4.0',  # Update this as needed
+    version='1.0.0',  # Update this as needed
     description='Dynamic Jahn-Teller Effect Calculator',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
@@ -47,7 +47,7 @@ setup(
         ],
     },
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Physics',
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
