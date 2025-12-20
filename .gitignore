@@ -2,6 +2,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
 research_data.md
 acustic_phonons/
+config_files/generated_config_files/
 src/scripts_for_work/
 Gergo_config_files/
 study_materials/
