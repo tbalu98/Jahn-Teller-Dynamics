@@ -14,6 +14,7 @@ import pandas as pd
 import jahn_teller_dynamics.physics.quantum_physics as qmp
 import jahn_teller_dynamics.physics.jahn_teller_theory as jt
 import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math.matrix_mechanics as mm
 import jahn_teller_dynamics.io.file_io.csv_writer as csv_writer
 from jahn_teller_dynamics.io.config.parser import JTConfigParser
 from jahn_teller_dynamics.io.config.constants import mag_field_strength_csv_col
@@ -286,13 +287,16 @@ class JT_Calculator:
         This method transforms the eigen vectors to the complex orbital basis.
         This is used when eigen_state_type is 'complex'. The saving should be
         done separately by the csv_writer.
+        
+        After transformation, the system_tree's base_states are updated to
+        reflect the new basis (e.g., from ex,ey to e+,e-).
 
         Returns:
             eigen_vector_space: The transformed eigen vector space object.
         """
         JT_int = self.JT_int
         
-        # Create basis transformation matrix
+        # Create basis transformation matrix from existing C_tr operator
         basis_trf_mx = JT_int.system_tree.create_operator(
             operator_id='C_tr', 
             operator_sys='orbital_system'
@@ -301,11 +305,45 @@ class JT_Calculator:
         # Calculate eigen vectors/values
         eig_vecs = JT_int.calc_eigen_vals_vects()
         
+        # Create new Hilbert space with e+/e- labels for the orbital system
+        # Find orbital system node
+        orbital_system = JT_int.system_tree.root_node.find_node('orbital_system')
+        if orbital_system is None:
+            raise ValueError("Orbital system not found in system tree")
+        
+        # Create new base_states with e+/e- labels
+        new_orbital_basis = mm.hilber_space_bases().from_qm_nums_list(
+            [['e+'], ['e-']],
+            qm_nums_names=['orbital']
+        )
+        
+        # Get all leaf systems and create new composite Hilbert space
+        leaf_systems = JT_int.system_tree.root_node.find_leaves()
+        new_leaf_bases = []
+        for leaf in leaf_systems:
+            if leaf.id == 'orbital_system':
+                new_leaf_bases.append(new_orbital_basis)
+            else:
+                # Keep other leaf systems unchanged
+                if leaf.base_states is not None:
+                    new_leaf_bases.append(leaf.base_states)
+        
+        # Create new composite Hilbert space
+        new_hilbert_space = mm.hilber_space_bases.kron_hilber_spaces(new_leaf_bases)
+        
         # Transform to complex representation
         comp_eig_vecs = eig_vecs.transform_vector_space(
-            JT_int.H_int.quantum_state_bases,
+            new_hilbert_space,
             basis_trf_mx
         )
+        
+        # Update the orbital system's base_states to use e+/e- labels
+        orbital_system.base_states = new_orbital_basis
+        orbital_system.dim = new_orbital_basis.dim
+        
+        # Recreate root node's Hilbert space from updated children
+        if JT_int.system_tree.root_node.has_child():
+            JT_int.system_tree.root_node.create_hilbert_space()
         
         return comp_eig_vecs
 

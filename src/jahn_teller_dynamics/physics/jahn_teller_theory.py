@@ -14,6 +14,26 @@ import jahn_teller_dynamics.io.file_io.xml_parser
 from collections import namedtuple
 
 
+def dimensionless_to_generalized_coordinate(q: float, energy_quantum: float) -> float:
+    """
+    Convert dimensionless coordinate to generalized coordinate in units of Å √amu.
+    
+    Formula: V * q where V = 2.044543799 * 1/sqrt(e)
+    
+    Args:
+        q: Dimensionless coordinate
+        energy_quantum: Energy quantum (e) in meV
+        
+    Returns:
+        Generalized coordinate in units of Å √amu
+    """
+    if energy_quantum <= 0:
+        raise ValueError(f"Energy quantum must be positive, got {energy_quantum}")
+    
+    V = 2.044543799 / math.sqrt(energy_quantum)
+    return V * q
+
+
 
 class Jahn_Teller_Theory:
 
@@ -268,4 +288,87 @@ class Jahn_Teller_Theory:
           sqrt_2 = math.sqrt(2.0)
           self.F = float((( 2*self.E_JT_meV*abs(self.K)*(1-self.delta_meV/(2*self.E_JT_meV-self.delta_meV)) )**0.5))
           self.G = float(abs(self.K)*self.delta_meV/(4*self.E_JT_meV - 2*self.delta_meV))
+
+     def calc_parameters_from_Taylor_coeffs(self):
+          """
+          Calculate E_JT, delta, JT_dist, and barrier_dist from Taylor coefficients F, G, and hw.
+          
+          This is the inverse of calc_Taylor_coeffs_hw().
+          Uses direct formulas:
+          - E_JT = F^2/(2*K - 2*|G|) where K = hw
+          - barrier (delta) = 4*E_JT*G/(K + 2*|G|) where K = hw
+          - JT_dist = F/(K - 2*G) where K = hw (dimensionless), then converted to Å √amu
+          - barrier_dist = F/(K + 2*G) where K = hw (dimensionless), then converted to Å √amu
+            (only when G is present, None otherwise)
+          
+          The dimensionless distances are converted to generalized coordinates using:
+          V * q where V = 2.044543799 * 1/sqrt(hw)
+          
+          Returns:
+              tuple: (E_JT_meV, delta_meV, JT_dist, barrier_dist) calculated from F, G, hw
+              where distances are in units of Å √amu
+          """
+          if not hasattr(self, 'F') or not hasattr(self, 'hw_meV'):
+               raise ValueError("F and hw_meV must be set before calculating parameters from Taylor coefficients")
+          
+          F = self.F
+          hw = abs(self.hw_meV)
+          K = hw  # K = hw in this context
+          
+          if F == 0 or hw == 0:
+               raise ValueError("F and hw_meV must be non-zero")
+          
+          # Get G, default to 0 if not set
+          if not hasattr(self, 'G') or self.G is None:
+               G = 0.0
+          else:
+               G = self.G
+          
+          abs_G = abs(G)
+          
+          # Calculate E_JT using direct formula: E_JT = F^2/(2*K - 2*|G|)
+          denominator = 2 * K - 2 * abs_G
+          if denominator <= 0:
+               raise ValueError(f"Cannot calculate E_JT: denominator (2*K - 2*|G|) = {denominator} must be positive")
+          
+          E_JT = (F**2) / denominator
+          
+          # Calculate barrier (delta) using direct formula: barrier = 4*E_JT*G/(K + 2*|G|)
+          if abs_G == 0:
+               delta = 0.0
+          else:
+               delta = (4 * E_JT * G) / (K + 2 * abs_G)
+          
+          # Calculate JT_dist using direct formula: JT_dist = F/(K - 2*G)
+          # This gives dimensionless coordinate, convert to generalized coordinate
+          dist_denominator = K - 2 * G
+          if dist_denominator == 0:
+               raise ValueError(f"Cannot calculate JT_dist: denominator (K - 2*G) = {dist_denominator} must be non-zero")
+          
+          JT_dist_dimensionless = F / dist_denominator
+          # Convert to generalized coordinate (Å √amu)
+          JT_dist = dimensionless_to_generalized_coordinate(JT_dist_dimensionless, hw)
+          
+          # Calculate barrier_dist using direct formula: barrier_dist = F/(K + 2*G)
+          # Only when G is present (non-zero), otherwise barrier_dist = None
+          if abs_G > 0:
+               barrier_dist_denominator = K + 2 * G
+               if barrier_dist_denominator == 0:
+                    raise ValueError(f"Cannot calculate barrier_dist: denominator (K + 2*G) = {barrier_dist_denominator} must be non-zero")
+               barrier_dist_dimensionless = F / barrier_dist_denominator
+               # Convert to generalized coordinate (Å √amu)
+               barrier_dist = dimensionless_to_generalized_coordinate(barrier_dist_dimensionless, hw)
+          else:
+               # When only F is present (G = 0), barrier_dist is None
+               barrier_dist = None
+          
+          self.E_JT_meV = float(E_JT)
+          self.delta_meV = float(delta)
+          self.JT_dist = float(JT_dist)
+          if barrier_dist is not None:
+               self.barrier_dist = float(barrier_dist)
+          else:
+               self.barrier_dist = None
+          
+          return (self.E_JT_meV, self.delta_meV, self.JT_dist, self.barrier_dist)
 

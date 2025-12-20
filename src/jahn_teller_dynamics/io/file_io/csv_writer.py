@@ -19,6 +19,8 @@ import os
 import jahn_teller_dynamics.physics.quantum_physics as qmp
 import jahn_teller_dynamics.io.file_io.vasp as V
 import jahn_teller_dynamics.math.matrix_mechanics as mm
+# Lazy import to avoid circular dependencies
+# results_formatter is imported inside functions that need it
 
 
 class CSVWriter:
@@ -237,9 +239,9 @@ class CSVWriter:
             exe_tree: Exe_tree object containing theoretical results
             filepath: Path to save the CSV file
         """
-        res_dict = exe_tree.get_essential_theoretical_results()
-        res_df = pd.DataFrame(res_dict).set_index('attribute')
-        res_df.to_csv(filepath, sep=self.separator, index=self.index)
+        # Lazy import to avoid circular dependencies - import directly from module
+        from jahn_teller_dynamics.io.file_io.results_formatter import save_theoretical_results
+        save_theoretical_results(exe_tree, filepath, separator=self.separator)
     
     def write_theoretical_results_from_dict(
         self,
