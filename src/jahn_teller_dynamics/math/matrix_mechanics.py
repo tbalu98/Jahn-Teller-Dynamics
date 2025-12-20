@@ -19,6 +19,7 @@ from typing import Optional, List, Union, Tuple, Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from typing import TypeVar
+    from jahn_teller_dynamics.math.eigen_solver import EigenSolver
     T = TypeVar('T')
 
 
@@ -819,15 +820,44 @@ class MatrixOperator:
      def __repr__(self) -> str:
           return self.matrix.__repr__()
 
-     def __init__(self, matrix: maths.Matrix, name: str = "", subsys_name: str = ""):
+     def __init__(self, matrix: maths.Matrix, name: str = "", subsys_name: str = "", solver: Optional['EigenSolver'] = None):
+          """
+          Initialize matrix operator.
+          
+          Args:
+              matrix: Underlying matrix object
+              name: Optional name for the operator
+              subsys_name: Optional subsystem name
+              solver: Optional custom eigenvalue solver (defaults to DenseEigenSolver)
+          """
           self.name = name
           self.subsys_name = subsys_name
           self.matrix = matrix
           self.matrix_class = type(matrix)
           self.quantum_state_bases: Optional['hilber_space_bases'] = None
+          
+          # Set up eigenvalue solver
+          if solver is None:
+              # Lazy import to avoid circular dependency
+              from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver
+              self._eigen_solver = DenseEigenSolver()
+          else:
+              self._eigen_solver = solver
      
      def set_quantum_states(self, quantum_states: 'hilber_space_bases') -> None:
           self.quantum_state_bases = quantum_states
+     
+     def set_eigen_solver(self, solver: 'EigenSolver') -> None:
+          """
+          Set a custom eigenvalue solver for this matrix operator.
+          
+          This allows switching between different solver implementations
+          (e.g., dense, sparse, iterative) without recreating the operator.
+          
+          Args:
+              solver: EigenSolver instance to use
+          """
+          self._eigen_solver = solver
      
      @staticmethod
      def create_id_matrix_op(dim: int, matrix_type: type = maths.Matrix) -> 'MatrixOperator':
@@ -872,6 +902,9 @@ class MatrixOperator:
           """
           Calculate eigenvalues and eigenvectors of the matrix operator.
           
+          This method uses the configured eigenvalue solver (default: DenseEigenSolver).
+          For backward compatibility, it also sets self.eigen_kets as a side effect.
+          
           Args:
               num_of_vals: Number of eigenvalues to calculate (None = all)
               ordering_type: Type of ordering to apply (optional)
@@ -880,18 +913,23 @@ class MatrixOperator:
           Returns:
               eigen_vector_space: Object containing eigen kets and basis
           """
-          if quantum_states_bases!=None:
+          # Update quantum state bases if provided
+          if quantum_states_bases is not None:
                self.quantum_state_bases = quantum_states_bases
-          eigen_vals, eigen_vects =  self.matrix.get_eig_vals(num_of_vals, ordering_type)
           
-          self.eigen_kets = []
-
-          for i in range(0, len(eigen_vals)):
-               
-               self.eigen_kets.append( ket_vector(maths.col_vector(np.transpose(np.round(np.matrix([eigen_vects[:,i]]),DEFAULT_ROUNDING_PRECISION))),round(eigen_vals[i].real, DEFAULT_ROUNDING_PRECISION)) )
-
-          self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
-          return eigen_vector_space(self.quantum_state_bases,self.eigen_kets)
+          # Use the eigenvalue solver
+          eigen_vec_space = self._eigen_solver.solve(
+              self,
+              num_of_vals=num_of_vals,
+              ordering_type=ordering_type,
+              quantum_states_bases=self.quantum_state_bases
+          )
+          
+          # For backward compatibility: set eigen_kets attribute
+          # (some code accesses self.eigen_kets directly)
+          self.eigen_kets = eigen_vec_space.eigen_kets
+          
+          return eigen_vec_space
 
      def create_eigen_kets_vals_table(self, bases: 'hilber_space_bases') -> Tuple[pd.DataFrame, pd.DataFrame]:
           """
