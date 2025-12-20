@@ -18,6 +18,7 @@ import jahn_teller_dynamics.io.theory.calculator as JT_Calculator
 from jahn_teller_dynamics.io.config.parser import JTConfigParser
 from jahn_teller_dynamics.io.file_io.csv_writer import CSVWriter
 from jahn_teller_dynamics.io.visualization.plotter import Plotter
+# results_formatter is imported inside functions that need it to avoid circular dependencies
 from jahn_teller_dynamics.io.theory.calculator import calc_transition_energies
 from jahn_teller_dynamics.io.utils import create_directory
 from jahn_teller_dynamics.io.config.constants import single_case_section
@@ -187,8 +188,21 @@ class JTOrchestrator:
         # Save raw parameters and model parameters if requested
         self._save_parameters_if_requested(JT_int)
         
-        print('-------------------------------------------------')
-        print(JT_int.JT_theory)
+        # Print theoretical results only if not already printed by _process_with_soc
+        # (which prints via format_theoretical_results_string)
+        # For non-SOC cases (both regular and model Hamiltonian), print here
+        if intrinsic_soc == 0.0:
+            # For _process_without_soc and model Hamiltonian cases, print theoretical results
+            if JT_int.JT_theory is not None:
+                # Ensure Taylor coefficients are formatted correctly
+                if JT_int.JT_theory.order_flag == 3:
+                    try:
+                        JT_int.JT_theory.calc_parameters_from_Taylor_coeffs()
+                        JT_int.JT_theory.order_flag = 2
+                    except (ValueError, AttributeError):
+                        pass
+                print('-------------------------------------------------')
+                print(JT_int.JT_theory)
         
         return {
             'JT_int': JT_int,
@@ -223,7 +237,9 @@ class JTOrchestrator:
         JT_int.calc_K_JT_factor()
         
         print('-------------------------------------------------')
-        print(JT_int.get_essential_theoretical_results_string())
+        # Lazy import to avoid circular dependencies - import directly from module
+        from jahn_teller_dynamics.io.file_io.results_formatter import format_theoretical_results_string
+        print(format_theoretical_results_string(JT_int))
         
         # Save theoretical results
         th_res_name = section + '_theoretical_results.csv'

@@ -13,14 +13,35 @@ import jahn_teller_dynamics.physics.quantum_system as qs
 import copy
 import pandas as pd
 
+# Import new hamiltonian modules
+from jahn_teller_dynamics.physics.hamiltonians import (
+    djt_hamiltonian,
+    spin_orbit,
+    field_interactions,
+)
 
-hbar_meVs = 6.5821195e-13
+# Import system builder, reduction factors, and operator manager modules
+from jahn_teller_dynamics.physics.models import (
+    system_builder,
+    compute_reduction_factors,
+    compute_K_JT_factor,
+    add_operator_to_hamiltonian,
+    store_and_get_root_operator,
+)
 
-Bohn_magneton_meV_T = 0.057883671
+# Import numerics modules
+from jahn_teller_dynamics.physics.numerics import (
+    compute_transition_intensities,
+    compute_magnetic_interaction_eigen_kets,
+)
 
-g_factor = 2.0023
-
-round_precision_dig = 7
+# Import constants
+from jahn_teller_dynamics.physics.constants import (
+    hbar_meVs,
+    Bohn_magneton_meV_T,
+    g_factor,
+    round_precision_dig,
+)
 
 class one_mode_phonon_sys(qs.quantum_system_node):
 
@@ -37,9 +58,8 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 
 
-        sqrt_2 = math.sqrt(2.0)
-        plus_gen_op = (1/sqrt_2)*(raise_x_mx_op+complex(0.0,1.0)*raise_y_mx_op)
-        minus_gen_op = (1/sqrt_2)*(raise_x_mx_op+complex(0.0,-1.0)*raise_y_mx_op)
+        plus_gen_op = (1/mm.SQRT_2)*(raise_x_mx_op+complex(0.0,1.0)*raise_y_mx_op)
+        minus_gen_op = (1/mm.SQRT_2)*(raise_x_mx_op+complex(0.0,-1.0)*raise_y_mx_op)
 
         return [plus_gen_op, minus_gen_op]
 
@@ -176,9 +196,8 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 
     def over_est_pos_i_op(self, qm_num_name) -> mm.MatrixOperator:
-        sqrt_2 = math.sqrt(2.0)
         op = ((self.annil_mx_ops[qm_num_name] + self.create_mx_ops[qm_num_name])
-              / sqrt_2)
+              / mm.SQRT_2)
         op.subsys_name = self.phonon_sys_name
         return op
 
@@ -266,24 +285,12 @@ class Exe_tree:
             return JT_int
         
         # Regular Exe_tree creation for non-model Hamiltonians
-        spatial_dim = 2
+        # Use system_builder module for system construction
+        point_defect_tree = system_builder.build_electron_phonon_system(
+            JT_theory, order
+        )
 
-        orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
-
-        electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
-
-        mode_1 = one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
-
-        nuclei = qs.quantum_system_node('nuclei')
-
-        point_defect_node = qs.quantum_system_node('point_defect', 
-                                                children = [ nuclei,electron_system])
-
-        point_defect_tree = qs.quantum_system_tree(point_defect_node)
-
-        point_defect_tree.insert_node('nuclei', mode_1)
-
-        JT_int =  Exe_tree(point_defect_tree, JT_theory, orientation_basis)
+        JT_int = Exe_tree(point_defect_tree, JT_theory, orientation_basis)
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
@@ -296,30 +303,26 @@ class Exe_tree:
 
     @staticmethod
     def create_spin_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact):
-        spatial_dim = 2
+        """
+        Create an Exe_tree with spin, electron, and phonon systems.
+        
+        This method now uses the models.system_builder module for system construction.
+        
+        Args:
+            JT_theory: Jahn_Teller_Theory object
+            order: Order parameter
+            intrinsic_soc: Intrinsic spin-orbit coupling
+            orbital_red_fact: Orbital reduction factor
+            
+        Returns:
+            Exe_tree: Constructed execution tree
+        """
+        # Use system_builder module for system construction
+        point_defect_tree = system_builder.build_spin_electron_phonon_system(
+            JT_theory, order
+        )
 
-
-        orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
-
-        electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
-
-        spin_sys = qs.quantum_system_node.create_spin_system_node()
-
-        mode_1 = one_mode_phonon_sys(JT_theory.hw_meV,spatial_dim,order,['x','y'], 'mode_1', 'mode_1' )
-
-
-        nuclei = qs.quantum_system_node('nuclei')
-
-        point_defect_node = qs.quantum_system_node('point_defect', 
-                                                children = [ nuclei,electron_system])
-
-        point_defect_tree = qs.quantum_system_tree(point_defect_node)
-
-        point_defect_tree.insert_node('nuclei', mode_1)
-
-        point_defect_tree.insert_node('electron_system', spin_sys)
-
-        JT_int =  Exe_tree(point_defect_tree, JT_theory)
+        JT_int = Exe_tree(point_defect_tree, JT_theory)
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
@@ -332,136 +335,106 @@ class Exe_tree:
 
 
     def calc_K_JT_factor(self):
-        if not hasattr(self, 'H_int') or self.H_int is None:
-            raise ValueError("H_int must be calculated before computing K_JT_factor")
-        if not hasattr(self.H_int, 'eigen_kets') or self.H_int.eigen_kets is None:
-            raise ValueError("Eigenvalues must be calculated before computing K_JT_factor")
-        if len(self.H_int.eigen_kets) < 3:
-            raise ValueError("Need at least 3 eigenstates to compute K_JT_factor")
+        """
+        Compute K_JT factor from Jahn-Teller interaction.
         
-        if self.H_int.eigen_kets is not None:
-            H_DJT =  self.system_tree.root_node.operators['H_DJT']
-            
-            E_32 = self.H_int.eigen_kets[2]
-            E_12 = self.H_int.eigen_kets[0]
-
-            K_JT_32 =  H_DJT.calc_expected_val(E_32)
-            K_JT_12 =  H_DJT.calc_expected_val(E_12)
-            self.KJT_factor = K_JT_32-K_JT_12
+        This method now uses the models.reduction_factors module.
+        """
+        self.KJT_factor = compute_K_JT_factor(
+            self.system_tree,
+            self.H_int
+        )
 
     def calc_reduction_factors(self):
-        LzSz_op = self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
-        self.p_32 = 2*LzSz_op.calc_expected_val(self.H_int.eigen_kets[2])
-        self.p_12 = -2*LzSz_op.calc_expected_val(self.H_int.eigen_kets[0])
+        """
+        Compute reduction factors for Jahn-Teller system.
+        
+        This method now uses the models.reduction_factors module.
+        """
+        result = compute_reduction_factors(
+            self.system_tree,
+            self.H_int,
+            self.orbital_red_fact,
+            self.intrinsic_soc
+        )
+        
+        # Store results as instance attributes
+        self.p_32 = result.p_32
+        self.p_12 = result.p_12
+        self.p_factor = result.p_factor
+        self.lambda_Ham = result.lambda_Ham
+        self.delta_p_factor = result.delta_p_factor
+        self.f_factor = result.f_factor
+        self.delta_f_factor = result.delta_f_factor
+        self.lambda_SOC = result.lambda_SOC
+        self.lambda_theory = result.lambda_theory
 
-        self.p_factor = (self.p_32+self.p_12)/2
-        self.lambda_Ham = self.p_factor
 
-        self.delta_p_factor = (self.p_32-self.p_12)/2
-
-        self.f_factor = -self.orbital_red_fact*self.p_factor
-
-        self.delta_f_factor = self.orbital_red_fact*self.delta_p_factor
-
-        self.lambda_SOC = self.p_factor*self.intrinsic_soc
-
-        self.lambda_theory = self.H_int.eigen_kets[2].eigen_val- self.H_int.eigen_kets[0].eigen_val.real
-
-
+    # IO methods have been moved to io.file_io.results_formatter module
+    # For backward compatibility, these methods delegate to the formatter
     def get_essential_theoretical_results_string(self):
-        res_str = 'Theoretical results:\n'
-
-        res_str+='\n\tHam reduction factor = ' + str(round(abs(self.p_factor),4)) if self.p_factor is not None else ''
-        res_str+='\n\tTheoretical energy level splitting = ' + str(round(abs(self.lambda_theory),4)) + ' meV'
-
-  
-        return res_str
+        """
+        Format theoretical results as a string.
+        
+        .. deprecated:: This method is kept for backward compatibility.
+        Use io.file_io.results_formatter.format_theoretical_results_string() instead.
+        """
+        from jahn_teller_dynamics.io.file_io import results_formatter
+        return results_formatter.format_theoretical_results_string(self)
 
 
     def get_essential_theoretical_results(self):
+        """
+        Format theoretical results as a dictionary.
         
-        temp_res_dict = self.get_essential_input()
+        .. deprecated:: This method is kept for backward compatibility.
+        Use io.file_io.results_formatter.format_theoretical_results_dict() instead.
+        """
+        from jahn_teller_dynamics.io.file_io import results_formatter
+        return results_formatter.format_theoretical_results_dict(self)
 
-
-
-        if self.JT_theory.order_flag == 1 or self.JT_theory.order_flag == 2:
-            temp_res_dict['Jahn-Teller energy (meV)'] = [self.JT_theory.E_JT_meV]
-        if self.JT_theory.order_flag==2:
-            temp_res_dict['barrier energy (meV)'] = [self.JT_theory.delta_meV]
-
-
+    def save_essential_theoretical_results(self, res_path: str):
+        """
+        Save theoretical results to CSV file.
         
-        temp_res_dict['vibrational energy quantum (meV)'] = [self.JT_theory.hw_meV]
-        temp_res_dict['Ham reduction factor'] = [abs(self.p_factor)]
-        
-        temp_res_dict['delta_p factor'] = [self.delta_p_factor] if self.delta_f_factor is not None else [None]
-        temp_res_dict['delta_f factor'] = [self.delta_f_factor] if self.delta_f_factor is not None else [None]
-        temp_res_dict['f factor'] = [self.f_factor] if self.delta_f_factor is not None else [None]
-        temp_res_dict['Energy splitting due to dynamic Jahn-Teller effect (meV)'] = [self.KJT_factor] if self.KJT_factor is not None else [None]
-
-        temp_res_dict['Energy splitting due to spin-orbit coupling (meV)'] = [self.lambda_SOC] if self.lambda_SOC is not None else [None]
-        temp_res_dict['Energy splitting (meV)'] = [abs(self.lambda_theory)] if self.lambda_theory is not None else [None]
-
-        res_dict = {}
-
-        res_dict[ 'attribute'] = [ str(x) for x in  temp_res_dict.keys()]
-
-        res_dict['values'] = [ str(x[0]) for x in temp_res_dict.values() ]
-
-        return res_dict
-
-    def save_essential_theoretical_results(self, res_path:str):
-        res_dict = self.get_essential_theoretical_results()
-        res_df = pd.DataFrame(res_dict).set_index('attribute')
-        res_df.to_csv(res_path,sep = ';')
+        .. deprecated:: This method is kept for backward compatibility.
+        Use io.file_io.results_formatter.save_theoretical_results() instead.
+        """
+        from jahn_teller_dynamics.io.file_io import results_formatter
+        results_formatter.save_theoretical_results(self, res_path)
 
 
 
     def get_essential_input_string(self):
-        res_str = 'Input data from ab initio calculations:\n'
-
-        res_str += '\tsymmetric geometry energy = ' + str(round(self.JT_theory.symm_lattice.energy,4))+ ' eV' +'\n'
-        res_str += '\tminimum geometry energy '+ ' = ' +str( round(self.JT_theory.JT_lattice.energy,4))+ ' eV' +'\n'
-        res_str += '\tsaddle point geometry energy = ' +str( round(self.JT_theory.barrier_lattice.energy,4))+ ' eV' +'\n' if self.JT_theory.order_flag==2 else ''
-
-        res_str+= '\tsymmetric - minimum geometry distance = ' + str( round(self.JT_theory.JT_dist,4)) + ' Å √amu ' +'\n'
-        res_str+= '\tsymmetric - saddle point geometry distance = '+str( round(self.JT_theory.barrier_dist,4)) + ' Å √amu ' +'\n' if self.JT_theory.order_flag==2 else ''
-        res_str+= '\tDFT spin-orbit coupling = ' + str(round(self.intrinsic_soc,4))+ ' meV' +'\n'
-        res_str+='\torbital reduction factor = '+ str(round(self.orbital_red_fact,4)) +'\n'
-
-        return res_str
+        """
+        Format input data as a string.
+        
+        .. deprecated:: This method is kept for backward compatibility.
+        Use io.file_io.results_formatter.format_input_data_string() instead.
+        """
+        from jahn_teller_dynamics.io.file_io import results_formatter
+        return results_formatter.format_input_data_string(self)
 
 
     def get_essential_input(self):
-        res_dict = {}
-
-        if self.JT_theory.order_flag!= 3:
-            res_dict['symmetric geometry energy (eV)'] = [self.JT_theory.symm_lattice.energy] if self.JT_theory.symm_lattice is not None else [None]
-            res_dict['minimum geometry energy (eV)'] = [self.JT_theory.JT_lattice.energy] if self.JT_theory.JT_lattice is not None else [None]
-            res_dict['saddle point geometry energy (eV)'] = [self.JT_theory.barrier_lattice.energy] if self.JT_theory.barrier_lattice is not None and self.JT_theory.order_flag==2 else [None]
-
-        if self.JT_theory.order_flag == 1 or self.JT_theory.order_flag == 2:
-            res_dict['high symmetry - minimum energy configuration distance (Å √amu)'] = [self.JT_theory.JT_dist]
-        if self.JT_theory.order_flag==2:
-            res_dict['high symmetry - saddle point configuration distance (Å √amu)'] = [self.JT_theory.barrier_dist]
-
-
-        res_dict['DFT spin-orbit coupling (meV)'] = [self.intrinsic_soc]
-        res_dict['orbital reduction factor '] = [self.orbital_red_fact]
-
-        return res_dict
-    """
-    def save_essential_input(self,  res_folder:str,calc_name:str):
-        input_data_res = self.get_essential_input()
-
-
-        input_data_res['calculation name'] = [calc_name]
-
-
-        input_data_df = pd.DataFrame(input_data_res).set_index('calculation name')
-
-        input_data_df.to_csv(res_folder + calc_name +'_essential_input.csv', sep = ';')
-    """
+        """
+        Format input data as a dictionary.
+        
+        .. deprecated:: This method is kept for backward compatibility.
+        Use io.file_io.results_formatter.format_input_data_dict() instead.
+        """
+        from jahn_teller_dynamics.io.file_io import results_formatter
+        return results_formatter.format_input_data_dict(self)
+    def save_essential_input(self, res_folder: str, calc_name: str):
+        """
+        Save input data to CSV file.
+        
+        .. deprecated:: This method is kept for backward compatibility.
+        Use io.file_io.results_formatter.save_input_data() instead.
+        """
+        from jahn_teller_dynamics.io.file_io import results_formatter
+        res_path = res_folder + calc_name + '_essential_input.csv'
+        results_formatter.save_input_data(self, res_path, calc_name=calc_name)
 
     def get_base_state(self):
         return self.system_tree.root_node.base_states
@@ -490,31 +463,51 @@ class Exe_tree:
             self.set_orientation_basis(orientation_basis)
     
     def create_minimal_model_DJT_H_int(self, Bx, By, Bz):
-
-        Lz = self.system_tree.create_operator('Lz','point_defect','orbital_system')
-
-        Sz = self.system_tree.create_operator('Sz', 'point_defect','spin_system')
-        Sy = self.system_tree.create_operator('Sy', 'point_defect','spin_system')
-        Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
-
-
+        """
+        Create minimal model DJT Hamiltonian with SOC and magnetic field.
+        
+        Formula:
+            H = λ_full (L_z ⊗ S_z) + μ_B [f_factor * B_z * L_z + g_s * (S · B) + 2*δ_f * B_z * S_z]
+        
+        Where λ_full = -(λ_Ham + K_JT)
+        
+        This method now uses the hamiltonians modules.
+        """
         lambda_full = -float((self.lambda_Ham + self.KJT_factor))
         
-        return lambda_full*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz  
+        # SOC term using spin_orbit module
+        H_soc = spin_orbit.create_spin_orbit_coupling(
+            self.system_tree,
+            lambda_full
+        )
+        
+        # Magnetic field interaction using field_interactions module
+        H_mag = field_interactions.create_magnetic_field_interaction(
+            self.system_tree,
+            Bx, By, Bz,
+            self.orbital_red_fact,
+            self.f_factor if hasattr(self, 'f_factor') and self.f_factor is not None else self.orbital_red_fact,
+            self.delta_f_factor if hasattr(self, 'delta_f_factor') and self.delta_f_factor is not None else 0.0
+        )
+        
+        return H_soc + H_mag  
 
     def to_minimal_model(self,B_field):
-    
-
+        """
+        Convert Exe_tree to minimal model (no phonons).
+        
+        This method now uses the models.system_builder module for system construction.
+        
+        Args:
+            B_field: Magnetic field vector
+            
+        Returns:
+            minimal_Exe_tree: Minimal model execution tree
+        """
         new_obj = copy.deepcopy(self)
 
-        orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
-        spin_sys = qs.quantum_system_node.create_spin_system_node()
-
-        electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
-
-        point_defect = qs.quantum_system_node('point_defect', children = [electron_system])
-
-        new_obj.system_tree = qs.quantum_system_tree(point_defect)
+        # Use system_builder module for system construction
+        new_obj.system_tree = system_builder.build_minimal_model_system()
 
 
         new_obj.intrinsic_soc = self.intrinsic_soc
@@ -523,71 +516,136 @@ class Exe_tree:
         return new_obj
 
     def create_spin_orbit_couping(self):
-
+        """
+        Create spin-orbit coupling operator: L_z ⊗ S_z.
+        
+        Note: This returns just the operator structure, not the full Hamiltonian.
+        For the full SOC Hamiltonian with strength, use get_spin_orbit_coupling_int_ham().
+        """
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
         Lz = self.system_tree.create_operator('Lz', 'orbital_system')
         return Lz**Sz
     
     def add_spin_orbit_coupling(self):
+        """
+        Add spin-orbit coupling to the interaction Hamiltonian.
         
+        This method now uses the models.operator_manager module.
+        """
         LzSz_op = self.create_spin_orbit_couping()
-        self.system_tree.find_subsystem('electron_system').operators['LzSz'] = LzSz_op
-
-        self.H_int = self.H_int+self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
+        root_node_id = self.system_tree.root_node.id
+        
+        # Store operator and get root-level reference with coefficient
+        soc_ham = add_operator_to_hamiltonian(
+            self.system_tree,
+            LzSz_op,
+            'LzSz',
+            'electron_system',
+            'electron_system',
+            coefficient=self.intrinsic_soc,
+            root_node_id=root_node_id
+        )
+        
+        self.H_int = self.H_int + soc_ham
 
     def get_spin_orbit_coupling_int_ham(self):
-        return self.intrinsic_soc*self.system_tree.create_operator('LzSz',subsys_id='point_defect', operator_sys='electron_system')
+        """
+        Get spin-orbit coupling interaction Hamiltonian.
+        
+        Formula:
+            H_SOC = λ_intrinsic * (L_z ⊗ S_z)
+        
+        This method now uses the hamiltonians.spin_orbit module.
+        """
+        return spin_orbit.create_spin_orbit_coupling(
+            self.system_tree,
+            self.intrinsic_soc
+        )
 
 
-    def create_electric_field_interaction(self, E_x, E_y)->mm.MatrixOperator:
-
-        Z = self.system_tree.create_operator('Z_orb', 'orbital_system')
-        X = self.system_tree.create_operator('X_orb', 'orbital_system')
-
-        H_el = E_x*Z + E_y*X
-
-
-        return H_el
+    def create_electric_field_interaction(self, E_x, E_y) -> mm.MatrixOperator:
+        """
+        Create electric field interaction Hamiltonian.
+        
+        Formula:
+            H_el = E_x Z + E_y X
+        
+        This method now uses the hamiltonians.field_interactions module.
+        """
+        return field_interactions.create_electric_field_interaction(
+            self.system_tree, E_x, E_y
+        )
     
-    def create_strain_field_interaction(self, strain_field:maths.col_vector)->mm.MatrixOperator:
+    def create_strain_field_interaction(self, strain_field: maths.col_vector) -> mm.MatrixOperator:
+        """
+        Create strain field interaction Hamiltonian.
         
-        Lx = self.system_tree.create_operator('Lx', 'point_defect','orbital_system')
-        Ly = self.system_tree.create_operator('Ly', 'point_defect','orbital_system')
-        Lz = self.system_tree.create_operator('Lz', 'point_defect','orbital_system')
-        Yx = strain_field[0] if len(strain_field) > 0 else 0.0
-        Yy = strain_field[1] if len(strain_field) > 1 else 0.0
-        Yz = strain_field[2] if len(strain_field) > 2 else 0.0
+        Formula:
+            H_strain = -Y_x L_x + Y_y L_y + Y_z L_z
         
-        return -Yx*Lx + Yy*Ly + Yz*Lz
+        This method now uses the hamiltonians.field_interactions module.
+        """
+        return field_interactions.create_strain_field_interaction(
+            self.system_tree, strain_field
+        )
 
-    def create_magnetic_field_spin_z_interaction(self, B_z, delta, gl_factor)->mm.MatrixOperator:
-
+    def create_magnetic_field_spin_z_interaction(self, B_z, delta, gl_factor) -> mm.MatrixOperator:
+        """
+        Create magnetic field spin-z interaction (anisotropic term).
+        
+        Formula:
+            H_mag_spin_z = -2 * δ * g_L * μ_B * B_z * S_z
+        
+        This is a component of the full magnetic field interaction.
+        Note: This method is kept for backward compatibility but the full
+        magnetic field interaction should use create_magnetic_field_interaction().
+        """
+        from jahn_teller_dynamics.physics.hamiltonians.field_interactions import BOHR_MAGNETON_MEV_T
+        
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
-
-
-        H_mag = -2*delta*gl_factor*Bohn_magneton_meV_T*B_z*Sz
-        
+        H_mag = -2 * delta * gl_factor * BOHR_MAGNETON_MEV_T * B_z * Sz
         return H_mag
     
-    def create_magnetic_field_ang_interaction(self, B_z)->mm.MatrixOperator:
-
-        Lz = self.system_tree.create_operator('Lz', 'orbital_system')
-
-        H_mag = (Bohn_magneton_meV_T*self.orbital_red_fact)*B_z*Lz
+    def create_magnetic_field_ang_interaction(self, B_z) -> mm.MatrixOperator:
+        """
+        Create magnetic field orbital interaction.
         
+        Formula:
+            H_mag_ang = μ_B * g_L * B_z * L_z
+        
+        Where g_L = orbital_red_fact
+        Note: This method is kept for backward compatibility but the full
+        magnetic field interaction should use create_magnetic_field_interaction().
+        """
+        from jahn_teller_dynamics.physics.hamiltonians.field_interactions import BOHR_MAGNETON_MEV_T
+        
+        Lz = self.system_tree.create_operator('Lz', 'orbital_system')
+        H_mag = (BOHR_MAGNETON_MEV_T * self.orbital_red_fact) * B_z * Lz
         return H_mag
 
-    def create_magnetic_field_spin_interaction(self, Bx, By, Bz)->mm.MatrixOperator:
-
+    def create_magnetic_field_spin_interaction(self, Bx, By, Bz) -> mm.MatrixOperator:
+        """
+        Create magnetic field spin interaction (isotropic term).
+        
+        Formula:
+            H_mag_spin = μ_B * g_s * (B_x S_x + B_y S_y + B_z S_z)
+        
+        Where g_s = 2.0023 (electron spin g-factor)
+        Note: This method is kept for backward compatibility but the full
+        magnetic field interaction should use create_magnetic_field_interaction().
+        """
+        from jahn_teller_dynamics.physics.hamiltonians.field_interactions import BOHR_MAGNETON_MEV_T, G_FACTOR
+        
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
         Sy = self.system_tree.create_operator('Sy', 'spin_system')
         Sx = self.system_tree.create_operator('Sx', 'spin_system')
 
-        return Bohn_magneton_meV_T * g_factor*(Bx*Sx + By*Sy + Bz*Sz)
+        return BOHR_MAGNETON_MEV_T * G_FACTOR * (Bx*Sx + By*Sy + Bz*Sz)
 
     def add_model_magnetic_field(self,Bz):
 
-        Sz_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id = 'point_defect', operator_sys='spin_system')
+        root_node_id = self.system_tree.root_node.id
+        Sz_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id=root_node_id, operator_sys='spin_system')
 
         H_mag_model = self.pd*Bz*Sz_point_def
 
@@ -595,157 +653,189 @@ class Exe_tree:
 
 
     def create_DJT_SOC_mag_interaction(self,Bx,By,Bz)->MatrixOperator:
+        """
+        Create DJT + SOC + magnetic field interaction Hamiltonian.
         
+        Formula:
+            H = H_DJT + H_SOC + H_mag_spin + H_mag_ang
         
+        Where:
+            - H_DJT: Dynamic Jahn-Teller Hamiltonian
+            - H_SOC: Spin-orbit coupling (λ_intrinsic * L_z ⊗ S_z)
+            - H_mag_spin: Magnetic field spin interaction (stored in spin_system)
+            - H_mag_ang: Magnetic field orbital interaction (stored in orbital_system)
+        
+        Note: This method stores operators separately in subsystems for proper
+        operator tree structure, which is different from create_magnetic_field_interaction().
+        """
         self.create_one_mode_DJT_hamiltonian()
         H_DJT = self.system_tree.root_node.operators['H_DJT']
 
         H_full_int = H_DJT + self.get_spin_orbit_coupling_int_ham()
 
+        # Get root node ID dynamically for reusability
+        root_node_id = self.system_tree.root_node.id
+
+        # Create and store spin interaction separately
         H_mag_spin = self.create_magnetic_field_spin_interaction(Bx, By, Bz)
-        self.system_tree.find_subsystem('spin_system').operators['H_mag_spin'] = H_mag_spin
-        H_mag_spin_point_def = self.system_tree.create_operator('H_mag_spin', subsys_id = 'point_defect', operator_sys='spin_system')
+        H_mag_spin_point_def = store_and_get_root_operator(
+            self.system_tree,
+            H_mag_spin,
+            'H_mag_spin',
+            'spin_system',
+            'spin_system',
+            root_node_id=root_node_id
+        )
 
-        H_mag_ang = self.create_magnetic_field_ang_interaction( Bz)
-
-        self.system_tree.find_subsystem('orbital_system').operators['H_mag_ang'] = H_mag_ang
-        H_mag_ang_point_def = self.system_tree.create_operator('H_mag_ang', subsys_id = 'point_defect', operator_sys='orbital_system')
+        # Create and store orbital interaction separately
+        H_mag_ang = self.create_magnetic_field_ang_interaction(Bz)
+        H_mag_ang_point_def = store_and_get_root_operator(
+            self.system_tree,
+            H_mag_ang,
+            'H_mag_ang',
+            'orbital_system',
+            'orbital_system',
+            root_node_id=root_node_id
+        )
 
         return H_full_int + H_mag_spin_point_def + H_mag_ang_point_def 
 
     def calc_magnetic_interaction_eigen_kets(self, B_fields, strain_fields = None):
-
-        res_dict =  { 'B_field': B_fields, 'E0': [], 'E1': [], 'E2': [],'E3': []}
-
-        for B_field in B_fields:
-            
-            if self.JT_theory is not None and self.JT_theory.symm_lattice is not None:
-
-                B_field:maths.col_vector = B_field.in_new_basis(self.JT_theory.symm_lattice.get_normalized_basis_vecs())
-            
-            B_field = B_field.basis_trf(self.get_normalized_basis_vecs())
-            
-
-            H_DJT_mag = self.create_DJT_SOC_mag_interaction(*B_field.tolist())
-    
-            if strain_fields is not None:
-                H_DJT_mag = H_DJT_mag + self.create_strain_field_interaction(strain_fields.tolist())
-
-            H_DJT_mag.calc_eigen_vals_vects()
-
-   
-
-            res_dict['E0'].append(H_DJT_mag.eigen_kets[0])
-            res_dict['E1'].append(H_DJT_mag.eigen_kets[1])
-            res_dict['E2'].append(H_DJT_mag.eigen_kets[2])
-            res_dict['E3'].append(H_DJT_mag.eigen_kets[3])
-
-        return res_dict
+        """
+        Compute eigenstates for different magnetic field configurations.
+        
+        This method now uses the numerics.observables module.
+        """
+        # Get basis vectors for field transformation
+        normalized_basis_vecs = self.get_normalized_basis_vecs()
+        symm_lattice_basis_vecs = None
+        if self.JT_theory is not None and self.JT_theory.symm_lattice is not None:
+            symm_lattice_basis_vecs = self.JT_theory.symm_lattice.get_normalized_basis_vecs()
+        
+        return compute_magnetic_interaction_eigen_kets(
+            self.system_tree,
+            B_fields,
+            create_hamiltonian_func=self.create_DJT_SOC_mag_interaction,
+            create_strain_func=self.create_strain_field_interaction if strain_fields is not None else None,
+            strain_fields=strain_fields,
+            normalized_basis_vecs=normalized_basis_vecs,
+            symm_lattice_basis_vecs=symm_lattice_basis_vecs,
+            num_states=4
+        )
 
     def calc_transition_intensities(self, from_kets, to_kets):
+        """
+        Compute transition intensities between eigenstates.
+        
+        This method now uses the numerics.observables module.
+        """
+        return compute_transition_intensities(
+            self.system_tree,
+            from_kets,
+            to_kets,
+            include_z=False
+        )
 
-        x_op = self.system_tree.create_operator('X_orb')
-        y_op = self.system_tree.create_operator('Y_orb')
-        z_op = self.system_tree.create_operator('Z_orb')
+    def add_magnetic_field(self, Bx, By, Bz):
+        """
+        Add magnetic field interactions to the interaction Hamiltonian.
+        
+        This method now uses the models.operator_manager module.
+        """
+        root_node_id = self.system_tree.root_node.id
 
-
-        transition_intensities = []
-        transition_energies = []
-        from_bras = [ket.to_bra_vector() for ket in from_kets]
-        for from_bra in from_bras:
-            for to_ket in to_kets:
-                transition_int = abs((from_bra* x_op)*to_ket)**2 + abs((from_bra* y_op)*to_ket)**2 #+ abs((from_bra* z_op)*to_ket)**2
-                #transition_int = abs((from_bra* xX_op)*to_ket)**2 + abs((from_bra* yY_op)*to_ket)**2 #+ abs((from_bra* z_op)*to_ket)**2
-
-                transition_intensities.append(transition_int)
-                transition_energies.append(from_bra.eigen_val - to_ket.eigen_val)
-
-        return transition_intensities, transition_energies
-
-
-
-
-    def add_magnetic_field(self, Bx,By,Bz):
-
-
-
+        # Create and store spin-z interaction
         H_mag_spin_z = self.create_magnetic_field_spin_z_interaction(Bz, self.delta_p_factor, self.orbital_red_fact)
-        self.system_tree.find_subsystem('spin_system').operators['H_mag_spin_z'] = H_mag_spin_z
-        H_mag_spin_z_point_def = self.system_tree.create_operator('H_mag_spin_z', subsys_id='point_defect', operator_sys='spin_system')
+        H_mag_spin_z_root = store_and_get_root_operator(
+            self.system_tree,
+            H_mag_spin_z,
+            'H_mag_spin_z',
+            'spin_system',
+            'spin_system',
+            root_node_id=root_node_id
+        )
 
+        # Create and store spin interaction
         H_mag_spin = self.create_magnetic_field_spin_interaction(Bx, By, Bz)
-        self.system_tree.find_subsystem('spin_system').operators['H_mag_spin'] = H_mag_spin
-        H_mag_spin_point_def = self.system_tree.create_operator('H_mag_spin', subsys_id = 'point_defect', operator_sys='spin_system')
+        H_mag_spin_root = store_and_get_root_operator(
+            self.system_tree,
+            H_mag_spin,
+            'H_mag_spin',
+            'spin_system',
+            'spin_system',
+            root_node_id=root_node_id
+        )
 
+        # Create and store orbital interaction
         H_mag_ang = self.create_magnetic_field_ang_interaction(Bz)
+        H_mag_ang_root = store_and_get_root_operator(
+            self.system_tree,
+            H_mag_ang,
+            'H_mag_ang',
+            'orbital_system',
+            'orbital_system',
+            root_node_id=root_node_id
+        )
 
-        self.system_tree.find_subsystem('orbital_system').operators['H_mag_ang'] = H_mag_ang
-        H_mag_ang_point_def = self.system_tree.create_operator('H_mag_ang', subsys_id = 'point_defect', operator_sys='orbital_system')
-
-        self.H_int = self.H_int + H_mag_spin_point_def + H_mag_ang_point_def + H_mag_spin_z_point_def
-
-
+        self.H_int = self.H_int + H_mag_spin_root + H_mag_ang_root + H_mag_spin_z_root
 
     def add_electric_field(self, E_x, E_y):
+        """
+        Add electric field interaction to the interaction Hamiltonian.
+        
+        This method now uses the models.operator_manager module.
+        """
         H_el = self.create_electric_field_interaction(E_x, E_y)
-        self.system_tree.find_subsystem('orbital_system').operators['H_el'] = H_el
-
-        self.H_int = self.H_int + self.system_tree.create_operator('H_el', subsys_id='point_defect', operator_sys='orbital_system')
+        root_node_id = self.system_tree.root_node.id
+        
+        # Store operator and get root-level reference
+        H_el_root = store_and_get_root_operator(
+            self.system_tree,
+            H_el,
+            'H_el',
+            'orbital_system',
+            'orbital_system',
+            root_node_id=root_node_id
+        )
+        
+        self.H_int = self.H_int + H_el_root
 
     def create_multi_mode_hamiltonian(self):
-
-        hamiltons = []
-
-        nuclei = self.system_tree.find_subsystem('nuclei')[0]
-
-        for osc_mode in nuclei.children:
-            osc_mode_id = osc_mode.id
-            X = self.system_tree.create_operator('X', subsys_id= 'nuclei', operator_sys = osc_mode_id)
-            Y = self.system_tree.create_operator('Y', subsys_id= 'nuclei', operator_sys = osc_mode_id)
-            XX = self.system_tree.create_operator('XX', subsys_id= 'nuclei', operator_sys = osc_mode_id)
-            YY = self.system_tree.create_operator('YY', subsys_id= 'nuclei', operator_sys = osc_mode_id)
-            XY = self.system_tree.create_operator('XY', subsys_id= 'nuclei', operator_sys = osc_mode_id)
-
-            K = self.system_tree.create_operator('K', subsys_id= 'nuclei', operator_sys = osc_mode_id)
-
-            self.JT_theory.set_quantum(osc_mode.mode)
-
-            s0 = self.system_tree.create_operator('s0', 'electron_system')
-            sz = self.system_tree.create_operator('sz', 'electron_system')
-            sx = self.system_tree.create_operator('sx', 'electron_system')
-
-            h =   K** s0 + self.JT_theory.F*(X**sz + Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz - (2* XY)**sx)
-            hamiltons.append(h)
+        """
+        Create multi-mode DJT Hamiltonian as sum over modes.
         
-        self.H_int = sum(hamiltons)
+        Formula:
+            H = Σ_i [K_i ⊗ I + F_i(X_i ⊗ σ_z + Y_i ⊗ σ_x) + G_i((XX_i-YY_i) ⊗ σ_z - 2XY_i ⊗ σ_x)]
+        
+        This method now uses the hamiltonians.djt_hamiltonian module.
+        """
+        # Use the new hamiltonian module
+        self.H_int = djt_hamiltonian.create_multi_mode_djt_hamiltonian(
+            self.system_tree,
+            self.JT_theory
+        )
         return self.H_int
 
-    def create_one_mode_DJT_hamiltonian(self, mode = 0.0):
-        X = self.system_tree.create_operator('X', 'nuclei' )
-        Y = self.system_tree.create_operator('Y', 'nuclei' )
-
-        XX = self.system_tree.create_operator('XX', 'nuclei' )
-        YY = self.system_tree.create_operator('YY', 'nuclei' )
-        XY = self.system_tree.create_operator('XY', 'nuclei' )
-        YX = self.system_tree.create_operator('YX', 'nuclei' )
-
-        K = self.system_tree.create_operator('K', 'nuclei')
-
-        s0 = self.system_tree.find_subsystem('electron_system').create_id_op()
-        sz = self.system_tree.create_operator('Z_orb', 'electron_system')
-        sx = self.system_tree.create_operator('X_orb', 'electron_system')
-
-        third_order1 = X*( XX + YY )
-        third_order2 = Y*( XX + YY )
-
-        fourth_order1 = (5*XX*XX - 6*XX*YY-3*YY*YY)/5
-        fourth_order2 = 8*(XX*X*Y)
-
-        #sz = -1*sz
-        self.H_int =   K** s0 + self.JT_theory.F*(X**sz - Y**sx) + 1.0*self.JT_theory.G* ( (XX-YY) **sz + (2* XY)**sx) #+ self.JT_theory.H*(third_order1**sz + third_order2**sx) 
-        #+ self.JT_theory.J*(fourth_order1**sz + fourth_order2**sx) 
-
-        self.H_int.calc_eigen_vals_vects()
+    def create_one_mode_DJT_hamiltonian(self, mode=0.0):
+        """
+        Create one-mode DJT Hamiltonian.
+        
+        Formula:
+            H = K ⊗ I + F(X ⊗ σ_z - Y ⊗ σ_x) + G((XX-YY) ⊗ σ_z + 2XY ⊗ σ_x)
+        
+        This method now uses the hamiltonians.djt_hamiltonian module
+        for clearer physics implementation.
+        """
+        # Use the new hamiltonian module
+        self.H_int = djt_hamiltonian.create_one_mode_djt_hamiltonian(
+            self.system_tree, 
+            self.JT_theory
+        )
+        
+        # Calculate eigenvalues and store (preserve original behavior)
+        self.H_int.calc_eigen_vals_vects(
+            quantum_states_bases=self.system_tree.root_node.base_states
+        )
         self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)
 
 
@@ -772,16 +862,17 @@ class minimal_Exe_tree(Exe_tree):
 
 
     def __init__(self,orientation_basis: list[maths.col_vector], jt_theory = None):
-        orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
-        spin_sys = qs.quantum_system_node.create_spin_system_node()
-
-        electron_system = qs.quantum_system_node('electron_system', children=[orbital_system, spin_sys])
-
-        point_defect_system = qs.quantum_system_node( 'point_defect', children= [electron_system])
-
-        system_tree = qs.quantum_system_tree(point_defect_system)
-
-        self.system_tree = system_tree
+        """
+        Initialize minimal Exe_tree for four-state model Hamiltonian.
+        
+        This method now uses the models.system_builder module for system construction.
+        
+        Args:
+            orientation_basis: List of column vectors defining orientation
+            jt_theory: Optional Jahn_Teller_Theory object
+        """
+        # Use system_builder module for system construction
+        self.system_tree = system_builder.build_minimal_model_system()
         self.JT_theory = jt_theory
         self.H_int: mm.MatrixOperator = None
         self.p_factor: float = None
@@ -820,19 +911,43 @@ class minimal_Exe_tree(Exe_tree):
         model_exe_tree.set_reduction_factors(exe_tree)
         return model_exe_tree
 
+    def create_spin_orbit_couping(self):
+        """
+        Create spin-orbit coupling operator: L_z ⊗ S_z at root node level.
+        
+        Override of parent method to create operators at root node level
+        instead of subsystem level, for consistency with minimal_Exe_tree structure.
+        """
+        root_node_id = self.system_tree.root_node.id
+        Sz = self.system_tree.create_operator('Sz', root_node_id, 'spin_system')
+        Lz = self.system_tree.create_operator('Lz', root_node_id, 'orbital_system')
+        return Lz*Sz
 
     def create_DJT_SOC_mag_interaction(self, Bx, By, Bz):
-        Lz = self.system_tree.create_operator('Lz','point_defect','orbital_system')
-        Lx = self.system_tree.create_operator('Lx','point_defect','orbital_system')
-        Ly = self.system_tree.create_operator('Ly','point_defect','orbital_system')
-        Sz = self.system_tree.create_operator('Sz', 'point_defect','spin_system')
-        Sy = self.system_tree.create_operator('Sy', 'point_defect','spin_system')
-        Sx = self.system_tree.create_operator('Sx', 'point_defect','spin_system')
-
-
-
-        return self.lambda_theory*self.create_spin_orbit_couping() + Bohn_magneton_meV_T*self.f_factor*Bz*Lz + Bohn_magneton_meV_T*g_factor*( Bx*Sx + By*Sy+ Bz*Sz  ) + 2*Bohn_magneton_meV_T*self.delta_f_factor*Bz*Sz 
-        #+ (self.p_32+self.p_12)*self.intrinsic_soc*0.25*mf.MatrixOperator.create_id_matrix_op(4)
+        """
+        Create minimal model DJT + SOC + magnetic field interaction.
+        
+        Formula:
+            H = λ_theory (L_z ⊗ S_z) + μ_B [f_factor * B_z * L_z + g_s * (S · B) + 2*δ_f * B_z * S_z]
+        
+        This method now uses the hamiltonians modules.
+        """
+        # SOC term using spin_orbit module
+        H_soc = spin_orbit.create_spin_orbit_coupling(
+            self.system_tree,
+            self.lambda_theory
+        )
+        
+        # Magnetic field interaction using field_interactions module
+        H_mag = field_interactions.create_magnetic_field_interaction(
+            self.system_tree,
+            Bx, By, Bz,
+            self.gL if hasattr(self, 'gL') and self.gL is not None else 0.0,
+            self.f_factor if hasattr(self, 'f_factor') and self.f_factor is not None else 0.0,
+            self.delta_f_factor if hasattr(self, 'delta_f_factor') and self.delta_f_factor is not None else 0.0
+        )
+        
+        return H_soc + H_mag
         
     def create_one_mode_DJT_hamiltonian(self, mode=0):
         return MatrixOperator.create_null_matrix_op(dim = 4)
