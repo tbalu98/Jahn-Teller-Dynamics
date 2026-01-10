@@ -112,6 +112,9 @@ save_raw_pars_opt = 'save_raw_parameters'
 save_model_Hamiltonian_cfg_opt = 'save_model_Hamiltonian_cfg'
 save_Taylor_coeffs_cfg_opt = 'save_taylor_coeffs_cfg'
 
+# Sparse matrix option
+use_sparse_opt = 'use_sparse'
+
 # ==================== CSV Column Names ====================
 
 mag_field_strength_csv_col = 'magnetic field (T)'

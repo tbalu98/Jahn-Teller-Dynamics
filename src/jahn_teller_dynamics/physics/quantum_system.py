@@ -296,9 +296,12 @@ class quantum_system_node(node):
     """
 
     @staticmethod
-    def create_2D_orbital_system_node() -> 'quantum_system_node':
+    def create_2D_orbital_system_node(use_sparse: bool = False) -> 'quantum_system_node':
         """
         Create a 2D orbital system node with E⊗e Jahn-Teller basis.
+        
+        Args:
+            use_sparse: If True, create operators as SparseMatrix instead of Matrix
         
         Returns:
             quantum_system_node: Orbital system with Pauli operators
@@ -315,17 +318,27 @@ class quantum_system_node(node):
 
         bs = [b1, b2]
         
+        # Determine matrix type based on use_sparse
+        matrix_type = maths.SparseMatrix if use_sparse else maths.Matrix
 
-        el_sys_ops['X_orb'] = mm.MatrixOperator.pauli_x_mx_op()
-        el_sys_ops['Y_orb'] = mm.MatrixOperator.pauli_y_mx_op()
-        el_sys_ops['Z_orb'] = mm.MatrixOperator.pauli_z_mx_op()
+        el_sys_ops['X_orb'] = mm.MatrixOperator.pauli_x_mx_op(matrix_type=matrix_type)
+        el_sys_ops['Y_orb'] = mm.MatrixOperator.pauli_y_mx_op(matrix_type=matrix_type)
+        el_sys_ops['Z_orb'] = mm.MatrixOperator.pauli_z_mx_op(matrix_type=matrix_type)
 
-        el_sys_ops['X_Alt'] = mm.MatrixOperator(maths.Matrix(np.matrix([[1.0+0.0j, 0.0j], [0.0j, 0.0j]],dtype=np.complex128)))
-        el_sys_ops['Y_Alt'] = mm.MatrixOperator(maths.Matrix(np.matrix([[0.0j, 0.0j], [0.0j, 1.0+0.0j]],dtype=np.complex128)))
+        # Create X_Alt and Y_Alt with appropriate matrix type
+        if use_sparse:
+            from scipy.sparse import csr_matrix
+            x_alt_mx = csr_matrix(np.matrix([[1.0+0.0j, 0.0j], [0.0j, 0.0j]], dtype=np.complex128))
+            y_alt_mx = csr_matrix(np.matrix([[0.0j, 0.0j], [0.0j, 1.0+0.0j]], dtype=np.complex128))
+            el_sys_ops['X_Alt'] = mm.MatrixOperator(maths.SparseMatrix(x_alt_mx))
+            el_sys_ops['Y_Alt'] = mm.MatrixOperator(maths.SparseMatrix(y_alt_mx))
+        else:
+            el_sys_ops['X_Alt'] = mm.MatrixOperator(maths.Matrix(np.matrix([[1.0+0.0j, 0.0j], [0.0j, 0.0j]],dtype=np.complex128)))
+            el_sys_ops['Y_Alt'] = mm.MatrixOperator(maths.Matrix(np.matrix([[0.0j, 0.0j], [0.0j, 1.0+0.0j]],dtype=np.complex128)))
 
-        el_sys_ops['Lz'] = mm.MatrixOperator.pauli_z_mx_op().to_new_basis(bs)
-        el_sys_ops['Lx'] = mm.MatrixOperator.pauli_x_mx_op().to_new_basis(bs)
-        el_sys_ops['Ly'] = mm.MatrixOperator.pauli_y_mx_op().to_new_basis(bs)
+        el_sys_ops['Lz'] = mm.MatrixOperator.pauli_z_mx_op(matrix_type=matrix_type).to_new_basis(bs)
+        el_sys_ops['Lx'] = mm.MatrixOperator.pauli_x_mx_op(matrix_type=matrix_type).to_new_basis(bs)
+        el_sys_ops['Ly'] = mm.MatrixOperator.pauli_y_mx_op(matrix_type=matrix_type).to_new_basis(bs)
 
         to_cmp_basis_trf = mm.MatrixOperator.basis_trf_matrix(bs)
 
@@ -354,27 +367,39 @@ class quantum_system_node(node):
         return orbital_system
 
     @staticmethod
-    def create_spin_system_node() -> 'quantum_system_node':
+    def create_spin_system_node(use_sparse: bool = False) -> 'quantum_system_node':
         """
         Create a spin-1/2 system node.
+        
+        Args:
+            use_sparse: If True, create operators as SparseMatrix instead of Matrix
         
         Returns:
             quantum_system_node: Spin system with S_x, S_y, S_z operators
         """
+        # Determine matrix type based on use_sparse
+        matrix_type = maths.SparseMatrix if use_sparse else maths.Matrix
     
         spin_sys_ops = {}
 
-        spin_sys_ops['Sz'] = 0.5*mm.MatrixOperator.pauli_z_mx_op()
-        spin_sys_ops['Sy'] = 0.5*mm.MatrixOperator.pauli_y_mx_op()
-        spin_sys_ops['Sx'] = 0.5*mm.MatrixOperator.pauli_x_mx_op()
+        spin_sys_ops['Sz'] = 0.5*mm.MatrixOperator.pauli_z_mx_op(matrix_type=matrix_type)
+        spin_sys_ops['Sy'] = 0.5*mm.MatrixOperator.pauli_y_mx_op(matrix_type=matrix_type)
+        spin_sys_ops['Sx'] = 0.5*mm.MatrixOperator.pauli_x_mx_op(matrix_type=matrix_type)
 
 
         spin_sys = quantum_system_node('spin_system', mm.hilber_space_bases().from_qm_nums_list([['up'], ['down']] , qm_nums_names=['spin']) , operators=spin_sys_ops)
 
         return spin_sys
 
-    def create_id_op(self, matrix_type: type = maths.Matrix) -> mm.MatrixOperator:
+    def create_id_op(self, matrix_type: type = None) -> mm.MatrixOperator:
         """Create identity operator for this system."""
+        # Check if use_sparse is set in this node or in the tree
+        if matrix_type is None:
+            # Check if this node has use_sparse attribute (set during tree construction)
+            if hasattr(self, 'use_sparse'):
+                matrix_type = maths.SparseMatrix if self.use_sparse else maths.Matrix
+            else:
+                matrix_type = maths.Matrix
         id_op = mm.MatrixOperator.create_id_matrix_op(self.dim, matrix_type=matrix_type)
         return id_op
 

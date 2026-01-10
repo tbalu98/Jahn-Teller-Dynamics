@@ -66,6 +66,7 @@ class JT_Calculator:
         order = JT_config_parser.get_order()
         intrincis_soc = JT_config_parser.get_spin_orbit_coupling(section_to_look_for)
         orbital_red_fact = JT_config_parser.get_gL_factor(section_to_look_for)
+        use_sparse = JT_config_parser.get_use_sparse()
 
         orientation_basis = JT_config_parser.get_system_orientation_basis()
 
@@ -77,7 +78,7 @@ class JT_Calculator:
         # create_electron_phonon_Exe_tree will check JT_theory.order_flag
         # and create minimal_Exe_tree if order_flag == 0 (model Hamiltonian)
         JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(
-            JT_theory, order, intrincis_soc, orbital_red_fact, orientation_basis
+            JT_theory, order, intrincis_soc, orbital_red_fact, orientation_basis, use_sparse=use_sparse
         )
 
         # Only add spin system and interactions for non-model Hamiltonians

@@ -80,13 +80,14 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         return self.mx_op_builder.create_new_basis2(generator_ops, self.calc_order-1)
     
 
-    def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = ''):
+    def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = '', use_sparse: bool = False):
         self.phonon_sys_name = phonon_sys_name
         self.mode = mode
         self.spatial_dim = spatial_dim
         self.order = order
         self.calc_order = order +1 
         self.qm_nums_names = qm_nums_names
+        self.use_sparse = use_sparse
         
         self.id = id
         self.children = []
@@ -101,7 +102,7 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 
         self.names_dict = { name:num for name,num in zip(self.qm_nums_names , range(0, len(self.qm_nums_names))) }
-        self.mx_op_builder = mm.braket_to_matrix_formalism(self.calculation_bases)
+        self.mx_op_builder = mm.braket_to_matrix_formalism(self.calculation_bases, use_sparse=use_sparse)
 
 
         self.dim = self.calc_h_space_dim
@@ -171,6 +172,12 @@ class one_mode_phonon_sys(qs.quantum_system_node):
     def over_est_H_i_op(self, qm_num_name):
         return self.create_mx_ops[qm_num_name]*self.annil_mx_ops[qm_num_name]
 
+    def create_id_op(self, matrix_type = None):
+        """Override to use sparse matrices when use_sparse=True."""
+        if matrix_type is None:
+            matrix_type = maths.SparseMatrix if self.use_sparse else maths.Matrix
+        return super().create_id_op(matrix_type=matrix_type)
+    
     def over_est_all_H_i_ops(self):
         self.H_i_ops = []
         for qm_nums_name in self.qm_nums_names:
@@ -250,7 +257,7 @@ class Exe_tree:
         return [self.basis_x.normalize(), self.basis_y.normalize(), self.basis_z.normalize()]
 
     @staticmethod
-    def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact, orientation_basis:list[maths.col_vector] = maths.cartesian_basis):
+    def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact, orientation_basis:list[maths.col_vector] = maths.cartesian_basis, use_sparse: bool = False):
         """
         Create an Exe_tree from JT_theory. If JT_theory.order_flag == 0 (model Hamiltonian),
         creates a minimal_Exe_tree instead of a regular Exe_tree.
@@ -261,6 +268,7 @@ class Exe_tree:
             intrinsic_soc: Intrinsic spin-orbit coupling
             orbital_red_fact: Orbital reduction factor
             orientation_basis: List of column vectors defining orientation
+            use_sparse: If True, use SparseMatrix instead of Matrix for operators
             
         Returns:
             Exe_tree or minimal_Exe_tree depending on JT_theory.order_flag
@@ -270,7 +278,7 @@ class Exe_tree:
             # Create minimal_Exe_tree for model Hamiltonian
             # Use orientation_basis from JT_theory if available, otherwise use provided one
             basis = getattr(JT_theory, 'orientation_basis', None) or orientation_basis
-            JT_int = minimal_Exe_tree(basis, JT_theory)
+            JT_int = minimal_Exe_tree(basis, JT_theory, use_sparse=use_sparse)
             
             # Set parameters from JT_theory
             JT_int.lambda_theory = JT_theory.lambda_DFT
@@ -287,10 +295,17 @@ class Exe_tree:
         # Regular Exe_tree creation for non-model Hamiltonians
         # Use system_builder module for system construction
         point_defect_tree = system_builder.build_electron_phonon_system(
-            JT_theory, order
+            JT_theory, order, use_sparse=use_sparse
         )
+        
+        # Store use_sparse in all nodes of the system tree
+        def set_use_sparse(node, value):
+            node.use_sparse = value
+            for child in node.children:
+                set_use_sparse(child, value)
+        set_use_sparse(point_defect_tree.root_node, use_sparse)
 
-        JT_int = Exe_tree(point_defect_tree, JT_theory, orientation_basis)
+        JT_int = Exe_tree(point_defect_tree, JT_theory, orientation_basis, use_sparse=use_sparse)
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
@@ -448,9 +463,10 @@ class Exe_tree:
         self.eig_vec_sys.save(eig_vec_fn, eig_val_fn)
 
 
-    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory, orientation_basis = maths.cartesian_basis):
+    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory, orientation_basis = maths.cartesian_basis, use_sparse: bool = False):
         self.system_tree = system_tree
         self.JT_theory = jt_theory
+        self.use_sparse = use_sparse
         self.H_int: mm.MatrixOperator = None
         self.p_factor: float = None
         self.f_factor: float = None
@@ -832,6 +848,20 @@ class Exe_tree:
             self.JT_theory
         )
         
+        # CRITICAL: Ensure the solver matches the matrix type
+        # When H_int is created from operations, it might not have the correct solver
+        # Fix the solver based on matrix type to ensure block diagonalization works
+        if isinstance(self.H_int.matrix, maths.SparseMatrix):
+            from jahn_teller_dynamics.math.eigen_solver import SparseEigenSolver
+            if not isinstance(self.H_int._eigen_solver, SparseEigenSolver):
+                # Set correct sparse solver with block diagonalization
+                self.H_int.set_eigen_solver(SparseEigenSolver(use_block_diagonalization=True))
+        elif isinstance(self.H_int.matrix, maths.Matrix):
+            from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver
+            if not isinstance(self.H_int._eigen_solver, DenseEigenSolver):
+                # Set correct dense solver
+                self.H_int.set_eigen_solver(DenseEigenSolver())
+        
         # Calculate eigenvalues and store (preserve original behavior)
         self.H_int.calc_eigen_vals_vects(
             quantum_states_bases=self.system_tree.root_node.base_states
@@ -846,10 +876,21 @@ class minimal_Exe_tree(Exe_tree):
     
 
     @staticmethod
-    def from_cfg_data(energy_split, orientation_basis, gL, delta_f, f_factor, Yx, Yy):
+    def from_cfg_data(energy_split, orientation_basis, gL, delta_f, f_factor, Yx, Yy, use_sparse: bool = False):
+        """
+        Create minimal Exe_tree from configuration data.
         
-        
-        tree = minimal_Exe_tree(orientation_basis)
+        Args:
+            energy_split: Spin-orbit splitting energy
+            orientation_basis: List of orientation basis vectors
+            gL: Orbital reduction factor
+            delta_f: Delta f parameter
+            f_factor: f factor
+            Yx: Yx parameter
+            Yy: Yy parameter
+            use_sparse: If True, use SparseMatrix instead of Matrix for operators
+        """
+        tree = minimal_Exe_tree(orientation_basis, use_sparse=use_sparse)
         tree.Yx = Yx
         tree.Yy = Yy
         #tree.orbital_red_fact = orbital_red_fact
@@ -861,7 +902,7 @@ class minimal_Exe_tree(Exe_tree):
         return tree
 
 
-    def __init__(self,orientation_basis: list[maths.col_vector], jt_theory = None):
+    def __init__(self,orientation_basis: list[maths.col_vector], jt_theory = None, use_sparse: bool = False):
         """
         Initialize minimal Exe_tree for four-state model Hamiltonian.
         
@@ -870,10 +911,12 @@ class minimal_Exe_tree(Exe_tree):
         Args:
             orientation_basis: List of column vectors defining orientation
             jt_theory: Optional Jahn_Teller_Theory object
+            use_sparse: If True, use SparseMatrix instead of Matrix for operators
         """
         # Use system_builder module for system construction
-        self.system_tree = system_builder.build_minimal_model_system()
+        self.system_tree = system_builder.build_minimal_model_system(use_sparse=use_sparse)
         self.JT_theory = jt_theory
+        self.use_sparse = use_sparse
         self.H_int: mm.MatrixOperator = None
         self.p_factor: float = None
         self.f_factor: float = None

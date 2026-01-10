@@ -21,7 +21,8 @@ else:
 def build_electron_phonon_system(
     jt_theory: 'jt.Jahn_Teller_Theory',
     order: int,
-    spatial_dim: int = 2
+    spatial_dim: int = 2,
+    use_sparse: bool = False
 ) -> 'qs.quantum_system_tree':
     """
     Build quantum system tree for electron-phonon JT model.
@@ -37,6 +38,7 @@ def build_electron_phonon_system(
         jt_theory: JT theory parameters (needs hw_meV attribute)
         order: Phonon truncation order
         spatial_dim: Spatial dimension (default: 2 for E⊗e JT)
+        use_sparse: If True, use SparseMatrix instead of Matrix for operators
         
     Returns:
         quantum_system_tree: Constructed system tree
@@ -44,13 +46,13 @@ def build_electron_phonon_system(
     from jahn_teller_dynamics.physics.quantum_physics import one_mode_phonon_sys
     
     # Build orbital system
-    orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
+    orbital_system = qs.quantum_system_node.create_2D_orbital_system_node(use_sparse=use_sparse)
     electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
     
     # Build phonon system
     mode_1 = one_mode_phonon_sys(
         jt_theory.hw_meV, spatial_dim, order, 
-        ['x', 'y'], 'mode_1', 'mode_1'
+        ['x', 'y'], 'mode_1', 'mode_1', use_sparse=use_sparse
     )
     
     # Build nuclei
@@ -72,7 +74,8 @@ def build_electron_phonon_system(
 def build_spin_electron_phonon_system(
     jt_theory: 'jt.Jahn_Teller_Theory',
     order: int,
-    spatial_dim: int = 2
+    spatial_dim: int = 2,
+    use_sparse: bool = False
 ) -> 'qs.quantum_system_tree':
     """
     Build quantum system tree for spin-electron-phonon JT model.
@@ -89,6 +92,7 @@ def build_spin_electron_phonon_system(
         jt_theory: JT theory parameters (needs hw_meV attribute)
         order: Phonon truncation order
         spatial_dim: Spatial dimension (default: 2 for E⊗e JT)
+        use_sparse: If True, use SparseMatrix instead of Matrix for operators
         
     Returns:
         quantum_system_tree: Constructed system tree
@@ -96,16 +100,16 @@ def build_spin_electron_phonon_system(
     from jahn_teller_dynamics.physics.quantum_physics import one_mode_phonon_sys
     
     # Build orbital system
-    orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
+    orbital_system = qs.quantum_system_node.create_2D_orbital_system_node(use_sparse=use_sparse)
     electron_system = qs.quantum_system_node('electron_system', children=[orbital_system])
     
     # Build spin system
-    spin_sys = qs.quantum_system_node.create_spin_system_node()
+    spin_sys = qs.quantum_system_node.create_spin_system_node(use_sparse=use_sparse)
     
     # Build phonon system
     mode_1 = one_mode_phonon_sys(
         jt_theory.hw_meV, spatial_dim, order, 
-        ['x', 'y'], 'mode_1', 'mode_1'
+        ['x', 'y'], 'mode_1', 'mode_1', use_sparse=use_sparse
     )
     
     # Build nuclei
@@ -125,7 +129,7 @@ def build_spin_electron_phonon_system(
     return point_defect_tree
 
 
-def build_minimal_model_system() -> 'qs.quantum_system_tree':
+def build_minimal_model_system(use_sparse: bool = False) -> 'qs.quantum_system_tree':
     """
     Build quantum system tree for minimal model (no phonons).
     
@@ -138,12 +142,15 @@ def build_minimal_model_system() -> 'qs.quantum_system_tree':
     This is used for the four-state model Hamiltonian where phonons
     are integrated out and only the electronic degrees of freedom remain.
     
+    Args:
+        use_sparse: If True, create operators as SparseMatrix instead of Matrix
+    
     Returns:
         quantum_system_tree: Constructed system tree
     """
     # Build orbital and spin systems
-    orbital_system = qs.quantum_system_node.create_2D_orbital_system_node()
-    spin_sys = qs.quantum_system_node.create_spin_system_node()
+    orbital_system = qs.quantum_system_node.create_2D_orbital_system_node(use_sparse=use_sparse)
+    spin_sys = qs.quantum_system_node.create_spin_system_node(use_sparse=use_sparse)
     
     # Build electron system
     electron_system = qs.quantum_system_node(

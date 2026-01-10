@@ -62,7 +62,7 @@ class ket_vector:
 
 
 
-     def __init__(self, coeffs: Union[maths.col_vector, List[complex]], eigen_val: Optional[float] = None, name: str = '', subsys_name: str = ''):
+     def __init__(self, coeffs: Union[maths.col_vector, maths.SparseColVector, List[complex]], eigen_val: Optional[float] = None, name: str = '', subsys_name: str = ''):
           self.name = name
           self.subsys_name = subsys_name
           self.eigen_val = eigen_val
@@ -70,13 +70,18 @@ class ket_vector:
                self.amplitudo = complex(1.0,0)
                self.coeffs = coeffs
                self.dim = len(self.coeffs.coeffs)
+          elif isinstance(coeffs, maths.SparseColVector):
+               # Convert sparse to dense for ket_vector (ket_vector uses dense col_vector internally)
+               self.amplitudo = complex(1.0,0)
+               self.coeffs = coeffs.to_dense_vector()
+               self.dim = len(self.coeffs.coeffs)
           elif isinstance(coeffs, list):
                self.amplitudo = complex(1.0,0)
 
                self.coeffs = maths.col_vector(np.matrix( [  [num] for num in coeffs ] ))
                self.dim = len(self.coeffs.coeffs)
           else:
-               raise TypeError(f"coeffs must be maths.col_vector or list, got {type(coeffs)}")
+               raise TypeError(f"coeffs must be maths.col_vector, maths.SparseColVector, or list, got {type(coeffs)}")
      
      def to_dataframe(self, bases: 'hilber_space_bases') -> pd.DataFrame:
           ket_dict = {}
@@ -591,36 +596,54 @@ class MatrixOperator:
           return self.matrix.tolist()
 
      @staticmethod
-     def pauli_x_mx_op() -> 'MatrixOperator':
+     def pauli_x_mx_op(matrix_type: type = maths.Matrix) -> 'MatrixOperator':
           """
           Create Pauli X (sigma_x) matrix operator.
+          
+          Args:
+              matrix_type: Type of matrix to create (Matrix or SparseMatrix)
           
           Returns:
               MatrixOperator: Pauli X matrix
           """
           mx = np.matrix( [ [ complex(0.0, 0.0), complex(1.0, 0.0)]  , [ complex( 1.0, 0.0 ), complex( 0.0, 0.0)] ] , dtype=dtype)
+          if matrix_type == maths.SparseMatrix:
+              from scipy.sparse import csr_matrix
+              return MatrixOperator(maths.SparseMatrix(csr_matrix(mx)))
           return MatrixOperator(maths.Matrix(mx))
 
      @staticmethod
-     def pauli_y_mx_op() -> 'MatrixOperator':
+     def pauli_y_mx_op(matrix_type: type = maths.Matrix) -> 'MatrixOperator':
           """
           Create Pauli Y (sigma_y) matrix operator.
+          
+          Args:
+              matrix_type: Type of matrix to create (Matrix or SparseMatrix)
           
           Returns:
               MatrixOperator: Pauli Y matrix
           """
           mx = np.matrix( [ [ complex(0.0, 0.0), complex(0.0, -1.0)]  , [ complex( 0.0, 1.0 ), complex( 0.0, 0.0)] ], dtype=dtype )
+          if matrix_type == maths.SparseMatrix:
+              from scipy.sparse import csr_matrix
+              return MatrixOperator(maths.SparseMatrix(csr_matrix(mx)))
           return MatrixOperator(maths.Matrix(mx))
      
      @staticmethod
-     def pauli_z_mx_op() -> 'MatrixOperator':
+     def pauli_z_mx_op(matrix_type: type = maths.Matrix) -> 'MatrixOperator':
           """
           Create Pauli Z (sigma_z) matrix operator.
+          
+          Args:
+              matrix_type: Type of matrix to create (Matrix or SparseMatrix)
           
           Returns:
               MatrixOperator: Pauli Z matrix
           """
           mx = np.matrix( [ [ complex(1.0, 0.0), complex(0.0, 0.0)]  , [ complex( 0.0, 0.0 ), complex( -1.0, 0.0)] ], dtype=dtype )
+          if matrix_type == maths.SparseMatrix:
+              from scipy.sparse import csr_matrix
+              return MatrixOperator(maths.SparseMatrix(csr_matrix(mx)))
           return MatrixOperator(maths.Matrix(mx))
 
      def save_eigen_vals_vects_to_file(self, bases_states: 'hilber_space_bases', eig_vec_fn: str, eig_vals_fn: str) -> None:
@@ -664,7 +687,22 @@ class MatrixOperator:
           Returns:
               float: Expected value (real part)
           """
-          return (ket.to_bra_vector()*self*ket).real
+          # For sparse matrices, calculate expectation value directly using sparse operations
+          # to minimize conversion errors: <bra|operator|ket> = <ket|operator|ket>
+          # where <ket| is the complex conjugate transpose of |ket>
+          if isinstance(self.matrix, maths.SparseMatrix):
+              # Convert ket to sparse for calculation
+              ket_sparse = ket.coeffs.to_sparse_vector()
+              # Calculate <ket|operator|ket> = ket^H * operator * ket
+              # First: operator * ket
+              op_ket = self.matrix.matrix * ket_sparse.coeffs
+              # Then: ket^H * (operator * ket) where ket^H is the Hermitian transpose
+              # ket_sparse.coeffs is (n, 1), so ket_sparse.coeffs.getH() is (1, n)
+              result = ket_sparse.coeffs.getH() * op_ket
+              return complex(result[0, 0]).real
+          else:
+              # For dense matrices, use the original method: <bra|operator|ket>
+              return (ket.to_bra_vector()*self*ket).real
 
      @staticmethod
      def from_ket_vectors(kets: List[ket_vector]) -> 'MatrixOperator':
@@ -700,9 +738,11 @@ class MatrixOperator:
               basis_kets: List of ket vectors forming new basis
               
           Returns:
-              MatrixOperator: Operator in new basis
+              MatrixOperator: Operator in new basis (preserves matrix type)
           """
-          return MatrixOperator(self.matrix.to_new_bases( [ ket.coeffs for ket in basis_kets ]))
+          # to_new_bases preserves the matrix type (Matrix or SparseMatrix)
+          new_matrix = self.matrix.to_new_bases([ket.coeffs for ket in basis_kets])
+          return MatrixOperator(new_matrix, name=self.name, subsys_name=self.subsys_name)
 
      def new_basis_system(self, bases: List[ket_vector]) -> 'MatrixOperator':
           """
@@ -786,7 +826,21 @@ class MatrixOperator:
           return MatrixOperator(self.matrix.change_type(dtype), name = self.name, subsys_name=self.subsys_name)
      def __add__(self, other: 'MatrixOperator') -> 'MatrixOperator':
           if isinstance(other, MatrixOperator):
-               return MatrixOperator(self.matrix + other.matrix, name=self.name, subsys_name=self.subsys_name)
+               # Handle mixed Matrix/SparseMatrix by converting to common type
+               if isinstance(self.matrix, maths.SparseMatrix) and isinstance(other.matrix, maths.Matrix):
+                   other_sparse = other.matrix.to_sparse_matrix()
+                   result = self.matrix + other_sparse
+               elif isinstance(self.matrix, maths.Matrix) and isinstance(other.matrix, maths.SparseMatrix):
+                   self_sparse = self.matrix.to_sparse_matrix()
+                   result = self_sparse + other.matrix
+               else:
+                   result = self.matrix + other.matrix
+               
+               # Preserve eigen solver from self (the original H_int)
+               # This ensures block diagonalization is maintained when adding operators
+               new_op = MatrixOperator(result, name=self.name, subsys_name=self.subsys_name)
+               new_op.set_eigen_solver(self._eigen_solver)
+               return new_op
           return NotImplemented
      
      def __radd__(self, other: Union[int, float, complex]) -> 'MatrixOperator':
@@ -796,14 +850,62 @@ class MatrixOperator:
 
      def __sub__(self, other: 'MatrixOperator') -> 'MatrixOperator':
           if isinstance(other, MatrixOperator):
-               return MatrixOperator(self.matrix - other.matrix, name=self.name, subsys_name=self.subsys_name)
+               # Handle mixed Matrix/SparseMatrix by converting to common type
+               if isinstance(self.matrix, maths.SparseMatrix) and isinstance(other.matrix, maths.Matrix):
+                   other_sparse = other.matrix.to_sparse_matrix()
+                   result = self.matrix - other_sparse
+               elif isinstance(self.matrix, maths.Matrix) and isinstance(other.matrix, maths.SparseMatrix):
+                   self_sparse = self.matrix.to_sparse_matrix()
+                   result = self_sparse - other.matrix
+               else:
+                   result = self.matrix - other.matrix
+               
+               # Preserve eigen solver from self (the original H_int)
+               # This ensures block diagonalization is maintained when subtracting operators
+               new_op = MatrixOperator(result, name=self.name, subsys_name=self.subsys_name)
+               new_op.set_eigen_solver(self._eigen_solver)
+               return new_op
           return NotImplemented
      
      def __mul__(self, other: Union['MatrixOperator', ket_vector]) -> Union['MatrixOperator', ket_vector]:
           if isinstance(other, MatrixOperator):
-               return MatrixOperator(self.matrix.__mul__(other.matrix), name=self.name, subsys_name=self.subsys_name)
+               # Handle mixed Matrix/SparseMatrix by converting to common type
+               if isinstance(self.matrix, maths.SparseMatrix) and isinstance(other.matrix, maths.Matrix):
+                   other_sparse = other.matrix.to_sparse_matrix()
+                   result = self.matrix.__mul__(other_sparse)
+               elif isinstance(self.matrix, maths.Matrix) and isinstance(other.matrix, maths.SparseMatrix):
+                   self_sparse = self.matrix.to_sparse_matrix()
+                   result = self_sparse.__mul__(other.matrix)
+               else:
+                   result = self.matrix.__mul__(other.matrix)
+               
+               # Preserve eigen solver from self (the original H_int)
+               # This ensures block diagonalization is maintained when multiplying operators
+               new_op = MatrixOperator(result, name=self.name, subsys_name=self.subsys_name)
+               new_op.set_eigen_solver(self._eigen_solver)
+               return new_op
           elif isinstance(other, ket_vector):
-               return ket_vector(self.matrix.__mul__(other.coeffs), eigen_val=other.eigen_val, name=self.name, subsys_name=self.subsys_name)
+               # Handle sparse matrix with dense vector or vice versa
+               if isinstance(self.matrix, maths.SparseMatrix) and isinstance(other.coeffs, maths.col_vector):
+                   # Convert dense col_vector to sparse for multiplication
+                   other_sparse = other.coeffs.to_sparse_vector()
+                   result = self.matrix.__mul__(other_sparse)
+                   # Convert result back to dense col_vector for ket_vector
+                   if isinstance(result, maths.SparseColVector):
+                       result = result.to_dense_vector()
+                   return ket_vector(result, eigen_val=other.eigen_val, name=self.name, subsys_name=self.subsys_name)
+               elif isinstance(self.matrix, maths.Matrix) and isinstance(other.coeffs, maths.SparseColVector):
+                   # Convert sparse col_vector to dense for multiplication
+                   other_dense = other.coeffs.to_dense_vector()
+                   result = self.matrix.__mul__(other_dense)
+                   return ket_vector(result, eigen_val=other.eigen_val, name=self.name, subsys_name=self.subsys_name)
+               else:
+                   # Both are same type (dense or sparse)
+                   result = self.matrix.__mul__(other.coeffs)
+                   # Convert SparseColVector result to dense col_vector for ket_vector
+                   if isinstance(result, maths.SparseColVector):
+                       result = result.to_dense_vector()
+                   return ket_vector(result, eigen_val=other.eigen_val, name=self.name, subsys_name=self.subsys_name)
           return NotImplemented
 
      def __rmul__(self, other: Union[int, float, complex]) -> 'MatrixOperator':
@@ -814,7 +916,22 @@ class MatrixOperator:
      
      def __pow__(self, other: 'MatrixOperator') -> 'MatrixOperator':
           if isinstance(other, MatrixOperator):
-               return MatrixOperator(self.matrix**other.matrix, name=self.name, subsys_name=self.subsys_name)
+               # Handle mixed Matrix/SparseMatrix by converting to common type
+               # If one is sparse and the other is dense, convert dense to sparse
+               if isinstance(self.matrix, maths.SparseMatrix) and isinstance(other.matrix, maths.Matrix):
+                   other_sparse = other.matrix.to_sparse_matrix()
+                   result = self.matrix ** other_sparse
+               elif isinstance(self.matrix, maths.Matrix) and isinstance(other.matrix, maths.SparseMatrix):
+                   self_sparse = self.matrix.to_sparse_matrix()
+                   result = self_sparse ** other.matrix
+               else:
+                   result = self.matrix ** other.matrix
+               
+               # Preserve eigen solver from self (the original H_int)
+               # This ensures block diagonalization is maintained when using tensor product
+               new_op = MatrixOperator(result, name=self.name, subsys_name=self.subsys_name)
+               new_op.set_eigen_solver(self._eigen_solver)
+               return new_op
           return NotImplemented
      
      def __repr__(self) -> str:
@@ -843,7 +960,9 @@ class MatrixOperator:
               from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver, SparseEigenSolver
               # Auto-select solver based on matrix type
               if isinstance(matrix, maths.SparseMatrix):
-                  self._eigen_solver = SparseEigenSolver()
+                  # Enable block diagonalization by default for sparse matrices (for efficiency)
+                  # Eigenvectors will be matched to dense solver for consistency
+                  self._eigen_solver = SparseEigenSolver(use_block_diagonalization=True)
               else:
                   self._eigen_solver = DenseEigenSolver()
           else:
@@ -1039,10 +1158,17 @@ class MatrixOperator:
               trunc_num: Number of rows/columns to remove
               
           Returns:
-              MatrixOperator: Truncated matrix operator
+              MatrixOperator: Truncated matrix operator (preserves matrix type)
           """
           dim = len(self.matrix)
-          return MatrixOperator(maths.Matrix(self.matrix[0:dim-trunc_num, 0: dim-trunc_num]),self.name, self.subsys_name)
+          # Preserve matrix type (Matrix or SparseMatrix)
+          if isinstance(self.matrix, maths.SparseMatrix):
+              # For sparse matrices, use slicing which preserves sparsity
+              truncated_sparse = self.matrix.matrix[0:dim-trunc_num, 0:dim-trunc_num]
+              return MatrixOperator(maths.SparseMatrix(truncated_sparse), self.name, self.subsys_name)
+          else:
+              # For dense matrices, use Matrix slicing
+              return MatrixOperator(maths.Matrix(self.matrix[0:dim-trunc_num, 0: dim-trunc_num]), self.name, self.subsys_name)
      
      def get_dim(self) -> int:
           """
@@ -1270,10 +1396,11 @@ class degenerate_system_2D(degenerate_system):
           return p_2 + p_1
 
 class braket_to_matrix_formalism:
-     def __init__(self, eig_states:hilber_space_bases, used_dimensions = None):
+     def __init__(self, eig_states:hilber_space_bases, used_dimensions = None, use_sparse: bool = False):
           self.eig_states = eig_states
           self.calculation_dimension = self.eig_states.dim
           self.used_dimension = used_dimensions
+          self.use_sparse = use_sparse
 
      def create_new_basis(self, gen_ops:list[MatrixOperator], generating_order:int)->list[ket_vector]:
           bases_vectors = []
@@ -1357,15 +1484,27 @@ class braket_to_matrix_formalism:
 
      def create_MatrixOperator(self, op: operator,name = '', subsys_name = ''):
           dim = len(self.eig_states)
-          mx_op = np.zeros((dim, dim), dtype = maths.complex_number_typ)
-          for i in range(0,len(self.eig_states._ket_states)):
-               for j in range(0,len(self.eig_states._bra_states)):
-                    bra = self.eig_states._bra_states[j]
-                    ket = self.eig_states._ket_states[i]
-
-
-                    mx_op[i][j] = bra*op*ket
-          return MatrixOperator(maths.Matrix(mx_op), name = name,subsys_name=subsys_name)
+          if self.use_sparse:
+              # Use sparse matrix format (CSR)
+              from scipy.sparse import csr_matrix
+              mx_op = np.zeros((dim, dim), dtype = maths.complex_number_typ)
+              for i in range(0,len(self.eig_states._ket_states)):
+                   for j in range(0,len(self.eig_states._bra_states)):
+                        bra = self.eig_states._bra_states[j]
+                        ket = self.eig_states._ket_states[i]
+                        mx_op[i][j] = bra*op*ket
+              # Convert to sparse matrix
+              sparse_mx = csr_matrix(mx_op, dtype=maths.complex_number_typ)
+              return MatrixOperator(maths.SparseMatrix(sparse_mx), name = name,subsys_name=subsys_name)
+          else:
+              # Use dense matrix format
+              mx_op = np.zeros((dim, dim), dtype = maths.complex_number_typ)
+              for i in range(0,len(self.eig_states._ket_states)):
+                   for j in range(0,len(self.eig_states._bra_states)):
+                        bra = self.eig_states._bra_states[j]
+                        ket = self.eig_states._ket_states[i]
+                        mx_op[i][j] = bra*op*ket
+              return MatrixOperator(maths.Matrix(mx_op), name = name,subsys_name=subsys_name)
 
 
 

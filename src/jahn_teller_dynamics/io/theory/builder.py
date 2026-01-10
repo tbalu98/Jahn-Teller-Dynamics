@@ -321,13 +321,17 @@ class JTTheoryBuilder:
         Yx = self.params.get_Yx(section_to_look_for)
         Yy = self.params.get_Yy(section_to_look_for)
         
+        # Get use_sparse setting from essentials (global setting, defaults to False if not specified)
+        from jahn_teller_dynamics.io.config.constants import essentials_field, use_sparse_opt
+        use_sparse = self.reader.conditional_option(essentials_field, use_sparse_opt)
+        
         # Get orientation basis from essentials field
         orientation_basis = self._get_basis_col_vectors(essentials_field)
         if orientation_basis is None:
             raise ValueError(f"Orientation basis vectors not found in section: {essentials_field}")
         
         return qmp.minimal_Exe_tree.from_cfg_data(
-            energy_split, orientation_basis, gL, delta_f, f_factor, Yx, Yy
+            energy_split, orientation_basis, gL, delta_f, f_factor, Yx, Yy, use_sparse=use_sparse
         )
     
     # Helper methods (these should ideally be in FieldVectorParser, but kept here for now)

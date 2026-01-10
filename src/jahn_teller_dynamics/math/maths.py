@@ -37,7 +37,7 @@ def meV_to_GHz(e: float) -> float:
 
 
 precision = 0.0000001
-complex_number_typ = np.complex64
+complex_number_typ = np.complex128  # Use double precision for better numerical accuracy
 
 
 def equal_matrix(a: Union[np.matrix, np.ndarray], b: Union[np.matrix, np.ndarray]) -> bool:
@@ -330,6 +330,15 @@ class col_vector:
             row_vector instance
         """
         return row_vector(np.conj(np.transpose(self.coeffs)))
+    
+    def to_sparse_vector(self) -> 'SparseColVector':
+        """
+        Convert to sparse column vector.
+        
+        Returns:
+            SparseColVector instance
+        """
+        return SparseColVector(self.coeffs)
 
     def __mul__(self, other: Any) -> Union['col_vector', 'Matrix']:
         """
@@ -347,6 +356,10 @@ class col_vector:
         """
         if isinstance(other, row_vector):
             return Matrix(np.matmul(self.coeffs, other.coeffs))
+        elif isinstance(other, SparseRowVector):
+            # Convert col_vector to sparse and multiply
+            self_sparse = self.to_sparse_vector()
+            return SparseMatrix(self_sparse.coeffs * other.coeffs).to_dense_matrix()
         elif isinstance(other, (complex, float, int)):
             return col_vector(self.coeffs * other)
         else:
@@ -368,22 +381,27 @@ class col_vector:
         """
         return col_vector(self.coeffs / other)
 
-    def __add__(self, other: 'col_vector') -> 'col_vector':
+    def __add__(self, other: Union['col_vector', 'SparseColVector']) -> Union['col_vector', 'SparseColVector']:
         """
         Add two column vectors.
         
         Args:
-            other: Another col_vector
+            other: Another col_vector or SparseColVector
             
         Returns:
-            Sum of vectors
+            Sum of vectors (SparseColVector if other is sparse, else col_vector)
             
         Raises:
-            TypeError: If other is not a col_vector
+            TypeError: If other is not a col_vector or SparseColVector
         """
-        if not isinstance(other, col_vector):
+        if isinstance(other, SparseColVector):
+            # Convert self to sparse and add
+            self_sparse = self.to_sparse_vector()
+            return SparseColVector(self_sparse.coeffs + other.coeffs)
+        elif isinstance(other, col_vector):
+            return col_vector(self.coeffs + other.coeffs)
+        else:
             raise TypeError(f"Cannot add col_vector with {type(other)}")
-        return col_vector(self.coeffs + other.coeffs)
 
     def __radd__(self, other: Any) -> 'col_vector':
         """Right addition."""
@@ -481,12 +499,28 @@ class row_vector:
         """
         if isinstance(other, col_vector):
             return complex(np.matmul(self.coeffs, other.coeffs))
+        elif isinstance(other, SparseColVector):
+            # Convert row_vector to sparse and multiply
+            # row_vector (1 x n) * col_vector (n x 1) = scalar
+            self_sparse = self.to_sparse_vector()
+            result = self_sparse.coeffs * other.coeffs
+            return complex(result[0, 0])
         elif isinstance(other, Matrix):
             return row_vector(np.matmul(self.coeffs, other.matrix))
+        elif isinstance(other, SparseMatrix):
+            # Convert row_vector to sparse and multiply
+            self_sparse = self.to_sparse_vector()
+            # row_vector (1 x n) * matrix (n x m) = row_vector (1 x m)
+            result = self_sparse.coeffs * other.matrix
+            return SparseRowVector(result).to_dense_vector()
         elif isinstance(other, (complex, float, int)):
             return row_vector(self.coeffs * other)
         elif isinstance(other, row_vector):
             return Matrix(np.matmul(self.coeffs, other.coeffs))
+        elif isinstance(other, SparseRowVector):
+            # Convert row_vector to sparse and multiply
+            self_sparse = self.to_sparse_vector()
+            return SparseMatrix(self_sparse.coeffs * other.coeffs).to_dense_matrix()
         else:
             raise TypeError(f"Cannot multiply row_vector with {type(other)}")
 
@@ -505,6 +539,15 @@ class row_vector:
         else:
             return self * other
 
+    def to_sparse_vector(self) -> 'SparseRowVector':
+        """
+        Convert to sparse row vector.
+        
+        Returns:
+            SparseRowVector instance
+        """
+        return SparseRowVector(self.coeffs)
+    
     def __truediv__(self, other: Union[complex, float]) -> 'row_vector':
         """
         Divide row vector by scalar.
@@ -517,22 +560,27 @@ class row_vector:
         """
         return row_vector(self.coeffs / other)
 
-    def __add__(self, other: 'row_vector') -> 'row_vector':
+    def __add__(self, other: Union['row_vector', 'SparseRowVector']) -> Union['row_vector', 'SparseRowVector']:
         """
         Add two row vectors.
         
         Args:
-            other: Another row_vector
+            other: Another row_vector or SparseRowVector
             
         Returns:
-            Sum of vectors
+            Sum of vectors (SparseRowVector if other is sparse, else row_vector)
             
         Raises:
-            TypeError: If other is not a row_vector
+            TypeError: If other is not a row_vector or SparseRowVector
         """
-        if not isinstance(other, row_vector):
+        if isinstance(other, SparseRowVector):
+            # Convert self to sparse and add
+            self_sparse = self.to_sparse_vector()
+            return SparseRowVector(self_sparse.coeffs + other.coeffs)
+        elif isinstance(other, row_vector):
+            return row_vector(self.coeffs + other.coeffs)
+        else:
             raise TypeError(f"Cannot add row_vector with {type(other)}")
-        return row_vector(self.coeffs + other.coeffs)
 
     def __radd__(self, other: Any) -> 'row_vector':
         """Right addition."""
@@ -670,6 +718,274 @@ class row_vector:
         for coeff in coeffs_list[0:to_index]:
             res += abs(coeff)**2
         return res
+
+
+class SparseColVector:
+    """
+    Sparse column vector class for quantum mechanical calculations.
+    
+    Represents a sparse column vector (n x 1 matrix) with support for complex numbers.
+    Uses scipy.sparse.csr_matrix for efficient storage of sparse vectors.
+    """
+    
+    def __init__(self, coeffs: Union[csr_matrix, np.matrix, np.ndarray, 'col_vector']):
+        """
+        Initialize sparse column vector from various input types.
+        
+        Args:
+            coeffs: csr_matrix, numpy matrix/array, or col_vector
+                   Must have shape (n, 1) for column vector
+                   
+        Raises:
+            ValueError: If coeffs is not a column vector (shape[1] != 1)
+        """
+        # Convert from col_vector if needed
+        if isinstance(coeffs, col_vector):
+            coeffs = coeffs.coeffs
+        
+        # Convert to sparse matrix
+        if isinstance(coeffs, csr_matrix):
+            self.coeffs = coeffs.tocsr()
+        elif isinstance(coeffs, (np.matrix, np.ndarray)):
+            # Convert to array first, then to sparse
+            if hasattr(coeffs, 'A'):
+                arr = coeffs.A
+            else:
+                arr = np.asarray(coeffs)
+            # Ensure it's a column vector
+            if arr.ndim == 1:
+                arr = arr.reshape(-1, 1)
+            self.coeffs = csr_matrix(arr, dtype=complex_number_typ)
+        else:
+            raise TypeError(f"Cannot create SparseColVector from {type(coeffs)}")
+        
+        # Verify it's a column vector
+        if self.coeffs.shape[1] != 1:
+            raise ValueError(f"SparseColVector requires shape (n, 1), got {self.coeffs.shape}")
+    
+    def to_dense_vector(self) -> 'col_vector':
+        """Convert to dense col_vector."""
+        dense = self.coeffs.todense()
+        return col_vector(dense)
+    
+    def to_sparse_row_vector(self) -> 'SparseRowVector':
+        """Convert to sparse row vector (complex conjugate transpose)."""
+        return SparseRowVector(self.coeffs.getH().tocsr())
+    
+    def length(self) -> float:
+        """Calculate Euclidean length (norm) of the vector."""
+        # Use sparse dot product for efficiency
+        return float(np.sqrt((self.coeffs.getH() * self.coeffs)[0, 0].real))
+    
+    def normalize(self) -> 'SparseColVector':
+        """Normalize the vector to unit length."""
+        norm = self.length()
+        if norm == 0.0:
+            return SparseColVector(self.coeffs.copy())
+        return SparseColVector(self.coeffs / norm)
+    
+    def tolist(self) -> List[complex]:
+        """Convert to Python list."""
+        return self.coeffs.todense().A1.tolist()
+    
+    def __len__(self) -> int:
+        """Get dimension of the vector."""
+        return self.coeffs.shape[0]
+    
+    def __getitem__(self, key: int) -> Union[complex, float]:
+        """Get coefficient at given index."""
+        return complex(self.coeffs[key, 0])
+    
+    def __mul__(self, other: Any) -> Union['SparseColVector', 'SparseMatrix', complex]:
+        """Multiply sparse column vector with other objects."""
+        if isinstance(other, (complex, float, int)):
+            return SparseColVector(self.coeffs * other)
+        elif isinstance(other, SparseRowVector):
+            # Outer product: col * row = matrix
+            return SparseMatrix(self.coeffs * other.coeffs)
+        elif isinstance(other, row_vector):
+            # Convert row_vector to sparse and multiply
+            other_sparse = other.to_sparse_vector()
+            return SparseMatrix(self.coeffs * other_sparse.coeffs)
+        else:
+            raise TypeError(f"Cannot multiply SparseColVector with {type(other)}")
+    
+    def __rmul__(self, other: Any) -> 'SparseColVector':
+        """Right multiplication (scalar * SparseColVector)."""
+        return self * other
+    
+    def __add__(self, other: Union['SparseColVector', 'col_vector']) -> 'SparseColVector':
+        """Add two column vectors."""
+        if isinstance(other, col_vector):
+            other = other.to_sparse_vector()
+        if isinstance(other, SparseColVector):
+            return SparseColVector(self.coeffs + other.coeffs)
+        raise TypeError(f"Cannot add SparseColVector with {type(other)}")
+    
+    def __sub__(self, other: Union['SparseColVector', 'col_vector']) -> 'SparseColVector':
+        """Subtract two column vectors."""
+        if isinstance(other, col_vector):
+            other = other.to_sparse_vector()
+        if isinstance(other, SparseColVector):
+            return SparseColVector(self.coeffs - other.coeffs)
+        raise TypeError(f"Cannot subtract {type(other)} from SparseColVector")
+    
+    @staticmethod
+    def zeros(dim: int) -> 'SparseColVector':
+        """Create zero sparse column vector."""
+        return SparseColVector(csr_matrix((dim, 1), dtype=complex_number_typ))
+    
+    @staticmethod
+    def from_list(coeff_list: List[Union[complex, float]]) -> 'SparseColVector':
+        """Create sparse column vector from list."""
+        arr = np.array([[c] for c in coeff_list], dtype=complex_number_typ)
+        return SparseColVector(csr_matrix(arr))
+    
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"SparseColVector(shape={self.coeffs.shape}, nnz={self.coeffs.nnz})"
+
+
+class SparseRowVector:
+    """
+    Sparse row vector class for quantum mechanical calculations.
+    
+    Represents a sparse row vector (1 x n matrix) with support for complex numbers.
+    Uses scipy.sparse.csr_matrix for efficient storage of sparse vectors.
+    """
+    
+    def __init__(self, coeffs: Union[csr_matrix, np.matrix, np.ndarray, 'row_vector']):
+        """
+        Initialize sparse row vector from various input types.
+        
+        Args:
+            coeffs: csr_matrix, numpy matrix/array, or row_vector
+                   Must have shape (1, n) for row vector
+                   
+        Raises:
+            ValueError: If coeffs is not a row vector (shape[0] != 1)
+        """
+        # Convert from row_vector if needed
+        if isinstance(coeffs, row_vector):
+            coeffs = coeffs.coeffs
+        
+        # Convert to sparse matrix
+        if isinstance(coeffs, csr_matrix):
+            self.coeffs = coeffs.tocsr()
+        elif isinstance(coeffs, (np.matrix, np.ndarray)):
+            # Convert to array first, then to sparse
+            if hasattr(coeffs, 'A'):
+                arr = coeffs.A
+            else:
+                arr = np.asarray(coeffs)
+            # Ensure it's a row vector
+            if arr.ndim == 1:
+                arr = arr.reshape(1, -1)
+            self.coeffs = csr_matrix(arr, dtype=complex_number_typ)
+        else:
+            raise TypeError(f"Cannot create SparseRowVector from {type(coeffs)}")
+        
+        # Verify it's a row vector
+        if self.coeffs.shape[0] != 1:
+            raise ValueError(f"SparseRowVector requires shape (1, n), got {self.coeffs.shape}")
+    
+    def to_dense_vector(self) -> 'row_vector':
+        """Convert to dense row_vector."""
+        dense = self.coeffs.todense()
+        return row_vector(dense)
+    
+    def to_sparse_col_vector(self) -> 'SparseColVector':
+        """Convert to sparse column vector (complex conjugate transpose)."""
+        return SparseColVector(self.coeffs.getH().tocsr())
+    
+    def length(self) -> float:
+        """Calculate Euclidean length (norm) of the vector."""
+        # Use sparse dot product for efficiency
+        return float(np.sqrt((self.coeffs * self.coeffs.getH())[0, 0].real))
+    
+    def normalize(self) -> 'SparseRowVector':
+        """Normalize the vector to unit length."""
+        norm = self.length()
+        if norm == 0.0:
+            return SparseRowVector(self.coeffs.copy())
+        return SparseRowVector(self.coeffs / norm)
+    
+    def tolist(self) -> List[complex]:
+        """Convert to Python list."""
+        return self.coeffs.todense().A1.tolist()
+    
+    def __len__(self) -> int:
+        """Get dimension of the vector."""
+        return self.coeffs.shape[1]
+    
+    def __getitem__(self, key: int) -> Union[complex, float]:
+        """Get coefficient at given index."""
+        return complex(self.coeffs[0, key])
+    
+    def __mul__(self, other: Any) -> Union[complex, 'SparseRowVector', 'SparseMatrix']:
+        """Multiply sparse row vector with other objects."""
+        if isinstance(other, SparseColVector):
+            # Inner product: row * col = scalar
+            result = self.coeffs * other.coeffs
+            return complex(result[0, 0])
+        elif isinstance(other, col_vector):
+            # Convert col_vector to sparse and multiply
+            other_sparse = other.to_sparse_vector()
+            result = self.coeffs * other_sparse.coeffs
+            return complex(result[0, 0])
+        elif isinstance(other, SparseMatrix):
+            # row * matrix = row
+            return SparseRowVector(self.coeffs * other.matrix)
+        elif isinstance(other, Matrix):
+            # Convert Matrix to sparse and multiply
+            other_sparse = other.to_sparse_matrix()
+            return SparseRowVector(self.coeffs * other_sparse.matrix)
+        elif isinstance(other, (complex, float, int)):
+            return SparseRowVector(self.coeffs * other)
+        elif isinstance(other, SparseRowVector):
+            # Outer product: row * row = matrix (transpose needed)
+            return SparseMatrix(self.coeffs.getH() * other.coeffs)
+        elif isinstance(other, row_vector):
+            # Convert row_vector to sparse and multiply
+            other_sparse = other.to_sparse_vector()
+            return SparseMatrix(self.coeffs.getH() * other_sparse.coeffs)
+        else:
+            raise TypeError(f"Cannot multiply SparseRowVector with {type(other)}")
+    
+    def __rmul__(self, other: Any) -> 'SparseRowVector':
+        """Right multiplication (scalar * SparseRowVector)."""
+        return self * other
+    
+    def __add__(self, other: Union['SparseRowVector', 'row_vector']) -> 'SparseRowVector':
+        """Add two row vectors."""
+        if isinstance(other, row_vector):
+            other = other.to_sparse_vector()
+        if isinstance(other, SparseRowVector):
+            return SparseRowVector(self.coeffs + other.coeffs)
+        raise TypeError(f"Cannot add SparseRowVector with {type(other)}")
+    
+    def __sub__(self, other: Union['SparseRowVector', 'row_vector']) -> 'SparseRowVector':
+        """Subtract two row vectors."""
+        if isinstance(other, row_vector):
+            other = other.to_sparse_vector()
+        if isinstance(other, SparseRowVector):
+            return SparseRowVector(self.coeffs - other.coeffs)
+        raise TypeError(f"Cannot subtract {type(other)} from SparseRowVector")
+    
+    @staticmethod
+    def zeros(dim: int) -> 'SparseRowVector':
+        """Create zero sparse row vector."""
+        return SparseRowVector(csr_matrix((1, dim), dtype=complex_number_typ))
+    
+    @staticmethod
+    def from_list(coeff_list: List[Union[complex, float]]) -> 'SparseRowVector':
+        """Create sparse row vector from list."""
+        arr = np.array([coeff_list], dtype=complex_number_typ)
+        return SparseRowVector(csr_matrix(arr))
+    
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"SparseRowVector(shape={self.coeffs.shape}, nnz={self.coeffs.nnz})"
 
 
 class Matrix:
@@ -837,16 +1153,17 @@ class Matrix:
         """
         return Matrix(np.matmul(self.matrix, other.matrix))
     
-    def __mul__(self, other: Any) -> Union['Matrix', 'col_vector']:
+    def __mul__(self, other: Any) -> Union['Matrix', 'col_vector', 'SparseColVector']:
         """
         Multiply matrix with other objects.
         
         Args:
-            other: Matrix, col_vector, or scalar
+            other: Matrix, col_vector, SparseColVector, or scalar
             
         Returns:
             - Matrix * Matrix: Matrix
             - Matrix * col_vector: col_vector
+            - Matrix * SparseColVector: SparseColVector (converts matrix to sparse)
             
         Raises:
             TypeError: If multiplication is not supported
@@ -855,22 +1172,37 @@ class Matrix:
             return Matrix(np.matmul(self.matrix, other.matrix))
         elif isinstance(other, col_vector):
             return col_vector(np.matmul(self.matrix, other.coeffs))
+        elif isinstance(other, SparseColVector):
+            # Convert Matrix to sparse for multiplication
+            self_sparse = self.to_sparse_matrix()
+            return SparseColVector(self_sparse.matrix * other.coeffs)
         elif isinstance(other, (complex, float, int)):
             return Matrix(self.matrix * other)
         else:
             raise TypeError(f"Cannot multiply Matrix with {type(other)}")
     
-    def __rmul__(self, other: Union[complex, float]) -> 'Matrix':
+    def __rmul__(self, other: Union[complex, float, 'row_vector', 'SparseRowVector']) -> Union['Matrix', 'row_vector', 'SparseRowVector']:
         """
-        Right multiplication (scalar * Matrix).
+        Right multiplication (scalar * Matrix or row_vector * Matrix).
         
         Args:
-            other: Scalar
+            other: Scalar, row_vector, or SparseRowVector
             
         Returns:
-            Scaled matrix
+            Scaled matrix or row_vector
         """
-        return Matrix(self.matrix * other)
+        if isinstance(other, (complex, float, int)):
+            return Matrix(self.matrix * other)
+        elif isinstance(other, row_vector):
+            # row_vector * matrix = row_vector
+            return row_vector(np.matmul(other.coeffs, self.matrix))
+        elif isinstance(other, SparseRowVector):
+            # Convert SparseRowVector to dense, multiply, convert back
+            other_dense = other.to_dense_vector()
+            result = row_vector(np.matmul(other_dense.coeffs, self.matrix))
+            return result.to_sparse_vector()
+        else:
+            return NotImplemented
 
     def __truediv__(self, other: Union[complex, float]) -> 'Matrix':
         """
@@ -1019,7 +1351,58 @@ class Matrix:
         Returns:
             SparseMatrix representation
         """
-        return SparseMatrix(csr_matrix(self.matrix))
+        # If already a sparse matrix, return it wrapped
+        if isinstance(self.matrix, (csr_matrix, SparseMatrix)):
+            if isinstance(self.matrix, SparseMatrix):
+                return self.matrix
+            return SparseMatrix(self.matrix)
+        
+        # Convert numpy matrix to array first, then to sparse
+        # Use .A attribute if available (numpy matrix), otherwise use np.array
+        if hasattr(self.matrix, 'A'):
+            matrix_array = self.matrix.A
+        else:
+            matrix_array = np.asarray(self.matrix)
+        
+        # Check if the array conversion gave us something unexpected
+        # (e.g., if self.matrix contained sparse matrices)
+        if isinstance(matrix_array, (csr_matrix, SparseMatrix)):
+            if isinstance(matrix_array, SparseMatrix):
+                return matrix_array
+            return SparseMatrix(matrix_array)
+        
+        # Check if it's a numpy array with object dtype (might contain sparse matrices)
+        if isinstance(matrix_array, np.ndarray) and matrix_array.dtype == object:
+            # This shouldn't happen, but if it does, try to convert element by element
+            # For now, raise an error with a helpful message
+            raise TypeError(f"Cannot convert Matrix with object dtype to SparseMatrix. "
+                          f"Matrix may contain mixed types.")
+        
+        # Ensure it's a numpy array
+        if not isinstance(matrix_array, np.ndarray):
+            # Try to convert to array
+            try:
+                matrix_array = np.asarray(matrix_array)
+            except:
+                raise TypeError(f"Cannot convert {type(matrix_array)} to numpy array for sparse conversion")
+        
+        # Ensure it's a 2D array
+        if matrix_array.ndim == 1:
+            matrix_array = matrix_array.reshape(-1, 1)
+        elif matrix_array.ndim != 2:
+            raise ValueError(f"Cannot convert {matrix_array.ndim}D array to sparse matrix")
+        
+        # Ensure correct dtype before creating sparse matrix
+        # Only call astype if it's actually a numpy array with numeric dtype
+        if matrix_array.dtype != complex_number_typ:
+            try:
+                matrix_array = matrix_array.astype(complex_number_typ)
+            except (TypeError, ValueError) as e:
+                raise TypeError(f"Cannot convert array with dtype {matrix_array.dtype} to {complex_number_typ}: {e}")
+        
+        # Create sparse matrix - let it infer dtype from the array
+        sparse_mx = csr_matrix(matrix_array)
+        return SparseMatrix(sparse_mx)
 
     def transpose(self) -> 'Matrix':
         """
@@ -1169,7 +1552,8 @@ class SparseMatrix:
         for base in bases:
             # Convert col_vector to sparse format
             col_data = base.coeffs.transpose().tolist()[0]
-            sp_col = csr_matrix((col_data, ([0]*len(col_data), range(len(col_data)))), 
+            # Row indices: 0 to len-1, Column indices: all 0 (single column)
+            sp_col = csr_matrix((col_data, (range(len(col_data)), [0]*len(col_data))), 
                                shape=(len(col_data), 1), dtype=complex_number_typ)
             sp_col_vecs.append(sp_col)
         
@@ -1303,16 +1687,17 @@ class SparseMatrix:
         """
         return SparseMatrix(self.matrix * other.matrix)
     
-    def __mul__(self, other: Any) -> Union['SparseMatrix', 'col_vector']:
+    def __mul__(self, other: Any) -> Union['SparseMatrix', 'col_vector', 'SparseColVector']:
         """
         Multiply sparse matrix with other objects.
         
         Args:
-            other: SparseMatrix, col_vector, or scalar
+            other: SparseMatrix, col_vector, SparseColVector, or scalar
             
         Returns:
             - SparseMatrix * SparseMatrix: SparseMatrix
-            - SparseMatrix * col_vector: col_vector
+            - SparseMatrix * col_vector: SparseColVector (converts col_vector to sparse)
+            - SparseMatrix * SparseColVector: SparseColVector
             
         Raises:
             TypeError: If multiplication is not supported
@@ -1320,26 +1705,37 @@ class SparseMatrix:
         if isinstance(other, SparseMatrix):
             return SparseMatrix(self.matrix * other.matrix)
         elif isinstance(other, col_vector):
-            # Convert col_vector to sparse, multiply, convert back
-            sp_col = csr_matrix(other.coeffs)
-            result = self.matrix * sp_col
-            return col_vector(result.todense())
+            # Convert col_vector to sparse for multiplication
+            other_sparse = other.to_sparse_vector()
+            return SparseColVector(self.matrix * other_sparse.coeffs)
+        elif isinstance(other, SparseColVector):
+            return SparseColVector(self.matrix * other.coeffs)
         elif isinstance(other, (complex, float, int)):
             return SparseMatrix(self.matrix * other)
         else:
             raise TypeError(f"Cannot multiply SparseMatrix with {type(other)}")
     
-    def __rmul__(self, other: Union[complex, float]) -> 'SparseMatrix':
+    def __rmul__(self, other: Union[complex, float, 'SparseRowVector', 'row_vector']) -> Union['SparseMatrix', 'SparseRowVector']:
         """
-        Right multiplication (scalar * SparseMatrix).
+        Right multiplication (scalar * SparseMatrix or row_vector * SparseMatrix).
         
         Args:
-            other: Scalar
+            other: Scalar, SparseRowVector, or row_vector
             
         Returns:
-            Scaled sparse matrix
+            Scaled sparse matrix or SparseRowVector
         """
-        return SparseMatrix(self.matrix * other)
+        if isinstance(other, (complex, float, int)):
+            return SparseMatrix(self.matrix * other)
+        elif isinstance(other, SparseRowVector):
+            # row_vector * matrix = row_vector
+            return SparseRowVector(other.coeffs * self.matrix)
+        elif isinstance(other, row_vector):
+            # Convert row_vector to sparse and multiply
+            other_sparse = other.to_sparse_vector()
+            return SparseRowVector(other_sparse.coeffs * self.matrix)
+        else:
+            return NotImplemented
     
     def __truediv__(self, other: Union[complex, float]) -> 'SparseMatrix':
         """
@@ -1534,18 +1930,31 @@ class SparseMatrix:
         # Sparse iterative solvers require k < N-1
         if num_of_vals >= self.dim - 1:
             # Convert to dense and use dense solver
-            dense_matrix = self.matrix.todense()
+            dense_matrix = np.array(self.matrix.todense(), dtype=complex_number_typ)
             eigen_vals, eigen_vects = eigs(dense_matrix)
+            # Ensure eigenvalues are complex128 for consistency
+            eigen_vals = eigen_vals.astype(complex_number_typ)
+            eigen_vects = eigen_vects.astype(complex_number_typ)
             return eigen_vals, eigen_vects
         
         # Use sparse eigenvalue solver for large matrices
         try:
             eigen_vals, eigen_vects = sparse_eigs(self.matrix, k=num_of_vals, which=ordering_type)
+            # Ensure eigenvalues are complex128 for consistency with dense solver
+            eigen_vals = eigen_vals.astype(complex_number_typ)
+            # Convert eigenvectors to complex128
+            if hasattr(eigen_vects, 'todense'):
+                eigen_vects = eigen_vects.todense().astype(complex_number_typ)
+            else:
+                eigen_vects = eigen_vects.astype(complex_number_typ)
             return eigen_vals, eigen_vects
         except (TypeError, ValueError) as e:
             # Fallback to dense solver if sparse solver fails
-            dense_matrix = self.matrix.todense()
+            dense_matrix = np.array(self.matrix.todense(), dtype=complex_number_typ)
             eigen_vals, eigen_vects = eigs(dense_matrix)
+            # Ensure eigenvalues are complex128 for consistency
+            eigen_vals = eigen_vals.astype(complex_number_typ)
+            eigen_vects = eigen_vects.astype(complex_number_typ)
             return eigen_vals, eigen_vects
     
     def __getitem__(self, key: Union[int, tuple, slice]) -> Any:
@@ -1685,6 +2094,12 @@ class SparseMatrix:
     
     def herm_op_eigsh(self, eig_state_per_block: int) -> Tuple[np.ndarray, np.ndarray]:
         """
+        Compute eigenvalues and eigenvectors for Hermitian sparse matrix.
+        
+        For small blocks or when requesting all eigenvalues, uses dense solver.
+        For large blocks, uses sparse iterative solver.
+        """
+        """
         Compute eigenvalues/eigenvectors for Hermitian operator using sparse methods.
         
         Computes the lowest eigenvalues and eigenvectors for a Hermitian sparse matrix.
@@ -1697,19 +2112,20 @@ class SparseMatrix:
         """
         dim = self.matrix.shape[0]
         
-        # Limit k to be less than N-1 for sparse solver
-        k = min(eig_state_per_block, dim - 1) if dim > 1 else min(eig_state_per_block, dim)
-        
-        # For small blocks or when k >= N-1, use dense solver
-        if k >= dim - 1 or dim <= 2:
-            # Convert to dense and use dense solver
+        # If requesting all or nearly all eigenvalues, use dense solver
+        # This ensures we get all eigenvalues for proper matching
+        if eig_state_per_block >= dim - 1 or dim <= 2:
+            # Convert to dense and use dense solver to get ALL eigenvalues
             dense_matrix = self.matrix.todense()
             eigen_vals, eigen_vects = eigs(dense_matrix)
+            # Ensure complex128 precision
+            eigen_vals = eigen_vals.astype(complex_number_typ)
+            eigen_vects = eigen_vects.astype(complex_number_typ)
             # Sort by real part (for Hermitian matrices, eigenvalues are real)
             idx = np.argsort(eigen_vals.real)
             eigen_vals = eigen_vals[idx]
             eigen_vects = eigen_vects[:, idx]
-            # Return only requested number
+            # Return only requested number (but we computed all for matching)
             return eigen_vals[:eig_state_per_block], eigen_vects[:, :eig_state_per_block]
         
         # Compute lowest eigenvalues (smallest algebraic) using sparse solver
@@ -1847,19 +2263,45 @@ class SparseMatrix:
         
         eigen_kets = []
         for i in range(num_to_process):
-            # Extract column i
-            col_data = eigen_vects_sp_mx.matrix[:, i].todense()
-            col_vec = col_vector(col_data)
+            # Extract column i (keep in sparse format)
+            col_sparse = eigen_vects_sp_mx.matrix[:, i]
+            
+            # Convert to dense only for normalization and phase alignment
+            # This is a small temporary conversion, not storing the full dense matrix
+            col_data = col_sparse.todense()
+            col_data = np.array(col_data).flatten()
+            
+            # Normalize eigenvector (ensure consistent normalization with dense solver)
+            norm = np.linalg.norm(col_data)
+            if norm > 0:
+                col_data = col_data / norm
+            
+            # Phase convention: ensure first non-zero element has positive real part
+            # This matches the convention used by dense solvers (numpy.linalg.eig)
+            for j in range(len(col_data)):
+                if abs(col_data[j]) > 1e-10:
+                    if col_data[j].real < -1e-10:
+                        col_data = -col_data
+                    elif abs(col_data[j].real) < 1e-10:
+                        if col_data[j].imag < -1e-10:
+                            col_data = -col_data
+                    break
+            
+            # Convert back to sparse format for storage
+            # csr_matrix is already imported at the top of the file
+            col_sparse_aligned = csr_matrix(col_data.reshape(-1, 1), dtype=complex_number_typ)
+            col_vec = SparseColVector(col_sparse_aligned)
             
             # Get corresponding eigenvalue
             eigen_val = eig_vals_list[i]
             
-            # Create ket_vector
+            # Create ket_vector with sparse vector
             eigen_ket = ket_vector(col_vec, eigen_val=float(eigen_val.real))
             eigen_kets.append(eigen_ket)
         
-        # Sort by eigenvalue
-        eigen_kets = sorted(eigen_kets, key=lambda x: x.eigen_val)
+        # Sort by eigenvalue (use stable sort to preserve order for degenerate eigenvalues)
+        # This ensures consistent ordering with dense solver
+        eigen_kets = sorted(eigen_kets, key=lambda x: (x.eigen_val, id(x)))  # id(x) for stable sort
         
         # Create MatrixOperator for eigenvector matrix (now in original basis order)
         eigen_vects_op = MatrixOperator(eigen_vects_sp_mx)
