@@ -820,15 +820,16 @@ class MatrixOperator:
      def __repr__(self) -> str:
           return self.matrix.__repr__()
 
-     def __init__(self, matrix: maths.Matrix, name: str = "", subsys_name: str = "", solver: Optional['EigenSolver'] = None):
+     def __init__(self, matrix: Union[maths.Matrix, maths.SparseMatrix], name: str = "", subsys_name: str = "", solver: Optional['EigenSolver'] = None):
           """
           Initialize matrix operator.
           
           Args:
-              matrix: Underlying matrix object
+              matrix: Underlying matrix object (Matrix or SparseMatrix)
               name: Optional name for the operator
               subsys_name: Optional subsystem name
-              solver: Optional custom eigenvalue solver (defaults to DenseEigenSolver)
+              solver: Optional custom eigenvalue solver (defaults to DenseEigenSolver for Matrix,
+                     or SparseEigenSolver for SparseMatrix)
           """
           self.name = name
           self.subsys_name = subsys_name
@@ -839,8 +840,12 @@ class MatrixOperator:
           # Set up eigenvalue solver
           if solver is None:
               # Lazy import to avoid circular dependency
-              from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver
-              self._eigen_solver = DenseEigenSolver()
+              from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver, SparseEigenSolver
+              # Auto-select solver based on matrix type
+              if isinstance(matrix, maths.SparseMatrix):
+                  self._eigen_solver = SparseEigenSolver()
+              else:
+                  self._eigen_solver = DenseEigenSolver()
           else:
               self._eigen_solver = solver
      
