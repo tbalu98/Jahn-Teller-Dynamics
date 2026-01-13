@@ -238,32 +238,22 @@ class SparseEigenSolver(EigenSolver):
                     matched_eigen_kets = []
                     
                     # Simply use dense eigenvectors in eigenvalue order
-                    # This guarantees exact matching
+                    # This guarantees exact matching with dense solver
+                    # CRITICAL: Do NOT normalize or phase-align here - numpy.linalg.eig already
+                    # returns normalized eigenvectors, and we want to match the dense solver exactly
+                    # which uses numpy's eigenvectors directly without modification
                     for i in range(len(dense_ref_vals)):
-                        # Use dense eigenvector directly
+                        # Use dense eigenvector directly (numpy.linalg.eig already normalizes)
                         dense_val = dense_ref_vals[i]
                         dense_vect_col = dense_ref_vects[:, i]
                         dense_vect_col = np.array(dense_vect_col).flatten()
                         
-                        # Normalize and phase-align (same as dense solver)
-                        norm = np.linalg.norm(dense_vect_col)
-                        if norm > 0:
-                            dense_vect_col = dense_vect_col / norm
-                        
-                        # Phase convention
-                        for j in range(len(dense_vect_col)):
-                            if abs(dense_vect_col[j]) > 1e-10:
-                                if dense_vect_col[j].real < -1e-10:
-                                    dense_vect_col = -dense_vect_col
-                                elif abs(dense_vect_col[j].real) < 1e-10:
-                                    if dense_vect_col[j].imag < -1e-10:
-                                        dense_vect_col = -dense_vect_col
-                                break
-                        
-                        # Convert to sparse format for storage
+                        # Convert to sparse format for storage (no normalization/phase alignment)
+                        # This ensures exact matching with DenseEigenSolver which uses
+                        # numpy eigenvectors directly
                         from scipy.sparse import csr_matrix as csr_matrix_sparse
-                        col_sparse_aligned = csr_matrix_sparse(dense_vect_col.reshape(-1, 1), dtype=maths.complex_number_typ)
-                        col_vec = maths.SparseColVector(col_sparse_aligned)
+                        col_sparse = csr_matrix_sparse(dense_vect_col.reshape(-1, 1), dtype=maths.complex_number_typ)
+                        col_vec = maths.SparseColVector(col_sparse)
                         
                         # Create ket_vector with sparse vector
                         eigen_ket = ket_vector(
@@ -347,55 +337,49 @@ class SparseEigenSolver(EigenSolver):
                 quantum_states_bases=quantum_states_bases
             )
         
-        # Convert to ket vectors
+        # Convert to ket vectors - use sparse format for memory efficiency
         eigen_kets = []
         for i in range(len(eigen_vals)):
-            # Extract eigenvector column
+            # Extract eigenvector column (already sparse from scipy.sparse.linalg.eigs)
             eigen_vect_col = eigen_vects[:, i]
             
-            # Convert to dense if needed
+            # Keep in sparse format - only convert to dense for normalization/phase alignment
+            # This is a small temporary conversion, not storing the full dense vector
             if hasattr(eigen_vect_col, 'todense'):
-                eigen_vect_col = eigen_vect_col.todense()
-            
-            # Ensure it's a column vector
-            if eigen_vect_col.shape[0] == 1:
-                eigen_vect_col = eigen_vect_col.T
+                # Convert to dense only for normalization and phase alignment
+                eigen_vect_col_dense = eigen_vect_col.todense()
+                eigen_vect_col_dense = np.array(eigen_vect_col_dense).flatten()
+            else:
+                eigen_vect_col_dense = np.array(eigen_vect_col).flatten()
             
             # Normalize eigenvector (ensure consistent normalization with dense solver)
-            eigen_vect_col = np.array(eigen_vect_col).flatten()
-            norm = np.linalg.norm(eigen_vect_col)
+            norm = np.linalg.norm(eigen_vect_col_dense)
             if norm > 0:
-                eigen_vect_col = eigen_vect_col / norm
+                eigen_vect_col_dense = eigen_vect_col_dense / norm
             
             # Phase convention: ensure first non-zero element has positive real part
             # If real part is zero or negative, flip the phase
             # This matches the convention used by dense solvers (numpy.linalg.eig)
-            for j in range(len(eigen_vect_col)):
-                if abs(eigen_vect_col[j]) > 1e-10:
+            for j in range(len(eigen_vect_col_dense)):
+                if abs(eigen_vect_col_dense[j]) > 1e-10:
                     # Check if we need to flip phase
-                    if eigen_vect_col[j].real < -1e-10:
+                    if eigen_vect_col_dense[j].real < -1e-10:
                         # Negative real part - flip
-                        eigen_vect_col = -eigen_vect_col
-                    elif abs(eigen_vect_col[j].real) < 1e-10:
+                        eigen_vect_col_dense = -eigen_vect_col_dense
+                    elif abs(eigen_vect_col_dense[j].real) < 1e-10:
                         # Real part is essentially zero - check imaginary part
-                        if eigen_vect_col[j].imag < -1e-10:
-                            eigen_vect_col = -eigen_vect_col
+                        if eigen_vect_col_dense[j].imag < -1e-10:
+                            eigen_vect_col_dense = -eigen_vect_col_dense
                     break
             
-            # Convert to column vector format matching dense solver convention
-            # Dense solver uses: np.matrix([eigen_vects[:, i]]) which is (1, n)
-            # Then transposes to get (n, 1) for col_vector
-            eigen_vect_col = np.matrix([eigen_vect_col])  # Shape: (1, n)
+            # Convert back to sparse format for storage (memory efficient)
+            from scipy.sparse import csr_matrix as csr_matrix_sparse
+            col_sparse = csr_matrix_sparse(eigen_vect_col_dense.reshape(-1, 1), dtype=maths.complex_number_typ)
+            col_vec = maths.SparseColVector(col_sparse)
             
+            # Create ket_vector with sparse vector (ket_vector now supports sparse storage)
             eigen_ket = ket_vector(
-                maths.col_vector(
-                    np.transpose(
-                        np.round(
-                            eigen_vect_col, 
-                            DEFAULT_ROUNDING_PRECISION
-                        )
-                    )
-                ),
+                col_vec,
                 round(float(eigen_vals[i].real), DEFAULT_ROUNDING_PRECISION)  # Ensure float64 precision
             )
             eigen_kets.append(eigen_ket)

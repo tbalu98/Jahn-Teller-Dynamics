@@ -313,8 +313,23 @@ class Exe_tree:
         return JT_int
 
     def add_spin_system(self):
-        spin_sys = qs.quantum_system_node.create_spin_system_node()
+        # CRITICAL: Use the same matrix type (sparse/dense) as the rest of the system
+        # This ensures all operators (Lz, Sz, LzSz) have consistent matrix types
+        use_sparse = getattr(self, 'use_sparse', False)
+        spin_sys = qs.quantum_system_node.create_spin_system_node(use_sparse=use_sparse)
         self.system_tree.insert_node('electron_system', spin_sys)
+        
+        # CRITICAL: Ensure use_sparse is propagated to ALL nodes in the tree
+        # This is essential for create_operator to use the correct matrix type
+        def set_use_sparse_recursive(node, value):
+            node.use_sparse = value
+            for child in node.children:
+                set_use_sparse_recursive(child, value)
+        
+        if hasattr(self.system_tree.root_node, 'use_sparse'):
+            set_use_sparse_recursive(self.system_tree.root_node, self.system_tree.root_node.use_sparse)
+        else:
+            set_use_sparse_recursive(self.system_tree.root_node, use_sparse)
 
     @staticmethod
     def create_spin_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact):
@@ -538,6 +553,8 @@ class Exe_tree:
         Note: This returns just the operator structure, not the full Hamiltonian.
         For the full SOC Hamiltonian with strength, use get_spin_orbit_coupling_int_ham().
         """
+        # Use subsystem IDs - create_operator will handle tensor products correctly
+        # The identity operators will use the correct matrix type based on use_sparse
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
         Lz = self.system_tree.create_operator('Lz', 'orbital_system')
         return Lz**Sz
@@ -862,11 +879,14 @@ class Exe_tree:
                 # Set correct dense solver
                 self.H_int.set_eigen_solver(DenseEigenSolver())
         
-        # Calculate eigenvalues and store (preserve original behavior)
-        self.H_int.calc_eigen_vals_vects(
-            quantum_states_bases=self.system_tree.root_node.base_states
-        )
+        # Store H_DJT operator (without eigenstates - they'll be computed after SOC is added)
+        # H_DJT is only used as an operator (e.g., in compute_K_JT_factor), not for its eigenstates
+        # CRITICAL: Do NOT compute eigenstates here - they should only be computed after the full
+        # Hamiltonian (DJT + SOC) is ready. Computing them here causes inconsistencies with the eigensolver.
         self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)
+        # Clear any eigenstates from the copy since they're not needed and will be recomputed
+        if hasattr(self.system_tree.root_node.operators['H_DJT'], 'eigen_kets'):
+            self.system_tree.root_node.operators['H_DJT'].eigen_kets = None
 
 
 

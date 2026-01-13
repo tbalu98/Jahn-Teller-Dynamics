@@ -81,11 +81,9 @@ class JT_Calculator:
             JT_theory, order, intrincis_soc, orbital_red_fact, orientation_basis, use_sparse=use_sparse
         )
 
-        # Only add spin system and interactions for non-model Hamiltonians
-        if JT_theory.order_flag != 0 and intrincis_soc != 0.0:
-            JT_int.add_spin_system()
-            JT_int.create_one_mode_DJT_hamiltonian()
-            JT_int.add_spin_orbit_coupling()
+        # NOTE: Do NOT set up the Hamiltonian here (add_spin_system, create_one_mode_DJT_hamiltonian, add_spin_orbit_coupling)
+        # The Hamiltonian setup should be done in _process_with_soc() in the orchestrator to ensure
+        # proper workflow and avoid double setup. This also ensures eigenstates are computed at the right time.
 
         return cls(JT_int)
 

@@ -1587,9 +1587,11 @@ class SparseMatrix:
         Returns:
             Transformed sparse matrix
         """
+        # CRITICAL: Use same transformation order as Matrix.to_new_bases for consistency
+        # V * self * V_inv (not V_inv * self * V)
         V: SparseMatrix = SparseMatrix.from_col_vectors(bases)
         V_inv: SparseMatrix = V.calc_inverse()
-        return V_inv * self * V
+        return V * self * V_inv
     
     def __str__(self) -> str:
         """String representation of the sparse matrix."""

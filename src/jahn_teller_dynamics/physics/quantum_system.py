@@ -526,8 +526,34 @@ class quantum_system_node(node):
 
 
 
-        I_left = mm.MatrixOperator.create_id_matrix_op(dim = left_dim)
-        I_right = mm.MatrixOperator.create_id_matrix_op(dim = right_dim)
+        # CRITICAL: Determine matrix type based on use_sparse setting
+        # Check this node first, then walk up the tree to root, then check operator type
+        use_sparse = False
+        if hasattr(self, 'use_sparse'):
+            use_sparse = self.use_sparse
+        else:
+            # Walk up to root node to find use_sparse
+            current = self
+            while current is not None:
+                if hasattr(current, 'use_sparse'):
+                    use_sparse = current.use_sparse
+                    break
+                # Try to get parent (if this is a node in a tree)
+                if hasattr(current, 'parent') and current.parent is not None:
+                    current = current.parent
+                elif hasattr(current, '_parent') and current._parent is not None:
+                    current = current._parent
+                else:
+                    break
+        
+        # If still not found, check if operator is sparse
+        if not use_sparse and hasattr(op, 'matrix') and isinstance(op.matrix, maths.SparseMatrix):
+            matrix_type = maths.SparseMatrix
+        else:
+            matrix_type = maths.SparseMatrix if use_sparse else maths.Matrix
+
+        I_left = mm.MatrixOperator.create_id_matrix_op(dim=left_dim, matrix_type=matrix_type)
+        I_right = mm.MatrixOperator.create_id_matrix_op(dim=right_dim, matrix_type=matrix_type)
 
         return I_left**op**I_right
 
