@@ -23,8 +23,10 @@ Example usage:
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any, Union
 import numpy as np
+from scipy.sparse import block_diag
+from scipy.linalg import eig as eigs
 import jahn_teller_dynamics.math.maths as maths
 from jahn_teller_dynamics.math.matrix_mechanics import (
     MatrixOperator, 
@@ -75,7 +77,50 @@ class DenseEigenSolver(EigenSolver):
     
     This is the default solver for small to medium-sized matrices.
     Uses numpy's dense matrix eigenvalue routines.
+    
+    Can also accept sparse matrices (SparseMatrix) and convert them to dense before solving.
     """
+    
+    def solve_block(
+        self,
+        matrix: Union[maths.Matrix, maths.SparseMatrix],
+        num_of_vals: Optional[int] = None,
+        ordering_type: Optional[str] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Solve eigenvalue problem for a single block (matrix).
+        
+        Accepts both dense and sparse matrices. Converts sparse to dense before solving.
+        
+        Args:
+            matrix: Matrix or SparseMatrix to diagonalize
+            num_of_vals: Number of eigenvalues to compute (default: all, not used but kept for compatibility)
+            ordering_type: Ordering type (not used, kept for compatibility)
+            
+        Returns:
+            Tuple of (eigenvalues, eigenvectors) as numpy arrays
+        """
+        # Convert to dense if sparse
+        if isinstance(matrix, maths.SparseMatrix):
+            dense_matrix = np.array(matrix.matrix.todense(), dtype=maths.complex_number_typ)
+        elif isinstance(matrix, maths.Matrix):
+            dense_matrix = np.array(matrix.matrix, dtype=maths.complex_number_typ)
+        else:
+            raise TypeError(f"Expected Matrix or SparseMatrix, got {type(matrix)}")
+        
+        # Use dense solver
+        eigen_vals, eigen_vects = eigs(dense_matrix)
+        
+        # Ensure complex128 for consistency
+        eigen_vals = eigen_vals.astype(maths.complex_number_typ)
+        eigen_vects = eigen_vects.astype(maths.complex_number_typ)
+        
+        # Sort by real part (for Hermitian matrices, eigenvalues are real)
+        idx = np.argsort(eigen_vals.real)
+        eigen_vals = eigen_vals[idx]
+        eigen_vects = eigen_vects[:, idx]
+        
+        return eigen_vals, eigen_vects
     
     def solve(
         self,
@@ -137,7 +182,12 @@ class SparseEigenSolver(EigenSolver):
     which can significantly improve performance.
     """
     
-    def __init__(self, use_block_diagonalization: bool = False, eig_state_per_block: Optional[int] = None):
+    def __init__(
+        self,
+        use_block_diagonalization: bool = False,
+        eig_state_per_block: Optional[int] = None,
+        default_num_of_vals: int = 100,
+    ):
         """
         Initialize sparse eigenvalue solver.
         
@@ -146,9 +196,11 @@ class SparseEigenSolver(EigenSolver):
                                      and solve each block separately (more efficient for block-diagonal matrices)
             eig_state_per_block: Number of eigenstates to compute per block (only used if
                                use_block_diagonalization=True)
+            default_num_of_vals: Default number of eigenpairs to compute when num_of_vals is not provided.
         """
         self.use_block_diagonalization = use_block_diagonalization
         self.eig_state_per_block = eig_state_per_block
+        self.default_num_of_vals = default_num_of_vals
     
     def solve(
         self,
@@ -158,247 +210,105 @@ class SparseEigenSolver(EigenSolver):
         quantum_states_bases: Optional[hilber_space_bases] = None
     ) -> eigen_vector_space:
         """
-        Solve eigenvalue problem using sparse matrix methods.
+        Solve eigenvalue problem using sparse matrix methods (without block search).
+        
+        This implementation:
+        - Always converts the input matrix to a CSR sparse matrix.
+        - Uses scipy.sparse.linalg.eigsh for Hermitian matrices when a subset of
+          eigenvalues is requested (num_of_vals < dim).
+        - Falls back to dense diagonalization (DenseEigenSolver.solve_block)
+          when all eigenvalues are needed or when eigsh cannot be used.
         
         Args:
             matrix_operator: Matrix operator to solve
-            num_of_vals: Number of eigenvalues to calculate (None = all for small matrices,
-                        or a subset for large sparse matrices)
-            ordering_type: Type of ordering ('SM' for smallest magnitude, 'SA' for smallest
-                         algebraic, 'LM' for largest magnitude, 'LA' for largest algebraic)
+            num_of_vals: Number of eigenvalues to calculate. If None, defaults to self.default_num_of_vals.
+            ordering_type: Type of ordering (currently ignored; eigsh uses 'SA')
             quantum_states_bases: Hilbert space basis for quantum states (optional)
             
         Returns:
             eigen_vector_space: Object containing eigen kets and basis
         """
-        from scipy.sparse.linalg import eigs as sparse_eigs
+        from scipy.sparse.linalg import eigsh as sparse_eigsh
         from scipy.sparse import csr_matrix
         import numpy as np
         
-        # Check if matrix is already sparse or needs conversion
+        # Underlying matrix (dense or sparse wrapper)
         matrix = matrix_operator.matrix
         
-        # Convert to sparse if needed
+        # Convert to our SparseMatrix wrapper and CSR for eigsh
         if isinstance(matrix, maths.SparseMatrix):
             sparse_matrix_obj = matrix
-            sparse_matrix = matrix.matrix
+            sparse_matrix = matrix.matrix.tocsr()
         elif isinstance(matrix, maths.Matrix):
-            # Convert dense matrix to sparse
-            sparse_matrix_obj = maths.SparseMatrix(matrix.matrix)
             sparse_matrix = csr_matrix(matrix.matrix)
+            sparse_matrix_obj = maths.SparseMatrix(sparse_matrix)
         else:
-            # Try to convert to sparse
+            # Try to interpret as having a .matrix attribute
             try:
-                sparse_matrix_obj = maths.SparseMatrix(matrix.matrix)
                 sparse_matrix = csr_matrix(matrix.matrix)
+                sparse_matrix_obj = maths.SparseMatrix(sparse_matrix)
             except AttributeError:
-                raise TypeError(f"Cannot convert {type(matrix)} to sparse matrix")
+                raise TypeError(f"Cannot convert {type(matrix)} to SparseMatrix/CSR for eigsh")
         
-        # Use block diagonalization if requested and matrix is sparse
-        # Eigenvectors are normalized and phase-aligned in calc_eigen_all_sparse_blocks
-        # to match dense solver convention, ensuring consistency.
-        if self.use_block_diagonalization and isinstance(matrix, (maths.SparseMatrix, maths.Matrix)):
-            try:
-                # Determine number of eigenstates per block
-                # CRITICAL: For matching to dense solver, we need ALL eigenvalues
-                # Compute all eigenvalues per block to ensure we can match properly
-                dim = sparse_matrix_obj.dim
-                eig_state_per_block = self.eig_state_per_block
-                if eig_state_per_block is None:
-                    # Compute all eigenvalues per block to ensure complete matching
-                    # This ensures we have all eigenvalues to match against dense solver
-                    eig_state_per_block = dim  # Compute all eigenvalues per block
-                elif num_of_vals is not None:
-                    # Ensure we compute at least as many as requested
-                    eig_state_per_block = max(eig_state_per_block, num_of_vals)
-                
-                # Use block diagonalization
-                eigen_kets, new_basis_order, eigen_vects_op = sparse_matrix_obj.calc_eigen_all_sparse_blocks(
-                    eig_state_per_block
-                )
-                
-                # CRITICAL: Match block diagonalization eigenvectors to dense solver for exact consistency
-                # We compute dense eigenvectors only for matching, then use sparse storage
-                # This ensures p reduction factors match exactly while keeping memory usage low
-                try:
-                    # Get dense reference eigenvectors for matching
-                    # CRITICAL: Compute ALL eigenvalues for proper matching (not limited by num_of_vals)
-                    # This ensures we can match all block diagonalization eigenvectors
-                    dense_matrix_obj = sparse_matrix_obj.to_dense_matrix()
-                    dense_ref_vals, dense_ref_vects = dense_matrix_obj.get_eig_vals(None, ordering_type)
-                    
-                    # Sort dense reference by eigenvalue
-                    dense_sort_idx = np.argsort(dense_ref_vals.real)
-                    dense_ref_vals = dense_ref_vals[dense_sort_idx]
-                    dense_ref_vects = dense_ref_vects[:, dense_sort_idx]
-                    
-                    # CRITICAL: Always use dense eigenvectors in the same order
-                    # This ensures exact matching with dense solver
-                    # Block diagonalization is used for efficiency, but eigenvectors come from dense solver
-                    matched_eigen_kets = []
-                    
-                    # Simply use dense eigenvectors in eigenvalue order
-                    # This guarantees exact matching with dense solver
-                    # CRITICAL: Do NOT normalize or phase-align here - numpy.linalg.eig already
-                    # returns normalized eigenvectors, and we want to match the dense solver exactly
-                    # which uses numpy's eigenvectors directly without modification
-                    for i in range(len(dense_ref_vals)):
-                        # Use dense eigenvector directly (numpy.linalg.eig already normalizes)
-                        dense_val = dense_ref_vals[i]
-                        dense_vect_col = dense_ref_vects[:, i]
-                        dense_vect_col = np.array(dense_vect_col).flatten()
-                        
-                        # Convert to sparse format for storage (no normalization/phase alignment)
-                        # This ensures exact matching with DenseEigenSolver which uses
-                        # numpy eigenvectors directly
-                        from scipy.sparse import csr_matrix as csr_matrix_sparse
-                        col_sparse = csr_matrix_sparse(dense_vect_col.reshape(-1, 1), dtype=maths.complex_number_typ)
-                        col_vec = maths.SparseColVector(col_sparse)
-                        
-                        # Create ket_vector with sparse vector
-                        eigen_ket = ket_vector(
-                            col_vec,
-                            round(float(dense_val.real), DEFAULT_ROUNDING_PRECISION)
-                        )
-                        matched_eigen_kets.append(eigen_ket)
-                    
-                    # Sort by eigenvalue
-                    matched_eigen_kets = sorted(matched_eigen_kets, key=lambda x: x.eigen_val)
-                    eigen_kets = matched_eigen_kets
-                except Exception as e:
-                    # If matching fails, use block diagonalization eigenvectors as-is
-                    import warnings
-                    warnings.warn(f"Failed to match block diagonalization eigenvectors to dense solver: {e}. Using block diagonalization eigenvectors.")
-                
-                # Limit to requested number if specified
-                if num_of_vals is not None and len(eigen_kets) > num_of_vals:
-                    eigen_kets = eigen_kets[:num_of_vals]
-                
-                # Use provided basis or existing one
-                basis = quantum_states_bases
-                if basis is None:
-                    basis = matrix_operator.quantum_state_bases
-                
-                return eigen_vector_space(basis, eigen_kets)
-            except ImportError:
-                # networkx not available, fall through to regular sparse solver
-                import warnings
-                warnings.warn("Block diagonalization requested but networkx not available. Using regular sparse solver.")
-            except Exception as e:
-                # Block diagonalization failed, fall through to regular sparse solver
-                import warnings
-                warnings.warn(f"Block diagonalization failed: {e}. Using regular sparse solver.")
-        
-        # Determine number of eigenvalues to compute
         dim = sparse_matrix.shape[0]
+
+        # Default behavior for sparse solver: compute a subset unless explicitly asked otherwise.
         if num_of_vals is None:
-            # For sparse matrices, typically compute a subset
-            # Default to computing all for small matrices, subset for large ones
-            num_of_vals = min(dim, 10) if dim > 100 else dim
+            num_of_vals = self.default_num_of_vals
         
-        # Limit to matrix dimension
-        num_of_vals = min(num_of_vals, dim)
-        
-        # Set default ordering
-        if ordering_type is None:
-            ordering_type = 'SM'  # Smallest magnitude
-        
-        # For small matrices or when k >= N-1, use dense solver
-        # Sparse iterative solvers require k < N-1
-        if num_of_vals >= dim - 1:
-            # Convert to dense and use dense solver
-            import warnings
-            warnings.warn(f"Requested {num_of_vals} eigenvalues for {dim}x{dim} matrix. "
-                         f"Using dense solver (sparse solver requires k < N-1).")
+        # Decide how many eigenvalues to compute
+        k = num_of_vals
+        if k >= dim:
+            # eigsh requires k < N; for all states, use dense
             dense_solver = DenseEigenSolver()
-            return dense_solver.solve(
-                matrix_operator,
-                num_of_vals=num_of_vals,
-                ordering_type=ordering_type,
-                quantum_states_bases=quantum_states_bases
+            eigen_vals, eigen_vects = dense_solver.solve_block(sparse_matrix_obj)
+        else:
+            # Use Hermitian sparse solver: smallest algebraic eigenvalues
+            eigen_vals, eigen_vects = sparse_eigsh(
+                sparse_matrix,
+                k=k,
+                which="SA"
             )
+            
+            # Cast to complex_number_typ for consistency
+            eigen_vals = np.array(eigen_vals, dtype=maths.complex_number_typ)
+            eigen_vects = np.array(eigen_vects, dtype=maths.complex_number_typ)
+            
+            # Sort by eigenvalue (real part; should be real for Hermitian)
+            idx = np.argsort(eigen_vals.real)
+            eigen_vals = eigen_vals[idx]
+            eigen_vects = eigen_vects[:, idx]
         
-        # Solve sparse eigenvalue problem
-        try:
-            eigen_vals, eigen_vects = sparse_eigs(
-                sparse_matrix, 
-                k=num_of_vals, 
-                which=ordering_type
-            )
-        except Exception as e:
-            # Fallback to dense solver if sparse solver fails
-            import warnings
-            warnings.warn(f"Sparse eigenvalue solver failed: {e}. Falling back to dense solver.")
-            dense_solver = DenseEigenSolver()
-            return dense_solver.solve(
-                matrix_operator,
-                num_of_vals=num_of_vals,
-                ordering_type=ordering_type,
-                quantum_states_bases=quantum_states_bases
-            )
-        
-        # Convert to ket vectors - use sparse format for memory efficiency
+        # Wrap eigenpairs into ket vectors
         eigen_kets = []
         for i in range(len(eigen_vals)):
-            # Extract eigenvector column (already sparse from scipy.sparse.linalg.eigs)
-            eigen_vect_col = eigen_vects[:, i]
-            
-            # Keep in sparse format - only convert to dense for normalization/phase alignment
-            # This is a small temporary conversion, not storing the full dense vector
-            if hasattr(eigen_vect_col, 'todense'):
-                # Convert to dense only for normalization and phase alignment
-                eigen_vect_col_dense = eigen_vect_col.todense()
-                eigen_vect_col_dense = np.array(eigen_vect_col_dense).flatten()
-            else:
-                eigen_vect_col_dense = np.array(eigen_vect_col).flatten()
-            
-            # Normalize eigenvector (ensure consistent normalization with dense solver)
-            norm = np.linalg.norm(eigen_vect_col_dense)
-            if norm > 0:
-                eigen_vect_col_dense = eigen_vect_col_dense / norm
-            
-            # Phase convention: ensure first non-zero element has positive real part
-            # If real part is zero or negative, flip the phase
-            # This matches the convention used by dense solvers (numpy.linalg.eig)
-            for j in range(len(eigen_vect_col_dense)):
-                if abs(eigen_vect_col_dense[j]) > 1e-10:
-                    # Check if we need to flip phase
-                    if eigen_vect_col_dense[j].real < -1e-10:
-                        # Negative real part - flip
-                        eigen_vect_col_dense = -eigen_vect_col_dense
-                    elif abs(eigen_vect_col_dense[j].real) < 1e-10:
-                        # Real part is essentially zero - check imaginary part
-                        if eigen_vect_col_dense[j].imag < -1e-10:
-                            eigen_vect_col_dense = -eigen_vect_col_dense
-                    break
-            
-            # Convert back to sparse format for storage (memory efficient)
-            from scipy.sparse import csr_matrix as csr_matrix_sparse
-            col_sparse = csr_matrix_sparse(eigen_vect_col_dense.reshape(-1, 1), dtype=maths.complex_number_typ)
-            col_vec = maths.SparseColVector(col_sparse)
-            
-            # Create ket_vector with sparse vector (ket_vector now supports sparse storage)
+            vec = eigen_vects[:, i]
+            col_vec = maths.col_vector(
+                np.transpose(
+                    np.round(
+                        np.matrix([vec]),
+                        DEFAULT_ROUNDING_PRECISION
+                    )
+                )
+            )
             eigen_ket = ket_vector(
                 col_vec,
-                round(float(eigen_vals[i].real), DEFAULT_ROUNDING_PRECISION)  # Ensure float64 precision
+                round(eigen_vals[i].real, DEFAULT_ROUNDING_PRECISION)
             )
             eigen_kets.append(eigen_ket)
         
-        # Sort by eigenvalue
+        # Final sort by eigenvalue (defensive)
         eigen_kets = sorted(eigen_kets, key=lambda x: x.eigen_val)
         
-        # Use provided basis or existing one
+        # Use provided basis or the operator's basis
         basis = quantum_states_bases
         if basis is None:
             basis = matrix_operator.quantum_state_bases
         
         return eigen_vector_space(basis, eigen_kets)
 
-
 # Default solver instance
 _default_solver = DenseEigenSolver()
-
-
 def solve_eigenvalue_problem(
     matrix_operator: MatrixOperator,
     num_of_vals: Optional[int] = None,

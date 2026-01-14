@@ -756,6 +756,89 @@ class MatrixOperator:
           """
           new_bases_matrix = self.matrix.to_new_bases(list(map(lambda x: x.coeffs  ,bases )))
           return MatrixOperator(new_bases_matrix.transpose(), name  = self.name, subsys_name=self.subsys_name)
+     
+     def new_permutation(self, perm_arr: List[int]) -> 'MatrixOperator':
+          """
+          Permute operator according to permutation array.
+          
+          Formula: perm_op * self * perm_op.transpose()
+          where perm_op is the permutation matrix.
+          
+          This transforms the operator to the permuted basis such that:
+          <v_new | O_perm | v_new> = <v_orig | O | v_orig>
+          where v_new = P * v_orig and O_perm = P * O * P^T
+          
+          Works with both sparse and dense matrices. The permutation matrix will
+          match the matrix type of self.
+          
+          Args:
+              perm_arr: List of integers defining the permutation
+                       perm_arr[i] = j means new position i gets original state j
+              
+          Returns:
+              MatrixOperator: Permuted operator (preserves matrix type and _eigen_solver)
+          """
+          # Determine matrix type from self
+          if isinstance(self.matrix, maths.SparseMatrix):
+              matrix_type = maths.SparseMatrix
+          else:
+              matrix_type = maths.Matrix
+          
+          # Create permutation matrix (matches the matrix type of self)
+          perm_matrix = matrix_type.create_permutation_matrix(perm_arr)
+          perm_op = MatrixOperator(perm_matrix)
+          
+          # Apply permutation: perm_op * self * perm_op.transpose()
+          # This is equivalent to P * O * P^T
+          perm_op_transpose = MatrixOperator(perm_matrix.transpose())
+          
+          # Preserve _eigen_solver from self
+          result = perm_op * self * perm_op_transpose
+          if hasattr(self, '_eigen_solver'):
+              result._eigen_solver = self._eigen_solver
+          
+          return result
+     
+     def permute_basis(self, perm_arr: List[int]) -> 'MatrixOperator':
+          """
+          Permute operator to new basis order and update quantum_state_bases.
+          
+          This method transforms the operator to match a permuted basis order
+          (e.g., from block diagonalization). It:
+          1. Permutes the operator matrix using new_permutation()
+          2. Permutes the quantum_state_bases to match the new order
+          
+          Args:
+              perm_arr: List of integers defining the permutation
+                       perm_arr[i] = j means position i in NEW basis corresponds to
+                       position j in ORIGINAL basis
+              
+          Returns:
+              MatrixOperator: Permuted operator with updated quantum_state_bases
+          """
+          # Permute the operator matrix
+          permuted_op = self.new_permutation(perm_arr)
+          
+          # Update quantum_state_bases if it exists
+          if hasattr(self, 'quantum_state_bases') and self.quantum_state_bases is not None:
+              # Create new basis with permuted order
+              original_bases = self.quantum_state_bases
+              
+              # Permute bra and ket states according to perm_arr
+              # perm_arr[i] = j means: new position i gets original state j
+              permuted_bra_states = [original_bases._bra_states[perm_arr[i]] for i in range(len(perm_arr))]
+              permuted_ket_states = [original_bases._ket_states[perm_arr[i]] for i in range(len(perm_arr))]
+              
+              # Create new hilber_space_bases with permuted states
+              new_bases = hilber_space_bases(
+                  bra_states=permuted_bra_states,
+                  ket_states=permuted_ket_states,
+                  names=original_bases.qm_nums_names
+              )
+              
+              permuted_op.quantum_state_bases = new_bases
+          
+          return permuted_op
 
      @staticmethod
      def accumulate_operators(mx_ops: List['MatrixOperator'], fun: Callable) -> 'MatrixOperator':
@@ -1042,12 +1125,21 @@ class MatrixOperator:
                self.quantum_state_bases = quantum_states_bases
           
           # Use the eigenvalue solver
-          eigen_vec_space = self._eigen_solver.solve(
+          result = self._eigen_solver.solve(
               self,
               num_of_vals=num_of_vals,
               ordering_type=ordering_type,
               quantum_states_bases=self.quantum_state_bases
           )
+          
+          # Handle tuple return (eigen_vector_space, new_basis_order) from SparseEigenSolver
+          if isinstance(result, tuple):
+              eigen_vec_space, new_basis_order = result
+              # Store new_basis_order for later use
+              if hasattr(self._eigen_solver, 'new_basis_order'):
+                  self._eigen_solver.new_basis_order = new_basis_order
+          else:
+              eigen_vec_space = result
           
           # For backward compatibility: set eigen_kets attribute
           # (some code accesses self.eigen_kets directly)

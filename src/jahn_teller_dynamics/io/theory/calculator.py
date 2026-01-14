@@ -127,7 +127,7 @@ class JT_Calculator:
                 strain_fields.tolist()
             )
 
-        H_DJT_mag.calc_eigen_vals_vects()
+        #H_DJT_mag.calc_eigen_vals_vects()
 
         return H_DJT_mag
 
@@ -178,8 +178,8 @@ class JT_Calculator:
 
         for B_field in B_fields:
             H_DJT_mag = self._build_magnetic_hamiltonian(B_field, strain_fields)
-
-            for eig_ket, line_label in zip(H_DJT_mag.eigen_kets, energy_labels):
+            eigen_space = H_DJT_mag.calc_eigen_vals_vects()
+            for eig_ket, line_label in zip(eigen_space.eigen_kets, energy_labels):
                 JT_int_Es_dict[line_label].append(
                     maths.meV_to_GHz(eig_ket.eigen_val)
                 )

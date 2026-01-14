@@ -177,7 +177,7 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         if matrix_type is None:
             matrix_type = maths.SparseMatrix if self.use_sparse else maths.Matrix
         return super().create_id_op(matrix_type=matrix_type)
-    
+
     def over_est_all_H_i_ops(self):
         self.H_i_ops = []
         for qm_nums_name in self.qm_nums_names:

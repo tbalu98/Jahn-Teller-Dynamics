@@ -255,7 +255,7 @@ class JTOrchestrator:
         JT_int.add_spin_system()
         JT_int.create_one_mode_DJT_hamiltonian()
         JT_int.add_spin_orbit_coupling()
-        JT_int.calc_eigen_vals_vects()
+        eigen_space = JT_int.calc_eigen_vals_vects()
         
         # Calculate reduction factors
         JT_int.calc_reduction_factors()
@@ -277,7 +277,7 @@ class JTOrchestrator:
         
         if eigen_state_type == 'real':
             self.csv_writer.write_eigen_vectors_and_values_to_output(
-                JT_int.calc_eigen_vals_vects(),
+                eigen_space,
                 eigen_vec_suffix=section + '_eigen_vectors.csv',
                 eigen_val_suffix=section + '_eigen_values.csv'
             )

@@ -796,6 +796,37 @@ class SparseColVector:
         """Get coefficient at given index."""
         return complex(self.coeffs[key, 0])
     
+    def set_eigen_val(self, eigen_val: Union[complex, float]) -> 'SparseColVector':
+        """
+        Set eigenvalue on the vector (returns new vector with eigenvalue attribute).
+        
+        Args:
+            eigen_val: Eigenvalue to set
+            
+        Returns:
+            New SparseColVector with eigen_val attribute
+        """
+        new_vec = SparseColVector(self.coeffs.copy())
+        new_vec.eigen_val = eigen_val
+        return new_vec
+    
+    @staticmethod
+    def from_sparse_matrix(sp_mx: 'SparseMatrix') -> List['SparseColVector']:
+        """
+        Extract column vectors from a sparse matrix.
+        
+        Args:
+            sp_mx: SparseMatrix to extract columns from
+            
+        Returns:
+            List of SparseColVector objects, one for each column
+        """
+        dim = sp_mx.matrix.shape[1]
+        sparse_col_vectors = []
+        for i in range(dim):
+            sparse_col_vectors.append(SparseColVector(sp_mx.matrix[:, i]))
+        return sparse_col_vectors
+    
     def __mul__(self, other: Any) -> Union['SparseColVector', 'SparseMatrix', complex]:
         """Multiply sparse column vector with other objects."""
         if isinstance(other, (complex, float, int)):
@@ -1111,6 +1142,30 @@ class Matrix:
             Zero matrix
         """
         return Matrix(np.zeros(dim, dtype=complex_number_typ))
+    
+    @staticmethod
+    def create_permutation_matrix(perm_arr: List[int]) -> 'Matrix':
+        """
+        Create permutation matrix from permutation array.
+        
+        Matches the convention from SparseMatrix implementation:
+        P[perm_arr[i], i] = 1, which means row perm_arr[i] gets value from column i
+        
+        When applied: P * v, element v[i] goes to position perm_arr[i] in the result
+        
+        Args:
+            perm_arr: List of integers defining the permutation
+                     perm_arr[i] = j means element at position i goes to position j
+            
+        Returns:
+            Matrix: Permutation matrix
+        """
+        dim = len(perm_arr)
+        # Create dense permutation matrix
+        perm_matrix = np.zeros((dim, dim), dtype=complex_number_typ)
+        for i, j in enumerate(perm_arr):
+            perm_matrix[i, j] = 1.0
+        return Matrix(np.matrix(perm_matrix, dtype=complex_number_typ))
 
     def save(self, filename: str) -> None:
         """
@@ -1646,26 +1701,28 @@ class SparseMatrix:
         """
         Create permutation matrix from permutation array.
         
-        Matches the convention from previous implementation:
-        P[perm_arr[i], i] = 1, which means row perm_arr[i] gets value from column i
+        Convention: P[i, perm_arr[i]] = 1
+        This means: new position i gets original state perm_arr[i]
         
-        When applied: P * v, element v[i] goes to position perm_arr[i] in the result
+        When applied: P * v, we get v_new[i] = v_orig[perm_arr[i]]
+        
+        For operator transformation: O_perm = P * O * P^T
         
         Args:
             perm_arr: List of integers defining the permutation
-                     perm_arr[i] = j means element at position i goes to position j
+                     perm_arr[i] = j means new position i gets original state j
             
         Returns:
             SparseMatrix: Permutation matrix
         """
         dim = len(perm_arr)
         data = [1.0] * dim
-        col_ind = list(range(dim))
+        row_ind = list(range(dim))
         
-        # Create permutation matrix: P[perm_arr[i], i] = 1
-        # This means: row perm_arr[i] gets value from column i
-        # When applied: P * v, element v[i] goes to position perm_arr[i]
-        mx = csr_matrix((data, (perm_arr, col_ind)), shape=(dim, dim), dtype=complex_number_typ)
+        # Create permutation matrix: P[i, perm_arr[i]] = 1
+        # This means: row i gets value from column perm_arr[i]
+        # When applied: P * v, we get v_new[i] = v_orig[perm_arr[i]]
+        mx = csr_matrix((data, (row_ind, perm_arr)), shape=(dim, dim), dtype=complex_number_typ)
         return SparseMatrix(mx)
     
     def save(self, filename: str) -> None:
@@ -1909,55 +1966,37 @@ class SparseMatrix:
     
     def get_eig_vals(self, num_of_vals: Optional[int] = None, ordering_type: Optional[str] = None) -> tuple:
         """
-        Calculate eigenvalues and eigenvectors using sparse methods.
+        Calculate eigenvalues and eigenvectors using dense solver.
+        
+        For block diagonalization, always use dense solver (eigs) to ensure exact matching
+        with the dense solver implementation.
         
         Args:
-            num_of_vals: Number of eigenvalues to compute (default: all, but sparse solvers
-                        typically compute a subset)
-            ordering_type: Ordering type ('SM' for smallest magnitude, 'SA' for smallest algebraic,
-                         'LM' for largest magnitude, 'LA' for largest algebraic)
+            num_of_vals: Number of eigenvalues to compute (default: all)
+            ordering_type: Ordering type (not used, kept for compatibility)
             
         Returns:
             Tuple of (eigenvalues, eigenvectors)
         """
         if num_of_vals is None:
-            # For sparse matrices, compute all eigenvalues (may be slow for large matrices)
-            # In practice, you'd want to specify num_of_vals for large matrices
-            num_of_vals = min(self.dim, 10)  # Default to 10 for large matrices
+            num_of_vals = self.dim
         
         if ordering_type is None:
-            ordering_type = 'SM'  # Smallest magnitude
+            ordering_type = 'SM'  # Not used, but kept for compatibility
         
-        # For small matrices or when k >= N-1, use dense solver
-        # Sparse iterative solvers require k < N-1
-        if num_of_vals >= self.dim - 1:
-            # Convert to dense and use dense solver
-            dense_matrix = np.array(self.matrix.todense(), dtype=complex_number_typ)
-            eigen_vals, eigen_vects = eigs(dense_matrix)
-            # Ensure eigenvalues are complex128 for consistency
-            eigen_vals = eigen_vals.astype(complex_number_typ)
-            eigen_vects = eigen_vects.astype(complex_number_typ)
-            return eigen_vals, eigen_vects
-        
-        # Use sparse eigenvalue solver for large matrices
-        try:
-            eigen_vals, eigen_vects = sparse_eigs(self.matrix, k=num_of_vals, which=ordering_type)
-            # Ensure eigenvalues are complex128 for consistency with dense solver
-            eigen_vals = eigen_vals.astype(complex_number_typ)
-            # Convert eigenvectors to complex128
-            if hasattr(eigen_vects, 'todense'):
-                eigen_vects = eigen_vects.todense().astype(complex_number_typ)
-            else:
-                eigen_vects = eigen_vects.astype(complex_number_typ)
-            return eigen_vals, eigen_vects
-        except (TypeError, ValueError) as e:
-            # Fallback to dense solver if sparse solver fails
-            dense_matrix = np.array(self.matrix.todense(), dtype=complex_number_typ)
-            eigen_vals, eigen_vects = eigs(dense_matrix)
-            # Ensure eigenvalues are complex128 for consistency
-            eigen_vals = eigen_vals.astype(complex_number_typ)
-            eigen_vects = eigen_vects.astype(complex_number_typ)
-            return eigen_vals, eigen_vects
+        # Always use dense solver for block diagonalization
+        # Convert to dense and use dense solver
+        dense_matrix = np.array(self.matrix.todense(), dtype=complex_number_typ)
+        eigen_vals, eigen_vects = eigs(dense_matrix)
+        # Ensure eigenvalues are complex128 for consistency
+        eigen_vals = eigen_vals.astype(complex_number_typ)
+        eigen_vects = eigen_vects.astype(complex_number_typ)
+        # Sort by real part (for Hermitian matrices, eigenvalues are real)
+        # This matches the dense solver behavior
+        idx = np.argsort(eigen_vals.real)
+        eigen_vals = eigen_vals[idx]
+        eigen_vects = eigen_vects[:, idx]
+        return eigen_vals, eigen_vects
     
     def __getitem__(self, key: Union[int, tuple, slice]) -> Any:
         """
@@ -2053,6 +2092,7 @@ class SparseMatrix:
         Decompose sparse matrix into block-diagonal form, returning SparseMatrix objects.
         
         Similar to get_sparse_blocks() but returns SparseMatrix objects instead of raw csr_matrix.
+        CRITICAL: Extracts blocks by selecting rows and columns to preserve Hermiticity.
         
         Returns:
             Tuple of (list of SparseMatrix blocks, list of basis indices for reordering)
@@ -2069,14 +2109,23 @@ class SparseMatrix:
         # Find connected components
         G_components = nx.connected_components(G)
         
-        # Create subgraphs for each connected component
-        connected_comp_sub_graphs = [G.subgraph(c).copy() for c in G_components]
+        # Extract basis indices (sorted for consistency)
+        bases_indexes = []
+        sp_mx_blocks = []
         
-        # Extract basis indices
-        bases_indexes = [e for c in connected_comp_sub_graphs for e in list(c.nodes)]
-        
-        # Convert subgraphs to SparseMatrix objects
-        sp_mx_blocks = [SparseMatrix(nx.to_scipy_sparse_array(s)) for s in connected_comp_sub_graphs]
+        # Extract blocks by selecting rows and columns to preserve Hermiticity
+        for component in G_components:
+            # Sort component indices for consistency
+            #comp_indices = sorted(list(component))
+            comp_indices = sorted(list(component))
+            
+            
+            bases_indexes.extend(comp_indices)
+            
+            # Extract block by selecting rows and columns at these indices
+            # This preserves Hermiticity: if we select rows [i1, i2, ...], we select columns [i1, i2, ...]
+            block_matrix = self.matrix[np.ix_(comp_indices, comp_indices)]
+            sp_mx_blocks.append(SparseMatrix(block_matrix))
         
         return sp_mx_blocks, bases_indexes
     
@@ -2115,10 +2164,13 @@ class SparseMatrix:
         dim = self.matrix.shape[0]
         
         # If requesting all or nearly all eigenvalues, use dense solver
-        # This ensures we get all eigenvalues for proper matching
-        if eig_state_per_block >= dim - 1 or dim <= 2:
+        # This ensures we get all eigenvalues for proper matching with dense solver
+        # Use >= dim to ensure we always use dense solver when requesting all eigenvalues
+        if eig_state_per_block >= dim or dim <= 2:
             # Convert to dense and use dense solver to get ALL eigenvalues
+            # This uses numpy.linalg.eig (via eigs) which is the same as dense solver
             dense_matrix = self.matrix.todense()
+            dense_matrix = np.array(dense_matrix, dtype=complex_number_typ)
             eigen_vals, eigen_vects = eigs(dense_matrix)
             # Ensure complex128 precision
             eigen_vals = eigen_vals.astype(complex_number_typ)
@@ -2131,13 +2183,96 @@ class SparseMatrix:
             return eigen_vals[:eig_state_per_block], eigen_vects[:, :eig_state_per_block]
         
         # Compute lowest eigenvalues (smallest algebraic) using sparse solver
+        # Limit k to dim - 1 (ARPACK requirement: k < N-1)
+        # But if k >= dim - 1, ARPACK will fail, so we should have used dense solver above
+        k = min(eig_state_per_block, dim - 1)
+        if k >= dim - 1:
+            # This shouldn't happen if condition above worked, but fallback to dense
+            dense_matrix = self.matrix.todense()
+            dense_matrix = np.array(dense_matrix, dtype=complex_number_typ)
+            eigen_vals, eigen_vects = eigs(dense_matrix)
+            eigen_vals = eigen_vals.astype(complex_number_typ)
+            eigen_vects = eigen_vects.astype(complex_number_typ)
+            idx = np.argsort(eigen_vals.real)
+            eigen_vals = eigen_vals[idx]
+            eigen_vects = eigen_vects[:, idx]
+            return eigen_vals[:eig_state_per_block], eigen_vects[:, :eig_state_per_block]
+        
         low_eigenvalues, low_eigenvectors = eigsh(
             self.matrix, 
             k=k, 
             which='SA'  # Smallest Algebraic
         )
         
+        # Ensure complex128 precision
+        low_eigenvalues = low_eigenvalues.astype(complex_number_typ)
+        low_eigenvectors = low_eigenvectors.astype(complex_number_typ)
+        
         return low_eigenvalues, low_eigenvectors
+    
+    def calc_eigen_vals_vects(self) -> Tuple[List[Any], List[int], Any]:
+        """
+        Compute eigenvalues/eigenvectors by block diagonalization.
+        
+        Implementation matches Cavity_ionization project exactly.
+        Uses get_sparse_blocks_matrixes() to get blocks, then get_eig_vals() on each block.
+        
+        Returns:
+            Tuple of:
+            - list of eigen kets (ket_vector objects)
+            - list of basis indices for reordering
+            - MatrixOperator containing the eigenvector matrix
+            
+        Raises:
+            ImportError: If networkx is not available
+        """
+        if not HAS_NETWORKX:
+            raise ImportError("networkx is required for block diagonalization. Install with: pip install networkx")
+        
+        # Get sparse matrix blocks (matching Cavity_ionization get_blocks())
+        sp_mx_blocks: List[SparseMatrix]
+        sp_mx_blocks, new_basis_order = self.get_sparse_blocks_matrixes()
+        
+        eig_vecs_blocks = []
+        eig_vals_list = np.array([], dtype=complex_number_typ)
+        
+        # Diagonalize each block separately
+        for i, sp_mx_block in enumerate(sp_mx_blocks):
+            # Use get_eig_vals() which will use dense solver when appropriate
+            # This matches Cavity_ionization: sp_mx_block.get_eig_vals()
+            # Pass block dimension to compute all eigenvalues for this block
+            block_dim = sp_mx_block.dim
+            eig_vals, eig_vecs = sp_mx_block.get_eig_vals(num_of_vals=block_dim, ordering_type=None)
+            
+            # Transpose eigenvectors to match Cavity_ionization
+            # eig_vecs from get_eig_vals has shape (n, k) where columns are eigenvectors
+            # After transpose, shape is (k, n) where rows are eigenvectors
+            eig_vecs_blocks.append(eig_vecs.transpose())
+            
+            # Accumulate eigenvalues
+            eig_vals_list = np.concatenate((eig_vals_list, eig_vals), axis=0)
+        
+        # Combine all eigenvectors into block-diagonal matrix
+        eigen_vects_sp_mx = SparseMatrix(block_diag(eig_vecs_blocks).tocsr())
+        
+        # Extract column vectors from eigenvector matrix (matching Cavity_ionization)
+        sp_col_vects = SparseColVector.from_sparse_matrix(eigen_vects_sp_mx)
+        
+        # Set eigenvalues on vectors (matching Cavity_ionization)
+        sp_col_vects = [vect.set_eigen_val(eig_val) for vect, eig_val in zip(sp_col_vects, eig_vals_list)]
+        
+        # Sort by eigenvalue (matching Cavity_ionization)
+        sp_col_vects = sorted(sp_col_vects, key=lambda x: x.eigen_val)
+        
+        # Create ket_vectors with sorted eigenvalues (matching Cavity_ionization)
+        from jahn_teller_dynamics.math.matrix_mechanics import ket_vector, MatrixOperator
+        sorted_eig_vals = sorted(eig_vals_list)
+        sp_kets = [ket_vector(k, eigen_val) for k, eigen_val in zip(sp_col_vects, sorted_eig_vals)]
+        
+        # Create MatrixOperator for eigenvector matrix
+        eigen_vects_op = MatrixOperator(eigen_vects_sp_mx)
+        
+        return sp_kets, new_basis_order, eigen_vects_op
     
     def calc_eigen_all_sparse_blocks(
         self, 
@@ -2149,6 +2284,8 @@ class SparseMatrix:
         This method decomposes the sparse matrix into connected blocks using graph analysis,
         then computes eigenvalues/eigenvectors for each block separately. This is much more
         efficient than diagonalizing the full matrix when it has block-diagonal structure.
+        
+        Implementation matches Cavity_ionization project exactly.
         
         Args:
             eig_state_per_block: Number of eigenstates to compute per block
@@ -2169,20 +2306,27 @@ class SparseMatrix:
         sp_mx_blocks: List[SparseMatrix]
         sp_mx_blocks, new_basis_order = self.get_sparse_blocks_matrixes()
         
-        dim = self.matrix.shape[0]
         eig_vecs_blocks = []
         eig_vals_list = np.array([], dtype=complex_number_typ)
         
         # Diagonalize each block separately
         for i, sp_mx_block in enumerate(sp_mx_blocks):
             # Compute eigenvalues/eigenvectors for this block
+            # Use the block's dimension to ensure we compute all eigenvalues for this block
+            block_dim = sp_mx_block.dim
+            # Request all eigenvalues for this block (or the requested number, whichever is smaller)
+            # This ensures we use dense solver when appropriate
+            block_eig_state = min(eig_state_per_block, block_dim) if eig_state_per_block is not None else block_dim
+            
             # herm_op_eigsh returns: (eigenvalues, eigenvectors) where eigenvectors shape is (n, k)
             # with n = block dimension, k = number of eigenvectors
-            eig_vals, eig_vecs = sp_mx_block.herm_op_eigsh(eig_state_per_block)
+            # If block_eig_state >= block_dim, it will use dense solver (eigs) for exact matching
+            eig_vals, eig_vecs = sp_mx_block.herm_op_eigsh(block_eig_state)
             
-            # Store eigenvectors as-is (shape: n × k, columns are eigenvectors)
-            # These are in the block's local basis (part of the reordered basis)
-            eig_vecs_blocks.append(eig_vecs)
+            # CRITICAL: Transpose eigenvectors to match Cavity_ionization implementation
+            # eig_vecs from eigsh/eigs has shape (n, k) where columns are eigenvectors
+            # After transpose, shape is (k, n) where rows are eigenvectors
+            eig_vecs_blocks.append(eig_vecs.transpose())
             
             # Accumulate eigenvalues
             eig_vals_list = np.concatenate((eig_vals_list, eig_vals), axis=0)
@@ -2192,123 +2336,36 @@ class SparseMatrix:
         # Shape will be (dim, k_total) where k_total is the total number of eigenvectors
         eigen_vects_sp_mx = SparseMatrix(block_diag(eig_vecs_blocks).tocsr())
         
-        # CRITICAL: Reorder eigenvectors back to original basis order
-        # new_basis_order[i] = original index at reordered position i
-        # To transform back: we need inv_perm where inv_perm[original_idx] = reordered_pos
-        # Then apply permutation to map reordered -> original
-        dim = len(new_basis_order)
-        
-        # Create inverse permutation: inv_perm[original_index] = reordered_position
-        inv_perm = [0] * dim
-        for reordered_pos, original_index in enumerate(new_basis_order):
-            inv_perm[original_index] = reordered_pos
-        
-        # Create permutation matrix to transform from reordered to original
-        # We want: original position i gets value from reordered position inv_perm[i]
-        # Our permutation matrix convention: P[perm[i], i] = 1 means row perm[i] gets value from column i
-        # So we need: P[inv_perm[i], i] = 1, which means we use inv_perm as the permutation
-        # But wait - that would give: result[inv_perm[i]] = input[i], which is not what we want
-        # 
-        # Actually, we want: result[i] = input[inv_perm[i]]
-        # This means: row i gets value from column inv_perm[i]
-        # So we need P[i, inv_perm[i]] = 1
-        # But our convention is P[perm[i], i] = 1, so we need the inverse
-        # Let's create the permutation that does: result[i] = input[inv_perm[i]]
-        
-        # Actually, simpler: create permutation matrix with inv_perm, then use its inverse
-        # Or: create permutation where perm[i] = j such that inv_perm[j] = i
-        # That is: find the inverse of inv_perm
-        perm_to_original = [0] * dim
-        for original_idx in range(dim):
-            reordered_pos = inv_perm[original_idx]
-            # We want: original position original_idx gets value from reordered position reordered_pos
-            # So perm_to_original[reordered_pos] = original_idx
-            perm_to_original[reordered_pos] = original_idx
-        
-        # Now create permutation matrix: P[perm_to_original[i], i] = 1
-        # This means: row perm_to_original[i] gets value from column i
-        # When applied: P * v, result[perm_to_original[i]] = v[i]
-        # But we want: result[i] = v[inv_perm[i]], so we need the transpose
-        perm_matrix = SparseMatrix.create_permutation_matrix(perm_to_original)
-        
-        # Apply permutation: P^T * eigen_vects reorders rows
-        # P^T[i, j] = P[j, i], so P^T[i, perm_to_original[j]] = 1 if i = j
-        # Actually, let's think: we want result[i] = input[inv_perm[i]]
-        # P^T[i, j] = P[j, i], so P^T[i, perm_to_original[j]] = 1 if i = j
-        # This gives: result[i] = input[perm_to_original[i]]? No...
-        
-        # Let me use a different approach: create the permutation matrix directly
-        # We want a matrix Q where Q[i, inv_perm[i]] = 1
-        # This means: row i gets value from column inv_perm[i]
-        # So Q * v gives: result[i] = v[inv_perm[i]] ✓
-        perm_data = [1.0] * dim
-        perm_rows = list(range(dim))
-        perm_cols = inv_perm
-        perm_mx = csr_matrix((perm_data, (perm_rows, perm_cols)), shape=(dim, dim), dtype=complex_number_typ)
-        perm_matrix = SparseMatrix(perm_mx)
-        
-        # Apply permutation to eigenvector matrix: perm_matrix * eigen_vects
-        # This reorders the rows (basis elements) back to original order
-        eigen_vects_sp_mx = SparseMatrix(perm_matrix.matrix * eigen_vects_sp_mx.matrix)
-        
         # Convert to col_vectors and create ket_vectors
-        # We need to extract each column from the eigenvector matrix
         # Use lazy import to avoid circular dependency
         from jahn_teller_dynamics.math.matrix_mechanics import ket_vector, MatrixOperator
+        from jahn_teller_dynamics.math.maths import SparseColVector
         
-        # The number of eigenvectors should match the number of eigenvalues
+        # Extract columns from eigenvector matrix (matching Cavity_ionization from_sparse_matrix)
         num_eigen = len(eig_vals_list)
         num_cols = eigen_vects_sp_mx.matrix.shape[1]
-        
-        # Use the minimum to avoid index errors
         num_to_process = min(num_eigen, num_cols)
         
-        eigen_kets = []
+        # Create sparse column vectors from eigenvector matrix
+        sp_col_vects = []
         for i in range(num_to_process):
-            # Extract column i (keep in sparse format)
             col_sparse = eigen_vects_sp_mx.matrix[:, i]
-            
-            # Convert to dense only for normalization and phase alignment
-            # This is a small temporary conversion, not storing the full dense matrix
-            col_data = col_sparse.todense()
-            col_data = np.array(col_data).flatten()
-            
-            # Normalize eigenvector (ensure consistent normalization with dense solver)
-            norm = np.linalg.norm(col_data)
-            if norm > 0:
-                col_data = col_data / norm
-            
-            # Phase convention: ensure first non-zero element has positive real part
-            # This matches the convention used by dense solvers (numpy.linalg.eig)
-            for j in range(len(col_data)):
-                if abs(col_data[j]) > 1e-10:
-                    if col_data[j].real < -1e-10:
-                        col_data = -col_data
-                    elif abs(col_data[j].real) < 1e-10:
-                        if col_data[j].imag < -1e-10:
-                            col_data = -col_data
-                    break
-            
-            # Convert back to sparse format for storage
-            # csr_matrix is already imported at the top of the file
-            col_sparse_aligned = csr_matrix(col_data.reshape(-1, 1), dtype=complex_number_typ)
-            col_vec = SparseColVector(col_sparse_aligned)
-            
-            # Get corresponding eigenvalue
-            eigen_val = eig_vals_list[i]
-            
-            # Create ket_vector with sparse vector
-            eigen_ket = ket_vector(col_vec, eigen_val=float(eigen_val.real))
-            eigen_kets.append(eigen_ket)
+            col_vec = SparseColVector(col_sparse)
+            sp_col_vects.append(col_vec)
         
-        # Sort by eigenvalue (use stable sort to preserve order for degenerate eigenvalues)
-        # This ensures consistent ordering with dense solver
-        eigen_kets = sorted(eigen_kets, key=lambda x: (x.eigen_val, id(x)))  # id(x) for stable sort
+        # Set eigenvalues on vectors (matching Cavity_ionization line 243)
+        # Note: SparseColVector doesn't have set_eigen_val, so we'll set it in ket_vector
+        # Sort by eigenvalue (matching Cavity_ionization line 245)
+        sorted_eig_vals = sorted(eig_vals_list)
+        sp_col_vects = sorted(sp_col_vects, key=lambda x: x.eigen_val if hasattr(x, 'eigen_val') else 0)
         
-        # Create MatrixOperator for eigenvector matrix (now in original basis order)
+        # Create ket_vectors with sorted eigenvalues (matching Cavity_ionization line 247)
+        sp_kets = [ket_vector(k, eigen_val) for k, eigen_val in zip(sp_col_vects, sorted_eig_vals)]
+        
+        # Create MatrixOperator for eigenvector matrix
         eigen_vects_op = MatrixOperator(eigen_vects_sp_mx)
         
-        return eigen_kets, new_basis_order, eigen_vects_op
+        return sp_kets, new_basis_order, eigen_vects_op
 
 
 cartesian_basis = [
