@@ -80,15 +80,28 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         return self.mx_op_builder.create_new_basis2(generator_ops, self.calc_order-1)
     
 
-    def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = '', use_sparse: bool = False):
+    def __init__(
+        self,
+        mode,
+        spatial_dim,
+        order,
+        qm_nums_names,
+        phonon_sys_name="",
+        id="",
+        use_sparse: bool = False,
+        dimensionless_coordinates: bool = True,
+        null_point_vib: bool = True,
+    ):
         self.phonon_sys_name = phonon_sys_name
         self.mode = mode
         self.spatial_dim = spatial_dim
         self.order = order
-        self.calc_order = order +1 
+        self.calc_order = order + 1
         self.qm_nums_names = qm_nums_names
         self.use_sparse = use_sparse
-        
+        self.dimensionless_coordinates = dimensionless_coordinates
+        self.null_point_vib = null_point_vib
+
         self.id = id
         self.children = []
         self.operators = {}
@@ -125,18 +138,59 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
     def create_operators_dict(self):
         self.operators['K'] = self.get_H_op()
-    
-        self.operators['X'] = self.calc_pos_i_op('x')
-        self.operators['Y'] = self.calc_pos_i_op('y')
 
-        self.operators['XX'] = self.calc_pos_i_j_op('x','x')
-    
-        self.operators['YY'] = self.calc_pos_i_j_op('y','y')
+        # Create position operators for each spatial coordinate (qm_nums_names).
+        # Operators are stored by coordinate label (e.g. 'x', 'y') for expression parsing.
+        for label in self.qm_nums_names:
+            self.operators[label] = self.calc_pos_i_op(label)
 
-        self.operators['XY'] = self.calc_pos_i_j_op('x','y')
+        # Backward compatibility: 'X', 'Y' for first two coordinates (used by JT code).
+        if len(self.qm_nums_names) >= 1:
+            self.operators['X'] = self.operators[self.qm_nums_names[0]]
+        if len(self.qm_nums_names) >= 2:
+            self.operators['Y'] = self.operators[self.qm_nums_names[1]]
+        if len(self.qm_nums_names) == 1:
+            self.operators['XX'] = self.calc_pos_i_j_op(
+                self.qm_nums_names[0], self.qm_nums_names[0]
+            )
+        elif len(self.qm_nums_names) >= 2:
+            q0, q1 = self.qm_nums_names[0], self.qm_nums_names[1]
+            self.operators['XX'] = self.calc_pos_i_j_op(q0, q0)
+            self.operators['YY'] = self.calc_pos_i_j_op(q1, q1)
+            self.operators['XY'] = self.calc_pos_i_j_op(q0, q1)
+            self.operators['YX'] = self.calc_pos_i_j_op(q1, q0)
 
-        self.operators['YX'] = self.calc_pos_i_j_op('y','x')
+    def get_position_operator(self, coord: str) -> mm.MatrixOperator:
+        """
+        Get the position operator for a spatial coordinate by its label.
 
+        Args:
+            coord: Coordinate label (e.g. 'x', 'y') from qm_nums_names.
+
+        Returns:
+            MatrixOperator for that coordinate's position.
+        """
+        if coord not in self.operators:
+            raise ValueError(
+                f"Coordinate '{coord}' not found in {self.id}. "
+                f"Available: {list(self.qm_nums_names)}"
+            )
+        return self.operators[coord]
+
+    def evaluate_position_expression(self, expr: str):
+        """
+        Parse and evaluate a position expression for this mode.
+
+        Expressions use coordinate labels (e.g. qx, qy) from qm_nums_names.
+        Examples: 'qx*qy^2', '2*(qx^2 + qy^2)', 'qx + qy'.
+
+        Returns:
+            MatrixOperator: The evaluated expression.
+        """
+        from jahn_teller_dynamics.physics.models.position_expr_parser import (
+            evaluate_position_expression as _eval,
+        )
+        return _eval(self, expr, allowed_coords=list(self.qm_nums_names))
 
     def get_qm_num(self, state, key):
         if isinstance(state,bf.ket_state) or isinstance(state,bf.bra_state):
@@ -181,16 +235,19 @@ class one_mode_phonon_sys(qs.quantum_system_node):
     def over_est_all_H_i_ops(self):
         self.H_i_ops = []
         for qm_nums_name in self.qm_nums_names:
-            self.H_i_ops.append(self.create_mx_ops[qm_nums_name]*self.annil_mx_ops[qm_nums_name] + 0.5*self.create_id_op())
-
+            n_op = self.create_mx_ops[qm_nums_name] * self.annil_mx_ops[qm_nums_name]
+            self.H_i_ops.append(n_op)
 
     def over_est_H_op(self):
         H = sum(self.H_i_ops)
         H.subsys_name = self.phonon_sys_name
         self.over_est_H = H.round(0).change_type(np.int16)
 
-    def get_H_op(self ) -> mm.MatrixOperator:
-        return self.mode*self.over_est_H.truncate_matrix(self.trunc_num)
+    def get_H_op(self) -> mm.MatrixOperator:
+        H = self.mode * self.over_est_H.truncate_matrix(self.trunc_num)
+        if self.null_point_vib:
+            H = H + 0.5 * self.mode * self.create_id_op()
+        return H
 
     def calc_trunc_num(self):
         return self.over_est_H.matrix.count_occurrences(self.calc_order)
@@ -203,8 +260,14 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 
     def over_est_pos_i_op(self, qm_num_name) -> mm.MatrixOperator:
-        op = ((self.annil_mx_ops[qm_num_name] + self.create_mx_ops[qm_num_name])
-              / mm.SQRT_2)
+        """
+        Position operator: q = (a + a†) / √2 (dimensionless) or (a + a†) / (√2 ω^0.5) (dimensional).
+        """
+        if self.dimensionless_coordinates:
+            denom = mm.SQRT_2
+        else:
+            denom = mm.SQRT_2 * (self.mode) ** 0.5
+        op = (self.annil_mx_ops[qm_num_name] + self.create_mx_ops[qm_num_name]) / denom
         op.subsys_name = self.phonon_sys_name
         return op
 

@@ -14,6 +14,8 @@ from .system_builder import (
     build_electron_phonon_system,
     build_spin_electron_phonon_system,
     build_minimal_model_system,
+    build_phonon_system,
+    MultiModePhononSystem,
 )
 
 from .reduction_factors import (
@@ -27,14 +29,35 @@ from .operator_manager import (
     add_operator_to_hamiltonian,
 )
 
+from .multi_config_electron import (
+    multi_config_electron,
+)
+
+from .lvc_model import (
+    LVC_model,
+)
+
+from .position_expr_parser import (
+    tokenize,
+    PositionExprParser,
+    evaluate_position_expression,
+)
+
 __all__ = [
     'build_electron_phonon_system',
     'build_spin_electron_phonon_system',
     'build_minimal_model_system',
+    'build_phonon_system',
+    'MultiModePhononSystem',
     'compute_reduction_factors',
     'compute_K_JT_factor',
     'ReductionFactorsResult',
     'store_and_get_root_operator',
     'add_operator_to_hamiltonian',
+    'multi_config_electron',
+    'LVC_model',
+    'tokenize',
+    'PositionExprParser',
+    'evaluate_position_expression',
 ]
 

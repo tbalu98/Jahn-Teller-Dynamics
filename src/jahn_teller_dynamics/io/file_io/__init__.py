@@ -13,6 +13,7 @@ used in Jahn-Teller calculations, including CSV, VASP, and XML formats.
 
 __all__ = [
     'CSVWriter',
+    'CSVReader',
     'vasp',
     'xml_parser',
     'results_formatter',
@@ -32,6 +33,10 @@ def __getattr__(name):
         from .csv_writer import CSVWriter
         _import_cache[name] = CSVWriter
         return CSVWriter
+    if name == 'CSVReader':
+        from .csv_reader import CSVReader
+        _import_cache[name] = CSVReader
+        return CSVReader
     elif name == 'vasp':
         from . import vasp
         _import_cache[name] = vasp
