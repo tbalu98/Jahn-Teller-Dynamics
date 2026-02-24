@@ -2,6 +2,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
 research_data.md
 acustic_phonons/
+Try_1/
 config_files/generated_config_files/
 src/scripts_for_work/
 Gergo_config_files/
@@ -37,6 +38,7 @@ Exe_JT_problem_master.py
 Exe_JT_problem_old.py
 README_old.md
 ZPL_shift_fancy_graphic.py
+_convergence_order_*.cfg
 octave_codes/
 pressure_dependence_publication_2024/
 Group_4_vacancies_script/
