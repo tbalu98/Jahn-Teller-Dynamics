@@ -17,6 +17,7 @@ __all__ = [
     'vasp',
     'xml_parser',
     'results_formatter',
+    'npz_reader',
 ]
 
 # Cache for lazy imports to avoid recursion
@@ -49,5 +50,9 @@ def __getattr__(name):
         from . import results_formatter
         _import_cache[name] = results_formatter
         return results_formatter
+    elif name == 'npz_reader':
+        from . import npz_reader
+        _import_cache[name] = npz_reader
+        return npz_reader
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 

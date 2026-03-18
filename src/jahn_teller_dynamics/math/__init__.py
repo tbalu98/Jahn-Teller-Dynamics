@@ -23,6 +23,8 @@ from jahn_teller_dynamics.math.eigen_solver import (
     solve_eigenvalue_problem,
 )
 
+from jahn_teller_dynamics.math.maths import Lorentzian, lorentzian
+
 __all__ = [
     'MatrixOperator',
     'ket_vector',
@@ -32,4 +34,6 @@ __all__ = [
     'EigenSolver',
     'DenseEigenSolver',
     'solve_eigenvalue_problem',
+    'Lorentzian',
+    'lorentzian',
 ]

@@ -10,7 +10,7 @@ System structures:
 - Minimal model: point_defect -> [electron_system (orbital_system, spin_system)]
 """
 
-from typing import TYPE_CHECKING, Sequence, List, Union, Literal, Dict, Tuple
+from typing import TYPE_CHECKING, Optional, Sequence, List, Union, Literal, Dict, Tuple
 if TYPE_CHECKING:
     import jahn_teller_dynamics.physics.quantum_system as qs
     import jahn_teller_dynamics.physics.jahn_teller_theory as jt
@@ -22,12 +22,12 @@ from .position_expr_parser import evaluate_position_expression as _evaluate_posi
 
 def _parse_mode_config(
     item: Union[float, Tuple[float, Sequence[str]]],
-) -> Tuple[float, List[str]]:
-    """Convert mode config to (omega, labels)."""
+) -> Tuple[float, List[str], bool]:
+    """Convert mode config to (omega, labels, is_bare_float)."""
     if isinstance(item, (int, float)):
-        return float(item), ["x"]  # 1D default
+        return float(item), ["x"], True  # 1D default, caller assigns q1, q2, ...
     omega, labels = item[0], list(item[1])
-    return float(omega), labels
+    return float(omega), labels, False
 
 
 class MultiModePhononSystem(qs.quantum_system_node):
@@ -52,9 +52,12 @@ class MultiModePhononSystem(qs.quantum_system_node):
 
         self.order = order
         self.use_sparse = use_sparse
-        self._mode_configs: List[Tuple[float, List[str]]] = [
-            _parse_mode_config(m) for m in modes
-        ]
+        self._mode_configs: List[Tuple[float, List[str]]] = []
+        for i, m in enumerate(modes, start=1):
+            omega, labels, is_bare_float = _parse_mode_config(m)
+            if is_bare_float:
+                labels = [f"q{i}"]
+            self._mode_configs.append((omega, labels))
         self.modes = [mc[0] for mc in self._mode_configs]
 
         mode_nodes: List["qs.quantum_system_node"] = []
@@ -230,7 +233,7 @@ def build_phonon_system(
 
     Args:
         modes: List of mode configs. Each item is either:
-            - float: 1D mode with default coordinate 'x'
+            - float: 1D mode with default coordinate 'q1', 'q2', ... (by index)
             - (omega, labels): e.g. (1.0, ['x','y']) or (2.0, ['x','y','z','u','w'])
         order: Truncation order per mode.
         use_sparse: If True, prefer sparse operators.
@@ -251,6 +254,71 @@ def build_phonon_system(
     )
 
 
+def build_phonon_system_constrained(
+    modes: Sequence[float],
+    order: int,
+    use_sparse: bool = False,
+    phonon_system_id: str = "phonon_system",
+    dimensionless_coordinates: bool = True,
+    null_point_vib: bool = True,
+) -> "qs.quantum_system_node":
+    """
+    Build a multi-mode phonon system with total-phonon-number constraint.
+
+    Hilbert space: states |n1,...,nN⟩ with sum(n_i) <= order (smaller than product).
+
+    Args:
+        modes: List of mode energies (hbar*omega).
+        order: Maximum total phonon number.
+        use_sparse: If True, use sparse matrices.
+        phonon_system_id: Node id.
+        dimensionless_coordinates: If True, q = (a+a†)/√2.
+        null_point_vib: If True, include zero-point energy.
+
+    Returns:
+        MultiModeConstrainedPhononSystem.
+    """
+    from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+
+    return MultiModeConstrainedPhononSystem(
+        modes=list(modes),
+        order=order,
+        use_sparse=use_sparse,
+        phonon_system_id=phonon_system_id,
+        dimensionless_coordinates=dimensionless_coordinates,
+        null_point_vib=null_point_vib,
+    )
+
+
+def build_phonon_system_constrained_from_csv(
+    modes_csv_path: str,
+    *,
+    order: int,
+    use_sparse: bool = False,
+    phonon_system_id: str = "phonon_system",
+    separator: str = ";",
+    dimensionless_coordinates: bool = True,
+    null_point_vib: bool = True,
+    mode_numbers: Optional[Sequence[int]] = None,
+) -> "qs.quantum_system_node":
+    """
+    Build a constrained multi-mode phonon system from CSV.
+    Hilbert space: sum(n_i) <= order (smaller than product).
+    """
+    from jahn_teller_dynamics.io.file_io.csv_reader import CSVReader
+
+    reader = CSVReader(separator=separator)
+    omegas = reader.read_modes(modes_csv_path, mode_numbers=mode_numbers)
+    return build_phonon_system_constrained(
+        modes=omegas,
+        order=order,
+        use_sparse=use_sparse,
+        phonon_system_id=phonon_system_id,
+        dimensionless_coordinates=dimensionless_coordinates,
+        null_point_vib=null_point_vib,
+    )
+
+
 def build_phonon_system_from_csv(
     modes_csv_path: str,
     *,
@@ -260,6 +328,7 @@ def build_phonon_system_from_csv(
     separator: str = ";",
     dimensionless_coordinates: bool = True,
     null_point_vib: bool = True,
+    mode_numbers: Optional[Sequence[int]] = None,
 ) -> "qs.quantum_system_node":
     """
     Build a multi-mode phonon system from a CSV like:
@@ -284,7 +353,7 @@ def build_phonon_system_from_csv(
     from jahn_teller_dynamics.io.file_io.csv_reader import CSVReader
 
     reader = CSVReader(separator=separator)
-    omegas = reader.read_modes(modes_csv_path)
+    omegas = reader.read_modes(modes_csv_path, mode_numbers=mode_numbers)
     return build_phonon_system(
         modes=omegas,
         order=order,

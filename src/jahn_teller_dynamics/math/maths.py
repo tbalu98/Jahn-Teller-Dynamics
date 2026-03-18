@@ -36,6 +36,93 @@ def meV_to_GHz(e: float) -> float:
     return e * 241.798935
 
 
+def lorentzian(
+    x: Union[float, np.ndarray],
+    x0: float,
+    gamma: float,
+    amplitude: float = 1.0,
+) -> Union[float, np.ndarray]:
+    """
+    Lorentzian (Cauchy) line shape.
+
+    L(x) = A * (gamma/2)² / ((x - x0)² + (gamma/2)²)
+
+    Args:
+        x: Abscissa value(s).
+        x0: Center (peak position).
+        gamma: Full width at half maximum (FWHM).
+        amplitude: Peak height at x = x0. Default 1.0.
+
+    Returns:
+        Lorentzian value(s) at x. Same shape as x.
+    """
+    half_gamma = gamma / 2.0
+    return amplitude * (half_gamma**2) / ((np.asarray(x, dtype=float) - x0) ** 2 + half_gamma**2)
+
+
+class Lorentzian:
+    """
+    Lorentzian (Cauchy) smearing function.
+
+    L(x) = amplitude * HWHM² / ((x - center)² + HWHM²)
+
+    Attributes:
+        HWHM: Half-width at half maximum.
+        amplitude: Peak height at the center.
+        center: Peak position (abscissa of maximum).
+    """
+
+    def __init__(self, HWHM: float, amplitude: float = 1.0, center: float = 0.0):
+        """
+        Args:
+            HWHM: Half-width at half maximum.
+            amplitude: Peak height; default 1.0.
+            center: Peak position; default 0.0.
+        """
+        self.HWHM = float(HWHM)
+        self.amplitude = float(amplitude)
+        self.center = float(center)
+
+    def evaluate(self, x: Union[float, List[float], np.ndarray]) -> np.ndarray:
+        """
+        Evaluate the Lorentzian at each point in x.
+
+        Args:
+            x: Abscissa value(s).
+
+        Returns:
+            Lorentzian value(s) at x; same shape as x.
+        """
+        arr = np.asarray(x, dtype=float)
+        return self.amplitude * (self.HWHM**2) / (
+            (arr - self.center) ** 2 + self.HWHM**2
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        function: str,
+        HWHM: Optional[float],
+        amplitude: float = 1.0,
+    ) -> Optional["Lorentzian"]:
+        """
+        Build a Lorentzian instance from [smearing_function] config values.
+
+        Args:
+            function: Smearing function name (e.g. "lorentzian").
+            HWHM: Half-width at half maximum; None if not set.
+            amplitude: Peak amplitude; default 1.0.
+
+        Returns:
+            Lorentzian instance if function is "lorentzian" and HWHM is valid; else None.
+        """
+        if (function or "").strip().lower() != "lorentzian" or HWHM is None:
+            return None
+        if HWHM <= 0:
+            return None
+        return cls(HWHM=HWHM, amplitude=amplitude)
+
+
 precision = 0.0000001
 complex_number_typ = np.complex128  # Use double precision for better numerical accuracy
 

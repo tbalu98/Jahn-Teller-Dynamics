@@ -29,7 +29,7 @@ def read_requirements():
 
 setup(
     name='jahn_teller_dynamics',
-    version='1.0.2',  # Update this as needed
+    version='1.1.4',  # Update this as needed
     description='Dynamic Jahn-Teller Effect Calculator',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
@@ -44,6 +44,8 @@ setup(
     entry_points={
         'console_scripts': [
             'Exe=jahn_teller_dynamics.Exe:main',
+            'LVC_spectrum=jahn_teller_dynamics.calculate_spectrum:main',
+            'LVC=jahn_teller_dynamics.LVC:main',
         ],
     },
     classifiers=[

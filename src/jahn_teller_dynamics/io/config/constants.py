@@ -19,6 +19,18 @@ el_field = 'electric_field'
 strain_field = 'strain_field'
 atom_structure_field = 'atom_structure_parameters'
 
+# Spectrum section (LVC absorption spectrum)
+spectrum_section = "spectrum"
+spectrum_data_folder_opt = "data_folder"
+spectrum_results_folder_opt = "results_folder"
+spectrum_output_prefix_opt = "output_prefix"
+
+# Smearing function section (optional, for spectrum broadening)
+smearing_function_section = "smearing_function"
+smearing_function_opt = "function"
+smearing_HWHM_opt = "HWHM"
+smearing_amplitude_opt = "amplitude"
+
 # State sections
 ex_state_field = 'excited_state_parameters'
 gnd_state_field = 'ground_state_parameters'

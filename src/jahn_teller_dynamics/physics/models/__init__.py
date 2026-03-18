@@ -15,8 +15,16 @@ from .system_builder import (
     build_spin_electron_phonon_system,
     build_minimal_model_system,
     build_phonon_system,
+    build_phonon_system_constrained,
     MultiModePhononSystem,
 )
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
 
 from .reduction_factors import (
     compute_reduction_factors,
@@ -45,10 +53,14 @@ from .position_expr_parser import (
 
 __all__ = [
     'build_electron_phonon_system',
+    'build_phonon_system_constrained',
+    'MultiModeConstrainedPhononSystem',
     'build_spin_electron_phonon_system',
     'build_minimal_model_system',
     'build_phonon_system',
+    'build_phonon_system_constrained',
     'MultiModePhononSystem',
+    'MultiModeConstrainedPhononSystem',
     'compute_reduction_factors',
     'compute_K_JT_factor',
     'ReductionFactorsResult',

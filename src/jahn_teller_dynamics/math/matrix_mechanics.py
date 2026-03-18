@@ -417,6 +417,52 @@ class hilber_space_bases:
 
 
 
+    def dynamic_create_hosc_eigen_states(
+        self, dim: int, order: int, curr_osc_coeffs: List[int],
+        seen: Optional[set] = None
+    ) -> None:
+        """
+          Create harmonic oscillator eigenstates dynamically.
+          
+          Args:
+              dim: Spatial dimension
+              order: Maximum order (total quantum number)
+              curr_osc_coeffs: Current oscillator coefficients (used in recursion)
+              seen: Set of already-added state tuples (for deduplication)
+        """
+        if seen is None:
+            seen = set()
+        # Add ground state on initial call (curr_osc_coeffs == [0]*dim)
+        if sum(curr_osc_coeffs) == 0 and len(curr_osc_coeffs) == dim:
+            key = tuple(curr_osc_coeffs)
+            if key not in seen:
+                seen.add(key)
+                self._bra_states.append(bf.bra_state(qm_nums=list(curr_osc_coeffs)))
+                self._ket_states.append(bf.ket_state(qm_nums=list(curr_osc_coeffs)))
+        for i in range(dim):
+            temp_curr_osc_coeffs = copy.deepcopy(curr_osc_coeffs)
+            temp_curr_osc_coeffs[i] += 1
+            if sum(temp_curr_osc_coeffs) > order:
+                continue
+            key = tuple(temp_curr_osc_coeffs)
+            if key in seen:
+                continue
+            seen.add(key)
+            self._bra_states.append(bf.bra_state(qm_nums=temp_curr_osc_coeffs))
+            self._ket_states.append(bf.ket_state(qm_nums=temp_curr_osc_coeffs))
+            self.dynamic_create_hosc_eigen_states(dim, order, temp_curr_osc_coeffs, seen)
+
+    def dynamic_create_hosc_eigen_states_list(self, dim: int, order: int) -> List[bf.ket_state]:
+        """
+        Create harmonic oscillator eigenstates dynamically.
+        
+        Args:
+            dim: Spatial dimension
+            order: Maximum order (total quantum number)
+        """
+        self.dynamic_create_hosc_eigen_states(dim, order, [0] * dim)
+        return self._ket_states
+
     def create_hosc_eigen_states(self, dim: int, order: int, curr_osc_coeffs: List[int]) -> None:
           """
           Recursively create harmonic oscillator eigenstates.
@@ -469,6 +515,75 @@ class hilber_space_bases:
           self.qm_nums_names = qm_nums_names
           return self
 
+    def multimode_constrained_harm_osc_sys(
+        self, num_modes: int, order: int, qm_nums_names: Optional[List[str]] = None
+    ) -> 'hilber_space_bases':
+        """
+        Create multimode harmonic oscillator basis with constraint sum(n_i) <= order.
+
+        Each mode has one quantum number. States |n1,n2,...,nN> satisfy n1+n2+...+nN <= order.
+        Yields smaller Hilbert space than product (order+1)^N.
+
+        Args:
+            num_modes: Number of modes (dimensions)
+            order: Maximum total quantum number
+            qm_nums_names: Coordinate labels (default: q1, q2, ..., qN)
+
+        Returns:
+            hilber_space_bases: Self (for method chaining)
+        """
+        if qm_nums_names is None:
+            qm_nums_names = [f"q{i}" for i in range(1, num_modes + 1)]
+        curr_osc_coeffs = []
+        self._bra_states = []
+        self._ket_states = []
+        self.create_hosc_eigen_states(num_modes, order, curr_osc_coeffs)
+        self._bra_states = sorted(
+            self._bra_states, key=lambda x: (x.calc_order(), *x.qm_state.qm_nums)
+        )
+        self._ket_states = sorted(
+            self._ket_states, key=lambda x: (x.calc_order(), *x.qm_state.qm_nums)
+        )
+        self.dim = len(self._bra_states)
+        self.qm_nums_names = qm_nums_names
+        return self
+
+    def multimode_constrained_harm_osc_sys(
+        self, num_modes: int, order: int, qm_nums_names: Optional[List[str]] = None
+    ) -> 'hilber_space_bases':
+        """
+        Create multi-mode harmonic oscillator basis with constraint sum(n_i) <= order.
+
+        Each mode has one quantum number. States |n1,n2,...,nN> are kept when
+        n1 + n2 + ... + nN <= order. This yields a smaller Hilbert space than
+        the unconstrained product (order+1)^N.
+
+        Args:
+            num_modes: Number of modes (dimensions).
+            order: Maximum total quantum number.
+            qm_nums_names: Labels for each mode (default: q1, q2, ...).
+
+        Returns:
+            hilber_space_bases: Self (for method chaining)
+        """
+        if qm_nums_names is None:
+            qm_nums_names = [f"q{i}" for i in range(1, num_modes + 1)]
+        if len(qm_nums_names) != num_modes:
+            raise ValueError(f"qm_nums_names must have length {num_modes}")
+        curr_osc_coeffs: List[int] = []
+        self._bra_states = []
+        self._ket_states = []
+        self.create_hosc_eigen_states(num_modes, order, curr_osc_coeffs)
+        self._bra_states = sorted(
+            self._bra_states, key=lambda x: (x.calc_order(), *x.qm_state.qm_nums)
+        )
+        self._ket_states = sorted(
+            self._ket_states, key=lambda x: (x.calc_order(), *x.qm_state.qm_nums)
+        )
+        self.dim = len(self._bra_states)
+        self.qm_nums_names = qm_nums_names
+        return self
+
 
     def from_qm_nums_list(self, qm_nums_list: List[List[Union[int, float]]], qm_nums_names: Optional[List[str]] = None) -> 'hilber_space_bases':
           """
@@ -518,6 +633,64 @@ class hilber_space_bases:
               hilber_space_bases: New reduced Hilbert space
           """
           return hilber_space_bases(self._bra_states[0:new_dim], self._ket_states[0:new_dim],names = self.qm_nums_names)
+
+    def reduce_hilbert_space(
+        self, should_delete: Callable[[bf.ket_state, int], bool]
+    ) -> Tuple['hilber_space_bases', List[int]]:
+        """
+        Reduce Hilbert space by removing states that satisfy a deletion criterion.
+
+        Args:
+            should_delete: Function (ket_state, index) -> bool. Returns True if
+                the state at the given index should be deleted (removed from the basis).
+
+        Returns:
+            Tuple of (reduced hilber_space_bases, deleted_indexes).
+            - reduced hilber_space_bases: New Hilbert space with deleted states removed.
+            - deleted_indexes: List of original indices of the deleted states.
+        """
+        deleted_indexes: List[int] = []
+        new_bra_states: List[bf.bra_state] = []
+        new_ket_states: List[bf.ket_state] = []
+
+        for i, (bra, ket) in enumerate(zip(self._bra_states, self._ket_states)):
+            if should_delete(ket, i):
+                deleted_indexes.append(i)
+            else:
+                new_bra_states.append(bra)
+                new_ket_states.append(ket)
+
+        reduced = hilber_space_bases(
+            bra_states=new_bra_states,
+            ket_states=new_ket_states,
+            names=self.qm_nums_names,
+        )
+        return reduced, deleted_indexes
+
+    @staticmethod
+    def should_delete_total_vib_gt(threshold: int) -> Callable[[bf.ket_state, int], bool]:
+        """
+        Factory for reduce_hilbert_space criterion: delete states where the sum
+        of vibration quantum numbers is greater than the given threshold.
+
+        Args:
+            threshold: States with sum(quantum_numbers) > threshold are deleted.
+
+        Returns:
+            A callable (ket_state, index) -> bool for use with reduce_hilbert_space.
+        """
+        def _criterion(ket_state: bf.ket_state, index: int) -> bool:
+            return sum(ket_state.qm_state.qm_nums) > threshold
+        return _criterion
+
+    @staticmethod
+    def should_delete_total_vib_gt_1(ket_state: bf.ket_state, index: int) -> bool:
+        """
+        Criterion for reduce_hilbert_space: delete states where the sum of
+        vibration quantum numbers is greater than 1. Convenience alias for
+        should_delete_total_vib_gt(1).
+        """
+        return hilber_space_bases.should_delete_total_vib_gt(1)(ket_state, index)
 
     def get_ket_state_index(self, ks:bf.ket_state):
         """

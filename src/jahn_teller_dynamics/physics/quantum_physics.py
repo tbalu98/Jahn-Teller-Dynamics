@@ -246,7 +246,7 @@ class one_mode_phonon_sys(qs.quantum_system_node):
     def get_H_op(self) -> mm.MatrixOperator:
         H = self.mode * self.over_est_H.truncate_matrix(self.trunc_num)
         if self.null_point_vib:
-            H = H + 0.5 * self.mode * self.create_id_op()
+            H = H + self.spatial_dim*0.5 * self.mode * self.create_id_op()
         return H
 
     def calc_trunc_num(self):

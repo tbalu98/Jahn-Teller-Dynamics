@@ -23,7 +23,7 @@ Supported CSV formats (semicolon separated by default):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -181,7 +181,9 @@ class CSVReader:
     # ------------------------------------------------------------------
     # Phonon modes
     # ------------------------------------------------------------------
-    def read_modes(self, path: str) -> List[float]:
+    def read_modes(
+        self, path: str, mode_numbers: Optional[List[int]] = None
+    ) -> List[float]:
         """
         Read phonon mode frequencies/energies from a CSV like:
 
@@ -189,6 +191,11 @@ class CSVReader:
             1;0.0041
             2;0.0035
             ...
+
+        Args:
+            path: Path to modes CSV.
+            mode_numbers: Optional list of mode numbers to include (e.g. [1, 3, 5]).
+                If None, all modes from the CSV are used.
 
         Returns:
             A list of omegas ordered by increasing `mode`.
@@ -201,10 +208,19 @@ class CSVReader:
         df["mode"] = pd.to_numeric(df["mode"], errors="raise").astype(int)
         df["omega"] = pd.to_numeric(df["omega"], errors="raise").astype(float)
 
+        if mode_numbers is not None:
+            allowed = set(int(m) for m in mode_numbers)
+            missing = allowed - set(df["mode"])
+            if missing:
+                raise ValueError(
+                    f"Modes {sorted(missing)} not found in CSV (available: {sorted(df['mode'].tolist())})"
+                )
+            df = df[df["mode"].isin(allowed)].copy()
+
         df = df.sort_values("mode", ascending=True)
         modes = df["mode"].to_numpy(dtype=int)
         if len(modes) == 0:
-            raise ValueError("Modes CSV is empty")
+            raise ValueError("Modes CSV is empty (or no modes match mode_numbers)")
         if np.any(modes < 1):
             raise ValueError("Modes CSV contains mode < 1 (expected 1-based indices)")
 

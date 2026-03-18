@@ -18,6 +18,8 @@ from jahn_teller_dynamics.physics.models.multi_config_electron import multi_conf
 from jahn_teller_dynamics.physics.models.system_builder import (
     MultiModePhononSystem,
     build_phonon_system,
+    build_phonon_system_constrained,
+    build_phonon_system_constrained_from_csv,
     build_phonon_system_from_csv,
 )
 
@@ -88,6 +90,8 @@ class LVC_model(qs.quantum_system_tree):
         order: int,
         modes: Optional[Sequence[float]] = None,
         modes_csv_path: Optional[str] = None,
+        mode_numbers: Optional[Sequence[int]] = None,
+        max_phonon_quanta: Optional[int] = None,
         separator: str = ";",
         system_id: str = "LVC_model",
         electron_system_id: str = "electron_system",
@@ -118,36 +122,65 @@ class LVC_model(qs.quantum_system_tree):
         )
 
         if modes_csv_path is not None:
-            phonons = build_phonon_system_from_csv(
-                modes_csv_path,
-                order=order,
-                use_sparse=use_sparse,
-                phonon_system_id=phonon_system_id,
-                separator=separator,
-                dimensionless_coordinates=dimensionless_coordinates,
-                null_point_vib=null_point_vib,
-            )
+            if max_phonon_quanta is not None:
+                phonons = build_phonon_system_constrained_from_csv(
+                    modes_csv_path,
+                    order=max_phonon_quanta,
+                    use_sparse=use_sparse,
+                    phonon_system_id=phonon_system_id,
+                    separator=separator,
+                    dimensionless_coordinates=dimensionless_coordinates,
+                    null_point_vib=null_point_vib,
+                    mode_numbers=mode_numbers,
+                )
+            else:
+                phonons = build_phonon_system_from_csv(
+                    modes_csv_path,
+                    order=order,
+                    use_sparse=use_sparse,
+                    phonon_system_id=phonon_system_id,
+                    separator=separator,
+                    dimensionless_coordinates=dimensionless_coordinates,
+                    null_point_vib=null_point_vib,
+                    mode_numbers=mode_numbers,
+                )
             num_modes = len(phonons.modes)
         else:
             if modes is None:
                 raise ValueError("Either modes_csv_path or modes must be provided")
-            phonons = build_phonon_system(
-                modes=modes,
-                order=order,
-                use_sparse=use_sparse,
-                phonon_system_id=phonon_system_id,
-                dimensionless_coordinates=dimensionless_coordinates,
-                null_point_vib=null_point_vib,
-            )
+            if max_phonon_quanta is not None:
+                phonons = build_phonon_system_constrained(
+                    modes=modes,
+                    order=max_phonon_quanta,
+                    use_sparse=use_sparse,
+                    phonon_system_id=phonon_system_id,
+                    dimensionless_coordinates=dimensionless_coordinates,
+                    null_point_vib=null_point_vib,
+                )
+            else:
+                phonons = build_phonon_system(
+                    modes=modes,
+                    order=order,
+                    use_sparse=use_sparse,
+                    phonon_system_id=phonon_system_id,
+                    dimensionless_coordinates=dimensionless_coordinates,
+                    null_point_vib=null_point_vib,
+                )
             num_modes = len(modes)
 
         model = cls.build(electron=electron, phonons=phonons, system_id=system_id, use_sparse=use_sparse)
 
+        # Mode numbers for coupling/tuning: use mode_numbers if provided, else 1..num_modes
+        selected_modes = (
+            list(mode_numbers) if mode_numbers is not None else list(range(1, num_modes + 1))
+        )
+
         if coupling_csv_path is not None and build_all_mode_couplings:
-            for i in range(1, num_modes + 1):
+            for phonon_idx, csv_mode_num in enumerate(selected_modes, start=1):
                 electron.create_phonon_coupling_interactions(
                     coupling_csv_path,
-                    mode_num=i,
+                    mode_num=csv_mode_num,
+                    operator_name=f"coupling_mode_{phonon_idx}",
                     separator=separator,
                     symmetric=symmetric_couplings,
                     add_to_node=True,
@@ -155,10 +188,11 @@ class LVC_model(qs.quantum_system_tree):
                 )
 
         if tuning_csv_path is not None and build_all_mode_kappas:
-            for i in range(1, num_modes + 1):
+            for phonon_idx, csv_mode_num in enumerate(selected_modes, start=1):
                 electron.create_non_coupling_kappa_matrix(
                     tuning_csv_path,
-                    mode_num=i,
+                    mode_num=csv_mode_num,
+                    operator_name=f"tuning_mode_{phonon_idx}",
                     separator=separator,
                     add_to_node=True,
                     use_sparse=use_sparse,

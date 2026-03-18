@@ -18,221 +18,92 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
-from configparser import ConfigParser
-from typing import Any, Mapping, Optional
+from typing import Any
+
+import numpy as np
+
+from jahn_teller_dynamics.io.config.lvc_config import LVCConfigParser, LVCCalculation
+
+
+def _run_dir() -> Path:
+    """Directory where the script is run from (cwd). All paths are relative to this, same as Exe.py."""
+    return Path.cwd()
 
 
 def _default_data_dir() -> Path:
-    # .../src/jahn_teller_dynamics/LVC.py -> repo root is parents[2]
-    return Path(__file__).resolve().parents[2] / "data" / "LVC_model" / "butatrien_molecule"
+    """Default data dir relative to run directory (cwd)."""
+    return _run_dir() / "data" / "LVC_model" / "butatrien_molecule"
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+
+def _calc_to_argparse_defaults(calc: LVCCalculation) -> dict[str, Any]:
+    """Convert LVCCalculation to dict for argparse set_defaults."""
+    return {
+        "data_dir": calc.data_dir,
+        "out_dir": calc.out_dir,
+        "state_energy": calc.state_energy,
+        "coupling_csv": calc.coupling_csv,
+        "tuning_csv": calc.tuning_csv,
+        "modes": calc.modes,
+        "state_energy_path": calc.state_energy_path,
+        "coupling_path": calc.coupling_path,
+        "tuning_path": calc.tuning_path,
+        "modes_path": calc.modes_path,
+        "modes_to_use": calc.modes_to_use,
+        "order": calc.order,
+        "max_phonon_quanta": calc.max_phonon_quanta,
+        "num_eigs": calc.num_eigs,
+        "use_sparse": calc.use_sparse,
+        "separator": calc.separator,
+        "dimensionless_coordinates": calc.dimensionless_coordinates,
+        "null_point_vib": calc.null_point_vib,
+        "save_npz": calc.save_npz,
+        "save_csv": calc.save_csv,
+    }
+
+
+def _args_to_calculation(args: argparse.Namespace, run_dir: Path) -> LVCCalculation:
+    """Build LVCCalculation from parsed args (config + CLI merged)."""
+    modes_to_use = getattr(args, "modes_to_use", None)
+    if isinstance(modes_to_use, str):
+        modes_to_use = [int(x.strip()) for x in modes_to_use.split(",") if x.strip()] or None
+    elif modes_to_use is not None and not isinstance(modes_to_use, list):
+        modes_to_use = None
+
+    return LVCCalculation(
+        data_dir=args.data_dir,
+        out_dir=getattr(args, "out_dir", "") or "",
+        state_energy=args.state_energy,
+        coupling_csv=args.coupling_csv,
+        tuning_csv=args.tuning_csv,
+        modes=args.modes,
+        state_energy_path=getattr(args, "state_energy_path", "") or "",
+        coupling_path=getattr(args, "coupling_path", "") or "",
+        tuning_path=getattr(args, "tuning_path", "") or "",
+        modes_path=getattr(args, "modes_path", "") or "",
+        modes_to_use=modes_to_use,
+        order=int(args.order),
+        max_phonon_quanta=getattr(args, "max_phonon_quanta", None),
+        num_eigs=args.num_eigs,
+        use_sparse=bool(args.use_sparse),
+        separator=str(getattr(args, "separator", ";")),
+        dimensionless_coordinates=bool(getattr(args, "dimensionless_coordinates", True)),
+        null_point_vib=bool(getattr(args, "null_point_vib", True)),
+        save_npz=bool(getattr(args, "save_npz", False)),
+        save_csv=bool(getattr(args, "save_csv", True)),
+    )
 
 
 def read_lvc_cfg(cfg_path: str) -> dict[str, Any]:
     """
     Read an INI-style .cfg file and return argparse-defaults for `LVC.py`.
 
-    Notes
-    -----
-    - The config section is `[LVC]` (case-insensitive).
-    - Relative paths in the config are interpreted relative to the **repo root**.
-      (So `data/LVC_model` and `results/LVC` work regardless of current working dir.)
-    - CLI args always override config values.
+    Uses LVCConfigParser internally. Config file path is relative to run directory (cwd).
+    CLI args always override config values.
     """
-    cfg_file = Path(cfg_path).expanduser()
-    if not cfg_file.exists():
-        raise FileNotFoundError(f"Config file not found: {cfg_file}")
-
-    cp = ConfigParser()
-    cp.read(cfg_file)
-
-    # ConfigParser is case-insensitive for option names; section names are case-sensitive.
-    # We support:
-    # - [LVC] for LVC-specific inputs
-    # - [essentials] (existing project convention) for common IO + order + sparse
-    lvc_section = None
-    for candidate in ("LVC", "lvc"):
-        if cp.has_section(candidate):
-            lvc_section = candidate
-            break
-    essentials_section = "essentials" if cp.has_section("essentials") else None
-
-    if lvc_section is None and essentials_section is None:
-        raise ValueError(f"Missing [LVC] (or [essentials]) section in config: {cfg_file}")
-
-    get = cp.get  # (section, option)
-    base = _repo_root()
-
-    def _get_path_opt(opt_name: str, fallback: Optional[str] = None) -> Optional[str]:
-        section = lvc_section if lvc_section is not None else essentials_section  # type: ignore[assignment]
-        if section is None or not cp.has_option(section, opt_name):
-            return fallback
-        raw = get(section, opt_name, fallback=fallback)
-        if raw is None:
-            return None
-        raw = raw.strip()
-        if raw == "":
-            return ""
-        p = Path(raw).expanduser()
-        if not p.is_absolute():
-            p = (base / p)
-        return str(p.resolve())
-
-    def _get_str(opt_name: str, fallback: Optional[str] = None) -> Optional[str]:
-        section = lvc_section if lvc_section is not None else essentials_section  # type: ignore[assignment]
-        if section is None or not cp.has_option(section, opt_name):
-            return fallback
-        val = get(section, opt_name, fallback=fallback)
-        return val.strip() if val is not None else None
-
-    def _get_int(opt_name: str, fallback: Optional[int] = None) -> Optional[int]:
-        section = lvc_section if lvc_section is not None else essentials_section  # type: ignore[assignment]
-        if section is None or not cp.has_option(section, opt_name):
-            return fallback
-        return cp.getint(section, opt_name, fallback=fallback)  # type: ignore[arg-type]
-
-    def _get_bool(opt_name: str, fallback: Optional[bool] = None) -> Optional[bool]:
-        section = lvc_section if lvc_section is not None else essentials_section  # type: ignore[assignment]
-        if section is None or not cp.has_option(section, opt_name):
-            return fallback
-        return cp.getboolean(section, opt_name, fallback=fallback)  # type: ignore[arg-type]
-
-    defaults: dict[str, Any] = {}
-
-    # -------------------------
-    # Essentials-style defaults
-    # -------------------------
-    # Map existing project keys -> LVC CLI keys.
-    if essentials_section is not None:
-        # input_folder / output_folder / maximum_number_of_vibrational_quanta / use_sparse
-        in_folder = cp.get(essentials_section, "input_folder", fallback="").strip()
-        if in_folder:
-            p = Path(in_folder).expanduser()
-            if not p.is_absolute():
-                p = base / p
-            defaults["data_dir"] = str(p.resolve())
-
-        out_folder = cp.get(essentials_section, "output_folder", fallback="").strip()
-        if out_folder:
-            p = Path(out_folder).expanduser()
-            if not p.is_absolute():
-                p = base / p
-            defaults["out_dir"] = str(p.resolve())
-
-        max_q = cp.getint(essentials_section, "maximum_number_of_vibrational_quanta", fallback=0)
-        if max_q:
-            defaults["order"] = int(max_q)
-
-        if cp.has_option(essentials_section, "use_sparse"):
-            defaults["use_sparse"] = cp.getboolean(essentials_section, "use_sparse", fallback=True)
-
-    # -------------------------
-    # LVC-specific overrides
-    # -------------------------
-    # Paths: either provide explicit *_path options, or data-dir + filenames.
-    data_dir = _get_path_opt("data_dir", fallback=None) if lvc_section is not None else None
-    if data_dir is not None:
-        defaults["data_dir"] = data_dir
-
-    # Filenames (used together with data-dir)
-    state_energy = _get_str("state_energy", fallback=None) if lvc_section is not None else None
-    if state_energy is None and lvc_section is not None:
-        state_energy = _get_str("epsilon", fallback=None)  # legacy
-    if state_energy is not None:
-        defaults["state_energy"] = state_energy
-
-    coupling = _get_str("coupling", fallback=None) if lvc_section is not None else None
-    if coupling is None and lvc_section is not None:
-        coupling = _get_str("lambda", fallback=None)  # legacy
-    if coupling is not None:
-        defaults["coupling_csv"] = coupling
-
-    tuning = _get_str("tuning", fallback=None) if lvc_section is not None else None
-    if tuning is None and lvc_section is not None:
-        tuning = _get_str("kappa", fallback=None)  # legacy
-    if tuning is not None:
-        defaults["tuning_csv"] = tuning
-
-    modes = _get_str("modes", fallback=None) if lvc_section is not None else None
-    if modes is not None:
-        defaults["modes"] = modes
-
-    # Explicit CSV paths (override data-dir + filenames)
-    eps_p = None
-    lam_p = None
-    kap_p = None
-    mod_p = None
-    if lvc_section is not None:
-        eps_p = (
-            _get_path_opt("state_energy_path", fallback=None)
-            or _get_path_opt("state_energy_csv_path", fallback=None)
-            or _get_path_opt("epsilon_path", fallback=None)  # legacy
-            or _get_path_opt("epsilon_csv_path", fallback=None)  # legacy
-        )
-        lam_p = (
-            _get_path_opt("coupling_path", fallback=None)
-            or _get_path_opt("coupling_csv_path", fallback=None)
-            or _get_path_opt("lambda_path", fallback=None)  # legacy
-            or _get_path_opt("lambda_csv_path", fallback=None)  # legacy
-        )
-        kap_p = (
-            _get_path_opt("tuning_path", fallback=None)
-            or _get_path_opt("tuning_csv_path", fallback=None)
-            or _get_path_opt("kappa_path", fallback=None)  # legacy
-            or _get_path_opt("kappa_csv_path", fallback=None)  # legacy
-        )
-        mod_p = _get_path_opt("modes_path", fallback=None) or _get_path_opt("modes_csv_path", fallback=None)
-    if eps_p is not None:
-        defaults["state_energy_path"] = eps_p
-    if lam_p is not None:
-        defaults["coupling_path"] = lam_p
-    if kap_p is not None:
-        defaults["tuning_path"] = kap_p
-    if mod_p is not None:
-        defaults["modes_path"] = mod_p
-
-    # Run parameters
-    order = _get_int("order", fallback=None) if lvc_section is not None else None
-    if order is not None:
-        defaults["order"] = int(order)
-
-    num_eigs = None
-    if lvc_section is not None:
-        num_eigs = _get_int("num_eigs", fallback=None) or _get_int("num-eigs", fallback=None)
-    if num_eigs is not None:
-        defaults["num_eigs"] = int(num_eigs)
-
-    use_sparse = _get_bool("use_sparse", fallback=None) if lvc_section is not None else None
-    if use_sparse is not None:
-        defaults["use_sparse"] = bool(use_sparse)
-
-    out_dir = None
-    if lvc_section is not None:
-        out_dir = _get_path_opt("out_dir", fallback=None) or _get_path_opt("out-dir", fallback=None)
-    if out_dir is not None and out_dir != "":
-        defaults["out_dir"] = out_dir
-
-    separator = _get_str("separator", fallback=None) if lvc_section is not None else None
-    if separator is not None:
-        defaults["separator"] = separator
-
-    # Phonon options (defaults: dimensionless_coordinates=True, null_point_vib=True)
-    def _get_bool_any(opt: str) -> Optional[bool]:
-        for sec in (lvc_section, essentials_section):
-            if sec is not None and cp.has_option(sec, opt):
-                return cp.getboolean(sec, opt, fallback=True)
-        return None
-
-    dimless = _get_bool_any("dimensionless_coordinates")
-    if dimless is not None:
-        defaults["dimensionless_coordinates"] = dimless
-    npv = _get_bool_any("null_point_vib")
-    if npv is not None:
-        defaults["null_point_vib"] = npv
-
-    return defaults
+    run_dir = _run_dir()
+    parser = LVCConfigParser(cfg_path, run_dir=run_dir)
+    calc = parser.build_calculation()
+    return _calc_to_argparse_defaults(calc)
 
 
 def _build_parser_with_cfg_defaults(argv: list[str] | None) -> argparse.ArgumentParser:
@@ -283,6 +154,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--modes", type=str, default="modes.csv", help="Modes CSV filename (mode;omega).")
     p.add_argument(
+        "--modes-to-use",
+        type=str,
+        default="",
+        help="Comma-separated mode numbers to include from modes.csv (e.g. 1,2,3). Default: all modes.",
+    )
+    p.add_argument(
         "--state-energy-path",
         "--epsilon-path",
         dest="state_energy_path",
@@ -309,14 +186,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--modes-path", type=str, default="", help="Optional explicit path to modes CSV (overrides --data-dir/--modes).")
 
     p.add_argument("--order", type=int, default=2, help="Phonon truncation order (default: 2).")
-    p.add_argument("--num-eigs", type=int, default=20, help="Number of lowest eigenvalues/eigenvectors to compute.")
+    p.add_argument(
+        "--max-phonon-quanta",
+        dest="max_phonon_quanta",
+        type=int,
+        default=None,
+        help="When set, use constrained phonon space (sum of quantum numbers <= this) instead of per-mode order.",
+    )
+    p.add_argument("--num-eigs", type=int, default=None, help="Number of lowest eigenvalues/eigenvectors (default: all).")
     p.add_argument("--use-sparse", action="store_true", default=True, help="Use sparse operators/solver (default).")
     p.add_argument("--no-sparse", dest="use_sparse", action="store_false", help="Force dense operators/solver.")
     p.add_argument(
         "--out-dir",
+        dest="out_dir",
         type=str,
         default="",
-        help="Output directory for eigenvalues/eigenvectors CSVs (default: <repo_root>/results/LVC).",
+        help="Output directory (default: <run_dir>/results/LVC). Relative to cwd.",
     )
     p.add_argument("--separator", type=str, default=";", help="CSV separator (default: ';').")
     p.add_argument(
@@ -345,6 +230,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Omit zero-point energy from phonon Hamiltonian.",
     )
+    p.add_argument(
+        "--save-npz",
+        dest="save_npz",
+        action="store_true",
+        default=False,
+        help="Save eigenvectors and eigenvalues in compressed NPZ format.",
+    )
+    p.add_argument(
+        "--save-csv",
+        dest="save_csv",
+        action="store_true",
+        default=True,
+        help="Save eigenvectors and eigenvalues to CSV files (default).",
+    )
+    p.add_argument(
+        "--no-save-csv",
+        dest="save_csv",
+        action="store_false",
+        help="Do not save eigenvectors and eigenvalues to CSV files.",
+    )
     return p
 
 
@@ -354,60 +259,74 @@ def main(argv: list[str] | None = None) -> int:
     from jahn_teller_dynamics.io.file_io.csv_writer import CSVWriter
 
     args = _build_parser_with_cfg_defaults(argv).parse_args(argv)
+    run_dir = _run_dir()
+    calc = _args_to_calculation(args, run_dir)
 
-    repo_root = _repo_root()
-    data_dir = Path(args.data_dir).expanduser()
-    if not data_dir.is_absolute():
-        data_dir = (repo_root / data_dir)
-    data_dir = data_dir.resolve()
-
-    se_path = Path(args.state_energy_path).expanduser() if getattr(args, "state_energy_path", "") else (data_dir / args.state_energy)
-    coupling_path = Path(args.coupling_path).expanduser() if getattr(args, "coupling_path", "") else (data_dir / args.coupling_csv)
-    tuning_path = Path(args.tuning_path).expanduser() if getattr(args, "tuning_path", "") else (data_dir / args.tuning_csv)
-    modes_path = Path(args.modes_path).expanduser() if getattr(args, "modes_path", "") else (data_dir / args.modes)
-
-    se_path = se_path.resolve()
-    coupling_path = coupling_path.resolve()
-    tuning_path = tuning_path.resolve()
-    modes_path = modes_path.resolve()
-
+    se_path, coupling_path, tuning_path, modes_path = calc.resolve_input_paths(run_dir)
     for pth in [se_path, coupling_path, tuning_path, modes_path]:
         if not pth.exists():
             raise FileNotFoundError(f"Missing required input file: {pth}")
 
-    # Build model from CSVs (phonon order is explicitly set here)
+    print("[1/4] Building LVC model from CSV inputs (electron + phonon subsystems)...")
     model = LVC_model.from_csvs(
         state_energy_csv_path=str(se_path),
         coupling_csv_path=str(coupling_path),
         tuning_csv_path=str(tuning_path),
         modes_csv_path=str(modes_path),
-        order=int(args.order),
-        use_sparse=bool(args.use_sparse),
-        dimensionless_coordinates=bool(getattr(args, "dimensionless_coordinates", True)),
-        null_point_vib=bool(getattr(args, "null_point_vib", True)),
+        mode_numbers=calc.modes_to_use,
+        order=calc.order,
+        max_phonon_quanta=calc.max_phonon_quanta,
+        use_sparse=calc.use_sparse,
+        dimensionless_coordinates=calc.dimensionless_coordinates,
+        null_point_vib=calc.null_point_vib,
     )
+    print(f"  → LVC model built: dim(electron)={model.electron.node.dim}, dim(phonon)={model.phonons.dim}, dim(full)={model.root_node.dim}")
 
-    # Build Hamiltonian once
+    print("[2/4] Constructing LVC Hamiltonian (state_energy + Σ K_i + Σ X_i·V_i)...")
     H = create_lvc_hamiltonian(model)
+    print(f"  → Hamiltonian matrix: dim(H) = {H.matrix.dim}")
 
-    # Diagonalize
+    print("[3/4] Diagonalizing Hamiltonian...")
+    num_of_vals = None if calc.num_eigs is None else calc.num_eigs
+    if num_of_vals is None:
+        num_of_vals = H.matrix.dim
     eig_space = H.calc_eigen_vals_vects(
-        num_of_vals=int(args.num_eigs),
+        num_of_vals=num_of_vals,
         quantum_states_bases=model.root_node.base_states,
     )
 
     eig_vals = [k.eigen_val for k in eig_space.eigen_kets]
+    print(f"  → Computed {len(eig_vals)} eigenvalues/eigenvectors")
 
-    # Save eigenvectors and eigenvalues
-    out_dir = Path(args.out_dir).expanduser().resolve() if args.out_dir else (repo_root / "results" / "LVC")
+    print("[4/4] Saving results...")
+    out_dir = calc.resolve_out_dir(run_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    writer = CSVWriter(separator=str(args.separator), index=True)
-    eig_vec_path = str(out_dir / "eigenvectors.csv")
-    eig_val_path = str(out_dir / "eigenvalues.csv")
-    writer.write_eigen_vectors_and_values(eig_space, eig_vec_path, eig_val_path)
-    print(f"Saved eigenvectors to: {eig_vec_path}")
-    print(f"Saved eigenvalues  to: {eig_val_path}")
+    if calc.save_csv:
+        writer = CSVWriter(separator=calc.separator, index=True)
+        eig_vec_path = str(out_dir / "eigenvectors.csv")
+        eig_val_path = str(out_dir / "eigenvalues.csv")
+        writer.write_eigen_vectors_and_values(eig_space, eig_vec_path, eig_val_path)
+        print(f"Saved eigenvectors to: {eig_vec_path}")
+        print(f"Saved eigenvalues  to: {eig_val_path}")
+
+    if calc.save_npz:
+        eig_vecs = np.column_stack([
+            np.array(ket.coeffs.coeffs).flatten()
+            for ket in eig_space.eigen_kets
+        ])
+        eig_vals_arr = np.array([complex(k.eigen_val) for k in eig_space.eigen_kets])
+        basis_labels = np.array([str(s) for s in model.root_node.base_states._ket_states])
+        npz_path = out_dir / "eigenvectors.npz"
+        np.savez_compressed(
+            npz_path,
+            eigenvectors=eig_vecs,
+            eigenvalues=eig_vals_arr,
+            basis_labels=basis_labels,
+            order=calc.order,
+            dim=H.matrix.dim,
+        )
+        print(f"Saved NPZ to: {npz_path}")
 
     print("=" * 70)
     print("LVC diagonalization complete")
