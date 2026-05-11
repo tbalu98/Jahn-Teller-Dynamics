@@ -23,16 +23,13 @@ from typing import Any
 import numpy as np
 
 from jahn_teller_dynamics.io.config.lvc_config import LVCConfigParser, LVCCalculation
-
-
-def _run_dir() -> Path:
-    """Directory where the script is run from (cwd). All paths are relative to this, same as Exe.py."""
-    return Path.cwd()
+from jahn_teller_dynamics.io.utils.run_context import RunContext
+from jahn_teller_dynamics.io.utils.timestamp_print import print_ts
 
 
 def _default_data_dir() -> Path:
     """Default data dir relative to run directory (cwd)."""
-    return _run_dir() / "data" / "LVC_model" / "butatrien_molecule"
+    return RunContext.from_cwd().data_dir("LVC_model") / "butatrien_molecule"
 
 
 def _calc_to_argparse_defaults(calc: LVCCalculation) -> dict[str, Any]:
@@ -49,8 +46,8 @@ def _calc_to_argparse_defaults(calc: LVCCalculation) -> dict[str, Any]:
         "tuning_path": calc.tuning_path,
         "modes_path": calc.modes_path,
         "modes_to_use": calc.modes_to_use,
-        "order": calc.order,
-        "max_phonon_quanta": calc.max_phonon_quanta,
+        "maximum_number_of_vibrational_quanta": calc.maximum_number_of_vibrational_quanta,
+        "vibrational_quanta_to_dir": calc.vibrational_quanta_to_dir,
         "num_eigs": calc.num_eigs,
         "use_sparse": calc.use_sparse,
         "separator": calc.separator,
@@ -81,8 +78,10 @@ def _args_to_calculation(args: argparse.Namespace, run_dir: Path) -> LVCCalculat
         tuning_path=getattr(args, "tuning_path", "") or "",
         modes_path=getattr(args, "modes_path", "") or "",
         modes_to_use=modes_to_use,
-        order=int(args.order),
-        max_phonon_quanta=getattr(args, "max_phonon_quanta", None),
+        maximum_number_of_vibrational_quanta=int(
+            getattr(args, "maximum_number_of_vibrational_quanta", 0)
+        ),
+        vibrational_quanta_to_dir=int(getattr(args, "vibrational_quanta_to_dir", 0)),
         num_eigs=args.num_eigs,
         use_sparse=bool(args.use_sparse),
         separator=str(getattr(args, "separator", ";")),
@@ -100,8 +99,8 @@ def read_lvc_cfg(cfg_path: str) -> dict[str, Any]:
     Uses LVCConfigParser internally. Config file path is relative to run directory (cwd).
     CLI args always override config values.
     """
-    run_dir = _run_dir()
-    parser = LVCConfigParser(cfg_path, run_dir=run_dir)
+    run_ctx = RunContext.from_cwd()
+    parser = LVCConfigParser(cfg_path, run_dir=run_ctx.run_dir)
     calc = parser.build_calculation()
     return _calc_to_argparse_defaults(calc)
 
@@ -117,9 +116,10 @@ def _build_parser_with_cfg_defaults(argv: list[str] | None) -> argparse.Argument
     ns, _ = pre.parse_known_args(argv)
 
     p = build_arg_parser()
-    if getattr(ns, "config", ""):
-        cfg_defaults = read_lvc_cfg(ns.config)
-        # Only set defaults for keys present in cfg
+    pre_cfg = (getattr(ns, "config", None) or "").strip()
+    cfg_path = pre_cfg or (p.get_default("config") or "").strip()
+    if cfg_path:
+        cfg_defaults = read_lvc_cfg(cfg_path)
         p.set_defaults(**cfg_defaults)
     return p
 
@@ -185,13 +185,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--modes-path", type=str, default="", help="Optional explicit path to modes CSV (overrides --data-dir/--modes).")
 
-    p.add_argument("--order", type=int, default=2, help="Phonon truncation order (default: 2).")
     p.add_argument(
-        "--max-phonon-quanta",
-        dest="max_phonon_quanta",
+        "--maximum-number-of-vibrational-quanta",
+        dest="maximum_number_of_vibrational_quanta",
         type=int,
-        default=None,
-        help="When set, use constrained phonon space (sum of quantum numbers <= this) instead of per-mode order.",
+        default=0,
+        help="Constrained multimode phonons: sum_i n_i <= N. Use 0 and set --vibrational-quanta-to-dir for unconstrained.",
+    )
+    p.add_argument(
+        "--vibrational-quanta-to-dir",
+        dest="vibrational_quanta_to_dir",
+        type=int,
+        default=0,
+        help="Unconstrained multimode phonons: per-mode cutoff n_i <= N. Use 0 if using constrained option.",
     )
     p.add_argument("--num-eigs", type=int, default=None, help="Number of lowest eigenvalues/eigenvectors (default: all).")
     p.add_argument("--use-sparse", action="store_true", default=True, help="Use sparse operators/solver (default).")
@@ -259,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
     from jahn_teller_dynamics.io.file_io.csv_writer import CSVWriter
 
     args = _build_parser_with_cfg_defaults(argv).parse_args(argv)
-    run_dir = _run_dir()
+    run_ctx = RunContext.from_cwd()
+    run_dir = run_ctx.run_dir
     calc = _args_to_calculation(args, run_dir)
 
     se_path, coupling_path, tuning_path, modes_path = calc.resolve_input_paths(run_dir)
@@ -267,26 +274,39 @@ def main(argv: list[str] | None = None) -> int:
         if not pth.exists():
             raise FileNotFoundError(f"Missing required input file: {pth}")
 
-    print("[1/4] Building LVC model from CSV inputs (electron + phonon subsystems)...")
+    max_v = calc.maximum_number_of_vibrational_quanta
+    vdir = calc.vibrational_quanta_to_dir
+    if max_v > 0 and vdir > 0:
+        raise ValueError(
+            "Phonon basis: set only one of maximum_number_of_vibrational_quanta > 0 (constrained) "
+            "or vibrational_quanta_to_dir > 0 (unconstrained per-mode)."
+        )
+    if max_v <= 0 and vdir <= 0:
+        raise ValueError(
+            "Phonon basis: set maximum_number_of_vibrational_quanta > 0 for constrained multimode phonons "
+            "or vibrational_quanta_to_dir > 0 for unconstrained (per-mode cutoff)."
+        )
+
+    print_ts("[1/4] Building LVC model from CSV inputs (electron + phonon subsystems)...", flush=True)
     model = LVC_model.from_csvs(
         state_energy_csv_path=str(se_path),
         coupling_csv_path=str(coupling_path),
         tuning_csv_path=str(tuning_path),
         modes_csv_path=str(modes_path),
         mode_numbers=calc.modes_to_use,
-        order=calc.order,
-        max_phonon_quanta=calc.max_phonon_quanta,
+        order=None if max_v > 0 else vdir,
+        max_phonon_quanta=max_v if max_v > 0 else None,
         use_sparse=calc.use_sparse,
         dimensionless_coordinates=calc.dimensionless_coordinates,
         null_point_vib=calc.null_point_vib,
     )
-    print(f"  → LVC model built: dim(electron)={model.electron.node.dim}, dim(phonon)={model.phonons.dim}, dim(full)={model.root_node.dim}")
+    print_ts(f"  → LVC model built: dim(electron)={model.electron.node.dim}, dim(phonon)={model.phonons.dim}, dim(full)={model.root_node.dim}", flush=True)
 
-    print("[2/4] Constructing LVC Hamiltonian (state_energy + Σ K_i + Σ X_i·V_i)...")
+    print_ts("[2/4] Constructing LVC Hamiltonian (state_energy + Σ K_i + Σ X_i·V_i)...", flush=True)
     H = create_lvc_hamiltonian(model)
-    print(f"  → Hamiltonian matrix: dim(H) = {H.matrix.dim}")
+    print_ts(f"  → Hamiltonian matrix: dim(H) = {H.matrix.dim}", flush=True)
 
-    print("[3/4] Diagonalizing Hamiltonian...")
+    print_ts("[3/4] Diagonalizing Hamiltonian...", flush=True)
     num_of_vals = None if calc.num_eigs is None else calc.num_eigs
     if num_of_vals is None:
         num_of_vals = H.matrix.dim
@@ -296,9 +316,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     eig_vals = [k.eigen_val for k in eig_space.eigen_kets]
-    print(f"  → Computed {len(eig_vals)} eigenvalues/eigenvectors")
+    print_ts(f"  → Computed {len(eig_vals)} eigenvalues/eigenvectors", flush=True)
 
-    print("[4/4] Saving results...")
+    print_ts("[4/4] Saving results...", flush=True)
     out_dir = calc.resolve_out_dir(run_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -307,8 +327,8 @@ def main(argv: list[str] | None = None) -> int:
         eig_vec_path = str(out_dir / "eigenvectors.csv")
         eig_val_path = str(out_dir / "eigenvalues.csv")
         writer.write_eigen_vectors_and_values(eig_space, eig_vec_path, eig_val_path)
-        print(f"Saved eigenvectors to: {eig_vec_path}")
-        print(f"Saved eigenvalues  to: {eig_val_path}")
+        print_ts(f"Saved eigenvectors to: {eig_vec_path}", flush=True)
+        print_ts(f"Saved eigenvalues  to: {eig_val_path}", flush=True)
 
     if calc.save_npz:
         eig_vecs = np.column_stack([
@@ -323,23 +343,24 @@ def main(argv: list[str] | None = None) -> int:
             eigenvectors=eig_vecs,
             eigenvalues=eig_vals_arr,
             basis_labels=basis_labels,
-            order=calc.order,
+            maximum_number_of_vibrational_quanta=calc.maximum_number_of_vibrational_quanta,
+            vibrational_quanta_to_dir=calc.vibrational_quanta_to_dir,
             dim=H.matrix.dim,
         )
-        print(f"Saved NPZ to: {npz_path}")
+        print_ts(f"Saved NPZ to: {npz_path}", flush=True)
 
-    print("=" * 70)
-    print("LVC diagonalization complete")
-    print(f"dim(H) = {H.matrix.dim}")
-    print(f"computed eigenvalues = {len(eig_vals)}")
-    print("-" * 70)
+    print_ts("=" * 70, flush=True)
+    print_ts("LVC diagonalization complete", flush=True)
+    print_ts(f"dim(H) = {H.matrix.dim}", flush=True)
+    print_ts(f"computed eigenvalues = {len(eig_vals)}", flush=True)
+    print_ts("-" * 70, flush=True)
     for i, ev in enumerate(eig_vals):
         try:
             ev_real = float(ev.real)  # type: ignore[union-attr]
-            print(f"E[{i:03d}] = {ev_real:.12g}")
+            print_ts(f"E[{i:03d}] = {ev_real:.12g}", flush=True)
         except Exception:
-            print(f"E[{i:03d}] = {ev}")
-    print("=" * 70)
+            print_ts(f"E[{i:03d}] = {ev}", flush=True)
+    print_ts("=" * 70, flush=True)
 
     return 0
 

@@ -58,7 +58,7 @@ class SpectrumBuilder:
             dipole_x_path=config.dipole_x_path,
             dipole_y_path=config.dipole_y_path,
             dipole_z_path=config.dipole_z_path,
-            results_folder=config.results_folder,
+            output_folder=config.output_folder,
             output_prefix=config.output_prefix,
             out_path=config.out_path,
             separator=config.separator,

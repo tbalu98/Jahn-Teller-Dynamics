@@ -22,7 +22,8 @@ atom_structure_field = 'atom_structure_parameters'
 # Spectrum section (LVC absorption spectrum)
 spectrum_section = "spectrum"
 spectrum_data_folder_opt = "data_folder"
-spectrum_results_folder_opt = "results_folder"
+spectrum_output_folder_opt = "output_folder"
+spectrum_results_folder_legacy_opt = "results_folder"  # [spectrum] legacy key
 spectrum_output_prefix_opt = "output_prefix"
 
 # Smearing function section (optional, for spectrum broadening)

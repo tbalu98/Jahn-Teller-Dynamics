@@ -14,11 +14,7 @@ from typing import Optional
 
 from jahn_teller_dynamics.io.config.reader import ConfigReader
 from jahn_teller_dynamics.io.utils.path_manager import PathManager
-
-
-def _run_dir() -> Path:
-    """Directory where the script is run from (cwd). Paths are relative to this."""
-    return Path.cwd()
+from jahn_teller_dynamics.io.utils.run_context import run_dir as get_run_dir
 
 
 @dataclass
@@ -44,9 +40,11 @@ class LVCCalculation:
     tuning_csv: str = "tuning.csv"
     modes: str = "modes.csv"
 
-    # Run parameters
-    order: int = 2
-    max_phonon_quanta: Optional[int] = None  # When set, use MultiModeConstrainedPhononSystem (sum <= this)
+    # Phonon Hilbert space (exactly one must be > 0; see LVC.py / LVC_model.from_csvs)
+    # maximum_number_of_vibrational_quanta: MultiModeConstrainedPhononSystem, sum_i n_i <= N
+    # vibrational_quanta_to_dir: MultiModePhononSystem, per-mode cutoff n_i <= N for each mode
+    maximum_number_of_vibrational_quanta: int = 0
+    vibrational_quanta_to_dir: int = 0
     num_eigs: Optional[int] = None
     use_sparse: bool = True
     modes_to_use: Optional[list[int]] = None
@@ -65,7 +63,7 @@ class LVCCalculation:
         Returns:
             (se_path, coupling_path, tuning_path, modes_path)
         """
-        rd = run_dir or _run_dir()
+        rd = run_dir or get_run_dir()
         data = Path(self.data_dir).expanduser()
         if not data.is_absolute():
             data = (rd / data).resolve()
@@ -88,7 +86,7 @@ class LVCCalculation:
 
     def resolve_out_dir(self, run_dir: Optional[Path] = None) -> Path:
         """Resolve output directory to absolute Path."""
-        rd = run_dir or _run_dir()
+        rd = run_dir or get_run_dir()
         if self.out_dir:
             p = Path(self.out_dir).expanduser()
             if not p.is_absolute():
@@ -111,7 +109,7 @@ class LVCConfigParser:
             config_file_path: Path to .cfg file (relative to run_dir or absolute).
             run_dir: Base for resolving relative paths. Defaults to cwd.
         """
-        self.run_dir = run_dir or _run_dir()
+        self.run_dir = run_dir or get_run_dir()
         cfg_path = Path(config_file_path).expanduser()
         if not cfg_path.is_absolute():
             cfg_path = (self.run_dir / cfg_path).resolve()
@@ -189,10 +187,6 @@ class LVCConfigParser:
                     p = (self._base / p).resolve()
                 calc.out_dir = str(p)
 
-            max_q = self._get_int("maximum_number_of_vibrational_quanta", 0)
-            if max_q:
-                calc.order = max_q
-
             if self.config.has_option(self._essentials_section, "use_sparse"):
                 calc.use_sparse = self.config.getboolean(
                     self._essentials_section, "use_sparse", fallback=True
@@ -239,12 +233,6 @@ class LVCConfigParser:
                     except ValueError:
                         calc.modes_to_use = None
 
-            if (o := self._get_int("order")) is not None:
-                calc.order = o
-
-            if (mq := self._get_int("max_phonon_quanta")) is not None:
-                calc.max_phonon_quanta = mq
-
             raw = self._get_str("num_eigs") or self._get_str("num-eigs")
             if raw is not None:
                 raw = raw.strip().lower()
@@ -265,5 +253,12 @@ class LVCConfigParser:
             ]:
                 if (v := self._get_bool(opt)) is not None:
                     setattr(calc, attr, v)
+
+        for opt, attr in (
+            ("maximum_number_of_vibrational_quanta", "maximum_number_of_vibrational_quanta"),
+            ("vibrational_quanta_to_dir", "vibrational_quanta_to_dir"),
+        ):
+            if (v := self._get_int(opt, None)) is not None:
+                setattr(calc, attr, v)
 
         return calc

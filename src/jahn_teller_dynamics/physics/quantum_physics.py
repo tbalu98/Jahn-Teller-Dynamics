@@ -3,7 +3,7 @@ import jahn_teller_dynamics.math.braket_formalism as bf
 from jahn_teller_dynamics.math.matrix_mechanics import MatrixOperator
 import numpy as np
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     import jahn_teller_dynamics.physics.jahn_teller_theory as jt
 else:
@@ -122,7 +122,6 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         self.def_braket_create_qm_ops()
         self.def_braket_annil_qm_ops()
 
-
         self.calc_create_ops()
         self.calc_annil_ops()
 
@@ -165,17 +164,21 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         Get the position operator for a spatial coordinate by its label.
 
         Args:
-            coord: Coordinate label (e.g. 'x', 'y') from qm_nums_names.
+            coord: Coordinate label (e.g. 'x', 'y', 'qx', 'qy') from qm_nums_names.
+                   Supports both short form (x, y) and expression form (qx, qy).
 
         Returns:
             MatrixOperator for that coordinate's position.
         """
-        if coord not in self.operators:
-            raise ValueError(
-                f"Coordinate '{coord}' not found in {self.id}. "
-                f"Available: {list(self.qm_nums_names)}"
-            )
-        return self.operators[coord]
+        if coord in self.operators:
+            return self.operators[coord]
+        # Support qx -> x when expression uses q-prefixed form (e.g. qx*qy)
+        if coord.startswith("q") and len(coord) > 1 and coord[1:] in self.operators:
+            return self.operators[coord[1:]]
+        raise ValueError(
+            f"Coordinate '{coord}' not found in {self.id}. "
+            f"Available: {list(self.qm_nums_names)}"
+        )
 
     def evaluate_position_expression(self, expr: str):
         """
@@ -204,10 +207,8 @@ class one_mode_phonon_sys(qs.quantum_system_node):
             self.creator_braket_ops.append(creator_braket_op)
 
     def def_braket_annil_qm_ops(self):
+        """Annihilator braket ops are the Hermitian adjoints of creators; no separate list."""
         self.annil_braket_ops = []
-        for key in self.names_dict.keys():
-            annil_braket_op = bf.annihilator_operator(self.names_dict[key],key)
-            self.annil_braket_ops.append(annil_braket_op)
 
     def calc_create_ops(self):
         self.create_mx_ops = {}
@@ -218,9 +219,8 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
     def calc_annil_ops(self):
         self.annil_mx_ops = {}
-        for annil_braket_op in self.annil_braket_ops:
-            mx_op =  self.mx_op_builder.create_MatrixOperator(annil_braket_op, subsys_name = self.phonon_sys_name)
-            self.annil_mx_ops[annil_braket_op.name] = mx_op
+        for key in self.create_mx_ops:
+            self.annil_mx_ops[key] = self.create_mx_ops[key].adjoint()
 
 
     def over_est_H_i_op(self, qm_num_name):
@@ -288,6 +288,229 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
         return self.calc_pos_prefactor()**2*self.over_est_pos_i_j_op(qm_num_name_1, qm_num_name_2).truncate_matrix(self.trunc_num)
 
+
+def _hos_creator_dense_matrix(d_full: int) -> np.ndarray:
+    """Full number-basis matrix for a†, shape ``(d_full, d_full)`` (dense)."""
+    if d_full < 1:
+        raise ValueError("d_full must be at least 1")
+    mat = np.zeros((d_full, d_full), dtype=maths.complex_number_typ)
+    for n in range(d_full - 1):
+        mat[n + 1, n] = maths.complex_number_typ(np.sqrt(float(n + 1)))
+    return mat
+
+
+def _hos_creator_csr_matrix(d_full: int):
+    """Full ``a†`` as SciPy CSR: only entries (n+1, n) = √(n+1)."""
+    from scipy.sparse import csr_matrix as _csr_matrix
+
+    if d_full < 1:
+        raise ValueError("d_full must be at least 1")
+    if d_full <= 1:
+        return _csr_matrix((d_full, d_full), dtype=maths.complex_number_typ)
+    cols = np.arange(0, d_full - 1, dtype=np.int32)
+    rows = cols + 1
+    dat = np.sqrt(cols.astype(np.float64) + 1.0).astype(maths.complex_number_typ)
+    return _csr_matrix((dat, (rows, cols)), shape=(d_full, d_full), dtype=maths.complex_number_typ)
+
+
+class OneDimPhononSys(qs.quantum_system_node):
+    """
+    Single-mode harmonic oscillator with one spatial coordinate and Hilbert dimension ``dimension``.
+
+    The creation operator is assembled in the number-state convention
+    :math:`(a^\\dagger)_{n+1,n}=\\sqrt{n+1}`; the annihilator is its Hermitian conjugate.
+    With ``use_sparse=True`` (default), ladder operators are built as CSR :class:`~scipy.sparse.csr_matrix`
+    without densifying the full harmonic window; ``q``, ``N``, and ``K`` then stay sparse through
+    :class:`~jahn_teller_dynamics.math.matrix_mechanics.MatrixOperator` arithmetic.
+    Position :math:`q` and phonon Hamiltonian follow the same formulas as ``one_mode_phonon_sys``.
+
+    If ``matching_phonon_order`` is set (same meaning as ``order`` in ``one_mode_phonon_sys``),
+    the basis is ``harm_osc_sys(1, matching_phonon_order + 1, …).reduce_space(dimension)`` —
+    identical ordering to the legacy one-mode truncation; ``XX`` matches
+    ``truncate(q_\\mathrm{full}^2)`` from that legacy build (not ``q_\\mathrm{trunc}^2``). If omitted,
+    states are exactly :math:`|0\\rangle,\\ldots,|{\\mathrm{dimension}-1}\\rangle` from
+    ``harm_osc_sys(1, dimension - 1, …)``, and ``XX = q^2`` on that basis.
+
+    For the same ``order`` as ``one_mode_phonon_sys``, use ``dimension = order + 1`` (single-coordinate
+    truncated active size). :class:`~jahn_teller_dynamics.physics.models.system_builder.MultiModePhononSystem`
+    uses this class for one-coordinate modes with that convention.
+    """
+
+    def __init__(
+        self,
+        mode: float,
+        dimension: int,
+        coord_name: str = "x",
+        phonon_sys_name: str = "",
+        id: str = "",
+        use_sparse: bool = True,
+        dimensionless_coordinates: bool = True,
+        null_point_vib: bool = True,
+        *,
+        matching_phonon_order: Optional[int] = None,
+    ) -> None:
+        if dimension < 1:
+            raise ValueError("dimension must be at least 1 (number of active oscillator states)")
+        self.phonon_sys_name = phonon_sys_name
+        self.mode = float(mode)
+        self.spatial_dim = 1
+        self.dimension = int(dimension)
+        self.coord_name = str(coord_name)
+        self.qm_nums_names = [self.coord_name]
+        self.use_sparse = use_sparse
+        self.dimensionless_coordinates = dimensionless_coordinates
+        self.null_point_vib = null_point_vib
+        self.matching_phonon_order = matching_phonon_order
+        self.id = id or phonon_sys_name
+        self.children = []
+
+        self.names_dict = {self.coord_name: 0}
+
+        full_bases_for_legacy_xx: Optional["mm.hilber_space_bases"] = None
+        if matching_phonon_order is not None:
+            calc_order = int(matching_phonon_order) + 1
+            full_bases = mm.hilber_space_bases().harm_osc_sys(
+                1, calc_order, self.qm_nums_names
+            )
+            full_bases_for_legacy_xx = full_bases
+            if self.dimension > full_bases.dim:
+                raise ValueError(
+                    f"dimension={self.dimension} exceeds full harmonic window "
+                    f"dim={full_bases.dim} for matching_phonon_order={matching_phonon_order}"
+                )
+            self.calculation_bases = full_bases.reduce_space(self.dimension)
+            if use_sparse:
+                c_full_csr = _hos_creator_csr_matrix(full_bases.dim)
+                creator_csr = c_full_csr[: self.dimension, : self.dimension].tocsr()
+                create_mat = maths.SparseMatrix(creator_csr)
+            else:
+                c_full_dense = _hos_creator_dense_matrix(full_bases.dim)
+                creator_block = c_full_dense[
+                    : self.dimension, : self.dimension
+                ].copy().astype(maths.complex_number_typ, copy=False)
+                create_mat = maths.Matrix(np.asmatrix(creator_block))
+        else:
+            ho_order = self.dimension - 1
+            full_bases = mm.hilber_space_bases().harm_osc_sys(
+                1, ho_order, self.qm_nums_names
+            )
+            self.calculation_bases = full_bases
+            if self.calculation_bases.dim != self.dimension:
+                raise AssertionError(
+                    f"Hilbert mismatch: dimension={self.dimension} "
+                    f"but harm_osc_sys gave dim={self.calculation_bases.dim}"
+                )
+            if use_sparse:
+                creator_csr = _hos_creator_csr_matrix(self.dimension)
+                create_mat = maths.SparseMatrix(creator_csr)
+            else:
+                create_mat = maths.Matrix(np.asmatrix(_hos_creator_dense_matrix(self.dimension)))
+
+        self.hilbert_space_bases = self.calculation_bases
+        self.base_states = self.calculation_bases
+        self.calc_h_space_dim = self.dimension
+        self.dim = self.dimension
+        self.trunc_num = 0
+        self.h_sp_dim = self.dimension
+        self.mx_op_builder = mm.braket_to_matrix_formalism(
+            self.calculation_bases, use_sparse=use_sparse
+        )
+        self.mx_op_builder.used_dimension = self.dimension
+
+        sub = phonon_sys_name or self.id or "phonon"
+
+        create_op = MatrixOperator(create_mat, name="a_dag", subsys_name=sub)
+        annil_op = create_op.adjoint()
+        annil_op.name = f"{coord_name}_a"
+        create_op.subsys_name = sub
+        annil_op.subsys_name = sub
+
+        self.create_mx_ops = {self.coord_name: create_op}
+        self.annil_mx_ops = {self.coord_name: annil_op}
+
+        if self.dimensionless_coordinates:
+            denom = mm.SQRT_2
+        else:
+            denom = mm.SQRT_2 * (self.mode ** 0.5)
+        pos_op = (
+            self.annil_mx_ops[self.coord_name] + self.create_mx_ops[self.coord_name]
+        ) / denom
+        pos_op.subsys_name = sub
+
+        n_op = self.create_mx_ops[self.coord_name] * self.annil_mx_ops[self.coord_name]
+        h_op = self.mode * n_op
+        if self.null_point_vib:
+            h_op = h_op + 0.5 * self.mode * float(self.spatial_dim) * self.create_id_op()
+        h_op.subsys_name = sub
+
+        # Match legacy ``one_mode_phonon_sys``: ``XX`` is ``truncate(q_full^2)``, not ``(truncate q)^2``.
+        if full_bases_for_legacy_xx is not None:
+            fbd = full_bases_for_legacy_xx.dim
+            trunc_xx = fbd - self.dimension
+            if use_sparse:
+                full_create_mat = maths.SparseMatrix(_hos_creator_csr_matrix(fbd))
+            else:
+                full_create_mat = maths.Matrix(
+                    np.asmatrix(_hos_creator_dense_matrix(fbd))
+                )
+            full_create = MatrixOperator(
+                full_create_mat, name="a_dag_full", subsys_name=sub
+            )
+            full_annih = full_create.adjoint()
+            q_full = (full_annih + full_create) / denom
+            q_full.subsys_name = sub
+            xx_op = (q_full * q_full).truncate_matrix(trunc_xx)
+            xx_op.subsys_name = sub
+        else:
+            xx_op = pos_op * pos_op
+
+        self.operators = {
+            "K": h_op,
+            self.coord_name: pos_op,
+            "X": pos_op,
+            "XX": xx_op,
+        }
+
+        super().__init__(
+            id,
+            base_states=self.base_states,
+            operators=self.operators,
+            dim=self.dimension,
+        )
+
+    def create_id_op(self, matrix_type=None) -> mm.MatrixOperator:
+        if matrix_type is None:
+            matrix_type = maths.SparseMatrix if self.use_sparse else maths.Matrix
+        return super().create_id_op(matrix_type=matrix_type)
+
+    def calc_pos_prefactor(self) -> float:
+        return 1.0
+
+    def get_position_operator(self, coord: str) -> MatrixOperator:
+        if coord in self.operators:
+            return self.operators[coord]
+        if (
+            coord.startswith("q")
+            and len(coord) > 1
+            and coord[1:] in self.operators
+        ):
+            return self.operators[coord[1:]]
+        raise ValueError(
+            f"Coordinate '{coord}' not found in {self.id}. "
+            f"Available: {list(self.qm_nums_names)}"
+        )
+
+    def evaluate_position_expression(self, expr: str):
+        from jahn_teller_dynamics.physics.models.position_expr_parser import (
+            evaluate_position_expression as _eval,
+        )
+
+        return _eval(self, expr, allowed_coords=list(self.qm_nums_names))
+
+    def get_qm_num(self, state, key):
+        if isinstance(state, bf.ket_state) or isinstance(state, bf.bra_state):
+            qm_num_index = self.names_dict[key]
+            return state.qm_state[qm_num_index]
 
 
 class Exe_tree:

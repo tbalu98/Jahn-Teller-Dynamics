@@ -2,7 +2,7 @@
 Spectrum configuration loading via ConfigReader.
 
 Reads the [spectrum] section from .cfg files and resolves paths
-relative to data_folder and results_folder. Uses PathManager and file_utils.
+relative to data_folder and output_folder. Uses PathManager and file_utils.
 """
 
 from __future__ import annotations
@@ -21,7 +21,18 @@ from jahn_teller_dynamics.io.config.constants import (
     smearing_amplitude_opt,
 )
 from jahn_teller_dynamics.io.utils.path_manager import PathManager
-from jahn_teller_dynamics.io.utils.file_utils import resolve_path_relative
+from jahn_teller_dynamics.io.utils.run_context import RunContext
+
+
+def _spectrum_output_folder_raw_from_overrides(
+    overrides: dict, path_manager: PathManager
+) -> str:
+    """Prefer output_folder override, then legacy results_folder, then .cfg."""
+    for key in ("output_folder", "results_folder"):
+        val = overrides.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    return path_manager.get_spectrum_output_folder()
 
 
 def _parse_smearing_float(
@@ -42,7 +53,7 @@ class SpectrumConfig:
     Configuration for spectrum calculation, loaded from [spectrum] section.
 
     All paths are resolved to absolute paths. Paths in config are relative to
-    data_folder (for dipole) or results_folder (for npz, out).
+    data_folder (for dipole) or output_folder (for npz, out).
     """
 
     npz_path: str = ""
@@ -50,7 +61,7 @@ class SpectrumConfig:
     dipole_x_path: str = ""
     dipole_y_path: str = ""
     dipole_z_path: str = ""
-    results_folder: str = ""
+    output_folder: str = ""
     output_prefix: str = "spectrum"
     out_path: str = ""
     separator: str = ";"
@@ -82,7 +93,7 @@ class SpectrumConfig:
             config_path: Optional path to config file (for PathManager).
         """
         overrides = overrides or {}
-        base = run_dir if run_dir is not None else Path.cwd()
+        ctx = RunContext(run_dir=run_dir if run_dir is not None else Path.cwd())
 
         if not reader.has_section(spectrum_section):
             return cls()
@@ -96,14 +107,16 @@ class SpectrumConfig:
             return path_manager.get_option_from_section(spectrum_section, opt, default)
 
         data_folder_raw = overrides.get("data_folder") or path_manager.get_spectrum_data_folder()
-        results_folder_raw = overrides.get("results_folder") or path_manager.get_spectrum_results_folder()
+        output_folder_raw = _spectrum_output_folder_raw_from_overrides(
+            overrides, path_manager
+        )
 
-        data_folder = base
-        results_folder = base
+        data_folder = ctx.run_dir
+        output_folder_path = ctx.run_dir
         if data_folder_raw:
-            data_folder = resolve_path_relative(data_folder_raw, ".", base)
-        if results_folder_raw:
-            results_folder = resolve_path_relative(results_folder_raw, ".", base)
+            data_folder = ctx.resolve(data_folder_raw)
+        if output_folder_raw:
+            output_folder_path = ctx.resolve(output_folder_raw)
 
         npz_raw = get("npz")
         dipole_raw = get("dipole")
@@ -111,13 +124,15 @@ class SpectrumConfig:
         dipole_y_raw = get("dipole_y")
         dipole_z_raw = get("dipole_z")
 
-        npz_path = str(resolve_path_relative(npz_raw, results_folder, base)) if npz_raw else ""
-        dipole_path = str(resolve_path_relative(dipole_raw, data_folder, base)) if dipole_raw else ""
-        dipole_x_path = str(resolve_path_relative(dipole_x_raw, data_folder, base)) if dipole_x_raw else ""
-        dipole_y_path = str(resolve_path_relative(dipole_y_raw, data_folder, base)) if dipole_y_raw else ""
-        dipole_z_path = str(resolve_path_relative(dipole_z_raw, data_folder, base)) if dipole_z_raw else ""
+        npz_path = str(ctx.resolve(npz_raw, base=output_folder_path)) if npz_raw else ""
+        dipole_path = str(ctx.resolve(dipole_raw, base=data_folder)) if dipole_raw else ""
+        dipole_x_path = str(ctx.resolve(dipole_x_raw, base=data_folder)) if dipole_x_raw else ""
+        dipole_y_path = str(ctx.resolve(dipole_y_raw, base=data_folder)) if dipole_y_raw else ""
+        dipole_z_path = str(ctx.resolve(dipole_z_raw, base=data_folder)) if dipole_z_raw else ""
 
-        results_folder_str = str(results_folder) if results_folder != base else ""
+        output_folder_str = (
+            str(output_folder_path) if output_folder_path != ctx.run_dir else ""
+        )
         output_prefix = get("output_prefix", "spectrum")
         out_path = get("out")
         separator = get("separator", ";") or ";"
@@ -175,7 +190,7 @@ class SpectrumConfig:
             dipole_x_path=dipole_x_path,
             dipole_y_path=dipole_y_path,
             dipole_z_path=dipole_z_path,
-            results_folder=results_folder_str,
+            output_folder=output_folder_str,
             output_prefix=output_prefix,
             out_path=out_path,
             separator=separator,
@@ -213,17 +228,19 @@ class SpectrumConfig:
             run_dir: Base for resolving relative paths (cwd). Defaults to Path.cwd().
             overrides: Optional dict to override config values (e.g. from CLI).
         """
-        base = run_dir if run_dir is not None else Path.cwd()
+        ctx = RunContext(run_dir=run_dir if run_dir is not None else Path.cwd())
         config_path = Path(config_path).expanduser()
         if not config_path.is_absolute():
-            config_path = (base / config_path).resolve()
+            config_path = ctx.resolve(str(config_path))
         if not config_path.exists():
             # No config file: build from overrides only
             overrides = overrides or {}
-            results_folder_raw = overrides.get("results_folder", "")
+            of_raw = overrides.get("output_folder") or overrides.get(
+                "results_folder", ""
+            )
             data_folder_raw = overrides.get("data_folder", "")
-            results_folder = resolve_path_relative(results_folder_raw or ".", ".", base)
-            data_folder = resolve_path_relative(data_folder_raw or ".", ".", base)
+            output_folder_path = ctx.resolve(of_raw or ".")
+            data_folder = ctx.resolve(data_folder_raw or ".")
 
             npz_raw = overrides.get("npz", "")
             dipole_raw = overrides.get("dipole", "")
@@ -231,13 +248,17 @@ class SpectrumConfig:
             dy = overrides.get("dipole_y", "")
             dz = overrides.get("dipole_z", "")
 
-            npz_path = str(resolve_path_relative(npz_raw, results_folder, base)) if npz_raw else ""
-            dipole_path = str(resolve_path_relative(dipole_raw, data_folder, base)) if dipole_raw else ""
-            dipole_x_path = str(resolve_path_relative(dx, data_folder, base)) if dx else ""
-            dipole_y_path = str(resolve_path_relative(dy, data_folder, base)) if dy else ""
-            dipole_z_path = str(resolve_path_relative(dz, data_folder, base)) if dz else ""
+            npz_path = (
+                str(ctx.resolve(npz_raw, base=output_folder_path)) if npz_raw else ""
+            )
+            dipole_path = str(ctx.resolve(dipole_raw, base=data_folder)) if dipole_raw else ""
+            dipole_x_path = str(ctx.resolve(dx, base=data_folder)) if dx else ""
+            dipole_y_path = str(ctx.resolve(dy, base=data_folder)) if dy else ""
+            dipole_z_path = str(ctx.resolve(dz, base=data_folder)) if dz else ""
 
-            results_folder_str = str(results_folder) if results_folder != base else ""
+            output_folder_str = (
+                str(output_folder_path) if output_folder_path != ctx.run_dir else ""
+            )
             sf = (overrides.get("smearing_function") or "").strip()
             sh = _parse_smearing_float(overrides.get("smearing_HWHM"), None)
             sa = _parse_smearing_float(overrides.get("smearing_amplitude"), 1.0) or 1.0
@@ -247,7 +268,7 @@ class SpectrumConfig:
                 dipole_x_path=dipole_x_path,
                 dipole_y_path=dipole_y_path,
                 dipole_z_path=dipole_z_path,
-                results_folder=results_folder_str,
+                output_folder=output_folder_str,
                 output_prefix=overrides.get("output_prefix", "spectrum"),
                 out_path=overrides.get("out", ""),
                 separator=overrides.get("separator", overrides.get("sep", ";")) or ";",

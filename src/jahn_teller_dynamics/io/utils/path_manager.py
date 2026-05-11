@@ -16,8 +16,9 @@ from jahn_teller_dynamics.io.config.constants import (
     out_folder_opt,
     out_prefix_opt,
     spectrum_data_folder_opt,
+    spectrum_output_folder_opt,
     spectrum_output_prefix_opt,
-    spectrum_results_folder_opt,
+    spectrum_results_folder_legacy_opt,
     spectrum_section,
 )
 
@@ -155,9 +156,14 @@ class PathManager:
         """Get data_folder from [spectrum] section."""
         return self.get_option_from_section(spectrum_section, spectrum_data_folder_opt)
 
-    def get_spectrum_results_folder(self) -> str:
-        """Get results_folder from [spectrum] section."""
-        return self.get_option_from_section(spectrum_section, spectrum_results_folder_opt)
+    def get_spectrum_output_folder(self) -> str:
+        """Get output_folder from [spectrum] section; falls back to legacy results_folder."""
+        v = self.get_option_from_section(spectrum_section, spectrum_output_folder_opt)
+        if v:
+            return v
+        return self.get_option_from_section(
+            spectrum_section, spectrum_results_folder_legacy_opt
+        )
 
     def get_spectrum_output_prefix(self) -> str:
         """Get output_prefix from [spectrum] section."""

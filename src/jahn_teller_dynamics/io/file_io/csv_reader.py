@@ -23,7 +23,8 @@ Supported CSV formats (semicolon separated by default):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -34,13 +35,43 @@ import jahn_teller_dynamics.math.maths as maths
 import jahn_teller_dynamics.math.matrix_mechanics as mm
 
 
+@dataclass(frozen=True)
+class ModesFromCsv:
+    """
+    Phonon mode identifiers and frequencies read from a modes table.
+
+    ``labels[i]`` and ``omegas[i]`` refer to the same mode. For legacy CSV with
+    a purely numeric ``mode`` column, ``labels`` are ``q1``, ``q2``, ... in
+    **sorted** mode-number order. For a string ``mode`` column (e.g. ``q1``,
+    ``q3x``), ``labels`` are those strings in **file order**.
+    """
+
+    labels: List[str]
+    omegas: List[float]
+
+
 @dataclass
 class CSVReader:
     separator: str = ";"
 
+    @staticmethod
+    def detect_separator(path: Union[str, Path]) -> str:
+        """Use `;` if it appears more often than `,` in the header line; else `,`."""
+        path = Path(path)
+        line = path.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
+        return ";" if line.count(";") > line.count(",") else ","
+
     def _read_df(self, path: str) -> pd.DataFrame:
         df = pd.read_csv(path, sep=self.separator)
         df.columns = [c.strip().lower() for c in df.columns]
+        return df
+
+    def read_df_auto(self, path: Union[str, Path]) -> pd.DataFrame:
+        """Read CSV using :meth:`detect_separator` (overrides instance ``separator``)."""
+        path = str(path)
+        sep = self.detect_separator(path)
+        df = pd.read_csv(path, sep=sep)
+        df.columns = [str(c).strip().lower() for c in df.columns]
         return df
 
     # ------------------------------------------------------------------
@@ -56,6 +87,40 @@ class CSVReader:
         states = df["state"].tolist()
         values = df["value"].to_numpy(dtype=float)
         return states, values
+
+    def read_diagonal_state_energies(self, path: Union[str, Path]) -> Tuple[List[str], np.ndarray]:
+        """
+        Diagonal electronic energies: flexible column names.
+
+        Accepts either:
+
+        - ``state``, ``value`` (LVC / legacy epsilon), or
+        - ``el_state``, ``energy`` (PVC / dJT trial style; ``el_state`` can be any non-empty label).
+        """
+        df = self.read_df_auto(path)
+        if "el_state" in df.columns and "energy" in df.columns:
+            df = df[["el_state", "energy"]].copy()
+            df["el_state"] = df["el_state"].astype(str).str.strip()
+            if (df["el_state"] == "").any():
+                raise ValueError("Diagonal energies CSV contains an empty el_state label")
+            if df["el_state"].duplicated().any():
+                raise ValueError("Diagonal energies CSV contains duplicate el_state labels")
+            df["energy"] = pd.to_numeric(df["energy"], errors="raise")
+            # Preserve file order: row number implies internal electronic index.
+            states = df["el_state"].tolist()
+            values = df["energy"].to_numpy(dtype=float)
+            return states, values
+        if "state" in df.columns and "value" in df.columns:
+            df = df[["state", "value"]].copy()
+            df["state"] = df["state"].astype(str).str.strip()
+            df["value"] = pd.to_numeric(df["value"], errors="raise")
+            states = df["state"].tolist()
+            values = df["value"].to_numpy(dtype=float)
+            return states, values
+        raise ValueError(
+            "Expected columns (state, value) or (el_state, energy); got: "
+            f"{list(df.columns)}"
+        )
 
     def build_epsilon_operator(
         self,
@@ -225,4 +290,119 @@ class CSVReader:
             raise ValueError("Modes CSV contains mode < 1 (expected 1-based indices)")
 
         return df["omega"].to_list()
+
+    def read_modes_flexible(
+        self,
+        path: Union[str, Path],
+        mode_numbers: Optional[Sequence[int]] = None,
+    ) -> ModesFromCsv:
+        """
+        Read ``mode`` and ``omega`` or ``energy`` columns.
+
+        If every ``mode`` cell parses as a (finite) number, the behaviour matches
+        legacy: rows are ordered by increasing numeric ``mode``, and quantum
+        labels default to ``q1``, ``q2``, ... in that order. The optional
+        ``mode_numbers`` filter selects by that numeric **mode** value (e.g. 1, 2, 3).
+
+        If any ``mode`` value is non-numeric (e.g. ``q1``, ``q3x``), the column is
+        treated as explicit mode **names**; row **file order** is preserved, and
+        ``mode_numbers`` if set filters by 1-based **row index** (1 = first data row
+        after the header).
+
+        Returns:
+            :class:`ModesFromCsv` with ``labels`` and ``omegas`` of equal length.
+        """
+        df = self.read_df_auto(path)
+        omega_col = "omega" if "omega" in df.columns else "energy"
+        if "mode" not in df.columns or omega_col not in df.columns:
+            raise ValueError(
+                f"Modes CSV must contain 'mode' and 'omega' or 'energy'; got {list(df.columns)}"
+            )
+        work = df[["mode", omega_col]].copy()
+        work.columns = ["mode", "omega"]
+        work["omega"] = pd.to_numeric(work["omega"], errors="raise").astype(float)
+
+        mode_num = pd.to_numeric(work["mode"], errors="coerce")
+        use_int_mode = bool(mode_num.notna().all())
+
+        if not use_int_mode:
+            work["label"] = work["mode"].map(lambda x: str(x).strip())
+            if (work["label"] == "").any():
+                raise ValueError("Modes CSV has an empty mode name")
+            if work["label"].nunique() != len(work):
+                raise ValueError("Modes CSV has duplicate mode names")
+            work = work.reset_index(drop=True)
+            if mode_numbers is not None:
+                n = len(work)
+                allowed = {int(m) for m in mode_numbers}
+                bad = allowed - set(range(1, n + 1))
+                if bad:
+                    raise ValueError(
+                        f"Invalid mode index {sorted(bad)} for named modes (valid 1..{n})"
+                    )
+                mask = [(i + 1) in allowed for i in range(len(work))]
+                work = work[mask]
+            if len(work) == 0:
+                raise ValueError("Modes CSV is empty (or no modes match mode_numbers)")
+            labels = work["label"].tolist()
+            omegas = work["omega"].tolist()
+            return ModesFromCsv(labels=labels, omegas=omegas)
+
+        work["mode"] = mode_num.astype(int)
+        if (mode_num != work["mode"]).any():
+            raise ValueError("Modes CSV 'mode' column must contain integer values")
+
+        if mode_numbers is not None:
+            allowed = {int(m) for m in mode_numbers}
+            missing = allowed - set(work["mode"])
+            if missing:
+                raise ValueError(
+                    f"Modes {sorted(missing)} not found in CSV (available: {sorted(work['mode'].tolist())})"
+                )
+            work = work[work["mode"].isin(allowed)].copy()
+
+        work = work.sort_values("mode", ascending=True)
+        modes = work["mode"].to_numpy(dtype=int)
+        if len(modes) == 0:
+            raise ValueError("Modes CSV is empty (or no modes match mode_numbers)")
+        if np.any(modes < 1):
+            raise ValueError("Modes CSV contains mode < 1 (expected 1-based indices)")
+
+        n = len(modes)
+        labels = [f"q{i}" for i in range(1, n + 1)]
+        omegas = work["omega"].to_list()
+        return ModesFromCsv(labels=labels, omegas=omegas)
+
+    def read_pvc_coupling_rows(self, path: Union[str, Path]) -> "pd.DataFrame":
+        """
+        PVC coupling table: ``el_state_1``, ``el_state_2``, coupling expression, ``coeff``.
+
+        The expression column may be named ``expression`` (preferred), ``polinom``, or
+        ``polynomial`` (exactly one of these must be present).
+        """
+        df = self.read_df_auto(path)
+        expr_col = next(
+            (c for c in ("expression", "polinom", "polynomial") if c in df.columns),
+            "",
+        )
+        if not expr_col:
+            raise ValueError(
+                "PVC coupling CSV must contain el_state_1, el_state_2, "
+                f"expression or polinom or polynomial, coeff; got {list(df.columns)}"
+            )
+        required = {"el_state_1", "el_state_2", expr_col, "coeff"}
+        if not required.issubset(df.columns):
+            raise ValueError(
+                "PVC coupling CSV must contain el_state_1, el_state_2, "
+                f"a coupling column ({expr_col}), and coeff; got {list(df.columns)}"
+            )
+        out = df[["el_state_1", "el_state_2", expr_col, "coeff"]].copy()
+        out.columns = ["el_state_1", "el_state_2", "polinom", "coeff"]
+        out["el_state_1"] = out["el_state_1"].astype(str).str.strip()
+        out["el_state_2"] = out["el_state_2"].astype(str).str.strip()
+        if (out["el_state_1"] == "").any() or (out["el_state_2"] == "").any():
+            raise ValueError("PVC coupling CSV contains empty el_state_1/el_state_2 labels")
+        out["coeff"] = pd.to_numeric(out["coeff"], errors="raise").astype(float)
+        out["polinom"] = out["polinom"].astype(str).str.strip()
+        return out
 

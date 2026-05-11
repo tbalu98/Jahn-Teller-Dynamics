@@ -14,8 +14,8 @@ import copy
 import pandas as pd
 import jahn_teller_dynamics.math.braket_formalism as  bf
 import math
-from collections import namedtuple
-from typing import Optional, List, Union, Tuple, Any, Callable, TYPE_CHECKING
+from collections import defaultdict, namedtuple
+from typing import Optional, List, Union, Tuple, Any, Callable, TYPE_CHECKING, Sequence, Set
 
 if TYPE_CHECKING:
     from typing import TypeVar
@@ -30,6 +30,45 @@ dtype = np.complex64
 SQRT_2 = math.sqrt(2.0)  # Square root of 2, used in complex basis transformations
 DEFAULT_ROUNDING_PRECISION = 10  # Default number of decimal places for rounding
 EIGENVALUE_ROUNDING_PRECISION = 4  # Number of decimal places for eigenvalue rounding
+
+
+class BasisStateIndexer:
+    """
+    Assigns contiguous ``0 .. n-1`` indices when building a phonon / Fock basis recursively.
+
+    Shared via one instance passed through all recursive calls so each new basis state gets a
+    unique index exactly once. Records the **parent basis index** for each state (``-1`` for the
+    ground / root state).
+
+    Use :meth:`peek_next` to inspect the next index without allocating; use :meth:`allocate` to
+    consume the next index and register its parent.
+    """
+
+    __slots__ = ("_next_id", "parent_of")
+
+    def __init__(self) -> None:
+        self._next_id: int = 0
+        self.parent_of: List[int] = []
+
+    def peek_next(self) -> int:
+        """Next index that :meth:`allocate` would return, without incrementing or recording."""
+        return self._next_id
+
+    def allocate(self, parent_basis_index: Optional[int] = None) -> int:
+        """
+        Reserve and return the next Hilbert-basis index.
+
+        Args:
+            parent_basis_index: Index of the parent state used to reach this child, or ``None``
+                for the initial (e.g. vacuum) state ``|0,…,0⟩`` (stored as parent ``-1``).
+        """
+        i = self._next_id
+        self._next_id += 1
+        self.parent_of.append(-1 if parent_basis_index is None else int(parent_basis_index))
+        return i
+
+    def __len__(self) -> int:
+        return len(self.parent_of)
 
 
 class ket_vector:
@@ -346,6 +385,9 @@ class hilber_space_bases:
         else:
             self.qm_nums_names = names
         self.dim = len(self._bra_states)
+        # Populated when using dynamic_create_hosc_eigen_states_list (constrained multimode basis).
+        self.basis_state_indexer: Optional[BasisStateIndexer] = None
+        self.basis_parent_of: Optional[List[int]] = None
 
     def create_ket_vector(self, ket_states: List[bf.ket_state]) -> ket_vector:
           """
@@ -418,50 +460,84 @@ class hilber_space_bases:
 
 
     def dynamic_create_hosc_eigen_states(
-        self, dim: int, order: int, curr_osc_coeffs: List[int],
-        seen: Optional[set] = None
+        self,
+        dim: int,
+        order: int,
+        parent_occ: List[int],
+        parent_basis_index: int,
+        *,
+        seen: Set[Tuple[int, ...]],
+        indexer: BasisStateIndexer,
     ) -> None:
         """
-          Create harmonic oscillator eigenstates dynamically.
-          
-          Args:
-              dim: Spatial dimension
-              order: Maximum order (total quantum number)
-              curr_osc_coeffs: Current oscillator coefficients (used in recursion)
-              seen: Set of already-added state tuples (for deduplication)
-        """
-        if seen is None:
-            seen = set()
-        # Add ground state on initial call (curr_osc_coeffs == [0]*dim)
-        if sum(curr_osc_coeffs) == 0 and len(curr_osc_coeffs) == dim:
-            key = tuple(curr_osc_coeffs)
-            if key not in seen:
-                seen.add(key)
-                self._bra_states.append(bf.bra_state(qm_nums=list(curr_osc_coeffs)))
-                self._ket_states.append(bf.ket_state(qm_nums=list(curr_osc_coeffs)))
-        for i in range(dim):
-            temp_curr_osc_coeffs = copy.deepcopy(curr_osc_coeffs)
-            temp_curr_osc_coeffs[i] += 1
-            if sum(temp_curr_osc_coeffs) > order:
-                continue
-            key = tuple(temp_curr_osc_coeffs)
-            if key in seen:
-                continue
-            seen.add(key)
-            self._bra_states.append(bf.bra_state(qm_nums=temp_curr_osc_coeffs))
-            self._ket_states.append(bf.ket_state(qm_nums=temp_curr_osc_coeffs))
-            self.dynamic_create_hosc_eigen_states(dim, order, temp_curr_osc_coeffs, seen)
+        Enumerate constrained Fock states (sum of occupations ``<= order``), one quantum at a time.
 
-    def dynamic_create_hosc_eigen_states_list(self, dim: int, order: int) -> List[bf.ket_state]:
+        Args:
+            dim: Number of modes.
+            order: Maximum total phonon number.
+            parent_occ: Occupation numbers of the state from which we add one quantum.
+            parent_basis_index: Contiguous Hilbert index of that parent (:class:`BasisStateIndexer`).
+            seen: Occupation tuples already added (avoids duplicates from multiple paths).
+            indexer: Shared index allocator passed into every recursive call.
+        """
+        for i in range(dim):
+            occ = list(parent_occ)
+            occ[i] += 1
+            if sum(occ) > order:
+                continue
+            occ_t = tuple(occ)
+            if occ_t in seen:
+                continue
+            seen.add(occ_t)
+
+            child_index = indexer.allocate(parent_basis_index)
+            self._bra_states.append(bf.bra_state(qm_nums=list(occ_t)))
+            self._ket_states.append(bf.ket_state(qm_nums=list(occ_t)))
+
+            self.dynamic_create_hosc_eigen_states(
+                dim,
+                order,
+                list(occ_t),
+                child_index,
+                seen=seen,
+                indexer=indexer,
+            )
+
+    def dynamic_create_hosc_eigen_states_list(self, dim: int, order: int, qm_nums_names: List[str]) -> List[bf.ket_state]:
         """
         Create harmonic oscillator eigenstates dynamically.
         
         Args:
             dim: Spatial dimension
             order: Maximum order (total quantum number)
+            qm_nums_names: List of quantum number names
         """
-        self.dynamic_create_hosc_eigen_states(dim, order, [0] * dim)
-        return self._ket_states
+        self._bra_states = []
+        self._ket_states = []
+
+        indexer = BasisStateIndexer()
+        seen: Set[Tuple[int, ...]] = set()
+        ground = tuple([0] * dim)
+        seen.add(ground)
+        root_index = indexer.allocate(None)
+        self._bra_states.append(bf.bra_state(qm_nums=list(ground)))
+        self._ket_states.append(bf.ket_state(qm_nums=list(ground)))
+
+        self.dynamic_create_hosc_eigen_states(
+            dim,
+            order,
+            list(ground),
+            root_index,
+            seen=seen,
+            indexer=indexer,
+        )
+
+        self.dim = len(self._bra_states)
+        self.qm_nums_names = qm_nums_names
+        self.basis_state_indexer = indexer
+        self.basis_parent_of = indexer.parent_of
+        assert len(indexer.parent_of) == len(self._ket_states)
+        return self
 
     def create_hosc_eigen_states(self, dim: int, order: int, curr_osc_coeffs: List[int]) -> None:
           """
@@ -632,7 +708,13 @@ class hilber_space_bases:
           Returns:
               hilber_space_bases: New reduced Hilbert space
           """
-          return hilber_space_bases(self._bra_states[0:new_dim], self._ket_states[0:new_dim],names = self.qm_nums_names)
+          reduced = hilber_space_bases(
+              self._bra_states[0:new_dim], self._ket_states[0:new_dim], names=self.qm_nums_names
+          )
+          if getattr(self, "basis_parent_of", None) is not None:
+              reduced.basis_parent_of = self.basis_parent_of[0:new_dim]
+          reduced.basis_state_indexer = None
+          return reduced
 
     def reduce_hilbert_space(
         self, should_delete: Callable[[bf.ket_state, int], bool]
@@ -1223,6 +1305,29 @@ class MatrixOperator:
                   self._eigen_solver = DenseEigenSolver()
           else:
               self._eigen_solver = solver
+
+     def adjoint(self) -> 'MatrixOperator':
+          """
+          Hermitian conjugate :math:`O^\\dagger` in the same matrix representation
+          (dense :class:`~jahn_teller_dynamics.math.maths.Matrix` or CSR
+          :class:`~jahn_teller_dynamics.math.maths.SparseMatrix`).
+          """
+          if isinstance(self.matrix, maths.SparseMatrix):
+               adj_csr = self.matrix.matrix.getH().tocsr()
+               return MatrixOperator(
+                    maths.SparseMatrix(adj_csr),
+                    name=self.name,
+                    subsys_name=self.subsys_name,
+                    solver=self._eigen_solver,
+               )
+          mtx = self.matrix.matrix
+          adj_np = np.asmatrix(mtx).H
+          return MatrixOperator(
+               maths.Matrix(adj_np),
+               name=self.name,
+               subsys_name=self.subsys_name,
+               solver=self._eigen_solver,
+          )
      
      def set_quantum_states(self, quantum_states: 'hilber_space_bases') -> None:
           self.quantum_state_bases = quantum_states
@@ -1278,7 +1383,7 @@ class MatrixOperator:
              
           self.eigen_kets = sorted(self.eigen_kets, key =lambda x: x.eigen_val)
 
-     def calc_eigen_vals_vects(self, num_of_vals: Optional[int] = None, ordering_type: Optional[str] = None, quantum_states_bases: Optional['hilber_space_bases'] = None) -> 'eigen_vector_space':
+     def calc_eigen_vals_vects(self, num_of_vals: Optional[int] = None, ordering_type: Optional[str] = None, quantum_states_bases: Optional['hilber_space_bases'] = None, spectral_sigma: Optional[float] = None, spectral_which: Optional[str] = None) -> 'eigen_vector_space':
           """
           Calculate eigenvalues and eigenvectors of the matrix operator.
           
@@ -1289,6 +1394,8 @@ class MatrixOperator:
               num_of_vals: Number of eigenvalues to calculate (None = all)
               ordering_type: Type of ordering to apply (optional)
               quantum_states_bases: Hilbert space basis for quantum states (optional)
+              spectral_sigma: Shift / target for shift–invert solves (PVC .cfg ``eigensolver_sigma``).
+              spectral_which: Spectral ordering (friendly names or SA/LM/…).
               
           Returns:
               eigen_vector_space: Object containing eigen kets and basis
@@ -1302,7 +1409,9 @@ class MatrixOperator:
               self,
               num_of_vals=num_of_vals,
               ordering_type=ordering_type,
-              quantum_states_bases=self.quantum_state_bases
+              quantum_states_bases=self.quantum_state_bases,
+              spectral_sigma=spectral_sigma,
+              spectral_which=spectral_which,
           )
           
           # Handle tuple return (eigen_vector_space, new_basis_order) from SparseEigenSolver
@@ -1750,17 +1859,22 @@ class braket_to_matrix_formalism:
      def create_MatrixOperator(self, op: operator,name = '', subsys_name = ''):
           dim = len(self.eig_states)
           if self.use_sparse:
-              # Use sparse matrix format (CSR)
-              from scipy.sparse import csr_matrix
-              mx_op = np.zeros((dim, dim), dtype = maths.complex_number_typ)
-              for i in range(0,len(self.eig_states._ket_states)):
-                   for j in range(0,len(self.eig_states._bra_states)):
+              # Sparse CSR: only store nonzeros (avoids allocating a full dim×dim dense array).
+              from scipy.sparse import dok_matrix
+
+              dok = dok_matrix((dim, dim), dtype=maths.complex_number_typ)
+              for i in range(0, len(self.eig_states._ket_states)):
+                   for j in range(0, len(self.eig_states._bra_states)):
                         bra = self.eig_states._bra_states[j]
                         ket = self.eig_states._ket_states[i]
-                        mx_op[i][j] = bra*op*ket
-              # Convert to sparse matrix
-              sparse_mx = csr_matrix(mx_op, dtype=maths.complex_number_typ)
-              return MatrixOperator(maths.SparseMatrix(sparse_mx), name = name,subsys_name=subsys_name)
+                        val = bra * op * ket
+                        if val != 0:
+                             dok[i, j] = val
+              return MatrixOperator(
+                  maths.SparseMatrix(dok.tocsr()),
+                  name=name,
+                  subsys_name=subsys_name,
+              )
           else:
               # Use dense matrix format
               mx_op = np.zeros((dim, dim), dtype = maths.complex_number_typ)
@@ -1771,7 +1885,227 @@ class braket_to_matrix_formalism:
                         mx_op[i][j] = bra*op*ket
               return MatrixOperator(maths.Matrix(mx_op), name = name,subsys_name=subsys_name)
 
+     def _adjacent_order_ket_bra_buckets(
+          self,
+     ) -> tuple[dict[int, list[tuple[int, Any]]], dict[int, list[tuple[int, Any]]], int]:
+          """
+          Group ket and bra indices by ``calc_order()`` for adjacent-order matrix builds.
 
+          Returns:
+               (ket_by_order, bra_by_order, max_order) with ``max_order == -1`` if the basis is empty.
+          """
+          ket_by_order: dict[int, list[tuple[int, Any]]] = defaultdict(list)
+          bra_by_order: dict[int, list[tuple[int, Any]]] = defaultdict(list)
+          for i in range(len(self.eig_states._ket_states)):
+               ket = self.eig_states._ket_states[i]
+               ket_by_order[ket.calc_order()].append((i, ket))
+          for j in range(len(self.eig_states._bra_states)):
+               bra = self.eig_states._bra_states[j]
+               bra_by_order[bra.calc_order()].append((j, bra))
+          all_orders = set(ket_by_order.keys()) | set(bra_by_order.keys())
+          max_order = max(all_orders) if all_orders else -1
+          return ket_by_order, bra_by_order, max_order
+
+     def create_MatrixOperator_adjacent_orders(
+          self,
+          op: operator,
+          name: str = "",
+          subsys_name: str = "",
+          *,
+          symmetrize_to_hermitian: bool = False,
+          hermitian_upper_triangle_only: bool = False,
+     ) -> "MatrixOperator":
+          """
+          Build ``MatrixOperator`` using only bra/ket pairs whose total orders differ by at most 1.
+
+          For harmonic-oscillator ladder operators in a constrained Fock basis, matrix elements
+          vanish unless ``|order(ket) - order(bra)| <= 1``. This avoids the full ``dim^2`` scan
+          of :meth:`create_MatrixOperator`.
+
+          Indexing matches :meth:`create_MatrixOperator`: row ``i`` = ``_ket_states[i]``,
+          column ``j`` = ``_bra_states[j]``, entry ``<bra_j|op|ket_i>``.
+
+          **Important:** :class:`~jahn_teller_dynamics.math.braket_formalism.creator_operator`
+          and ``annihilator_operator`` are **not** Hermitian. Do **not** set
+          ``symmetrize_to_hermitian`` or ``hermitian_upper_triangle_only`` for those (you would
+          corrupt ``a`` and ``a†``). Those flags are for genuinely Hermitian operators only.
+
+          Args:
+               op: Braket operator (e.g. creator / annihilator).
+               name, subsys_name: Passed through to ``MatrixOperator``.
+               symmetrize_to_hermitian: If True, replace ``M`` by ``(M + M^H) / 2`` (CSR).
+               hermitian_upper_triangle_only: If True, only compute pairs with ``ket_idx > bra_idx``,
+                   then complete via ``M = T + T^H`` (strict upper ``T``; diagonal left zero unless
+                   filled elsewhere—use only if you know ``O`` is Hermitian and has no diagonal).
+          """
+          dim = len(self.eig_states)
+          ket_by_order, bra_by_order, max_order = self._adjacent_order_ket_bra_buckets()
+
+          def _assign(dok_or_mx, i: int, j: int, val: complex) -> None:
+               if hermitian_upper_triangle_only and i <= j:
+                    return
+               if val == 0:
+                    return
+               if self.use_sparse:
+                    dok_or_mx[i, j] = val
+               else:
+                    dok_or_mx[i, j] = val
+
+          if self.use_sparse:
+               from scipy.sparse import dok_matrix
+
+               dok = dok_matrix((dim, dim), dtype=maths.complex_number_typ)
+               for o in range(0, max_order + 1):
+                    for i, ket in ket_by_order.get(o, []):
+                         for j, bra in bra_by_order.get(o + 1, []):
+                              val = bra * op * ket
+                              _assign(dok, i, j, val)
+                    for i, ket in ket_by_order.get(o + 1, []):
+                         for j, bra in bra_by_order.get(o, []):
+                              val = bra * op * ket
+                              _assign(dok, i, j, val)
+               csr = dok.tocsr()
+               if hermitian_upper_triangle_only:
+                    csr = csr + csr.getH()
+               if symmetrize_to_hermitian:
+                    csr = 0.5 * (csr + csr.getH())
+               return MatrixOperator(
+                    maths.SparseMatrix(csr),
+                    name=name,
+                    subsys_name=subsys_name,
+               )
+
+          mx_op = np.zeros((dim, dim), dtype=maths.complex_number_typ)
+          for o in range(0, max_order + 1):
+               for i, ket in ket_by_order.get(o, []):
+                    for j, bra in bra_by_order.get(o + 1, []):
+                         val = bra * op * ket
+                         _assign(mx_op, i, j, val)
+               for i, ket in ket_by_order.get(o + 1, []):
+                    for j, bra in bra_by_order.get(o, []):
+                         val = bra * op * ket
+                         _assign(mx_op, i, j, val)
+          if hermitian_upper_triangle_only:
+               mx_op = mx_op + np.conjugate(mx_op.T)
+          if symmetrize_to_hermitian:
+               mx_op = 0.5 * (mx_op + np.conjugate(mx_op.T))
+          return MatrixOperator(maths.Matrix(mx_op), name=name, subsys_name=subsys_name)
+
+     def create_MatrixOperators_adjacent_orders(
+          self,
+          ops: Sequence[operator],
+          names: Optional[Sequence[str]] = None,
+          subsys_name: str = "",
+          *,
+          symmetrize_to_hermitian: bool = False,
+          hermitian_upper_triangle_only: bool = False,
+     ) -> list["MatrixOperator"]:
+          """
+          Same adjacent-order scan as :meth:`create_MatrixOperator_adjacent_orders`, but for many
+          braket operators at once.
+
+          Ket/bra buckets and the nested loops over order-adjacent pairs are shared, so building
+          ``n`` ladder-like operators costs one bucket build and one pass over those pairs (per
+          pair, each operator is evaluated). Use this for multimode oscillators that need many
+          ``a_i`` and ``a†_i`` on the same constrained basis.
+
+          **Important:** Do not use Hermitian symmetrization flags for raw creators/annihilators;
+          see :meth:`create_MatrixOperator_adjacent_orders`.
+
+          Args:
+               ops: Braket operators (e.g. all creators then all annihilators, or any order).
+               names: Optional ``MatrixOperator.name`` for each entry (length must match ``ops``).
+               subsys_name: Passed to every ``MatrixOperator``.
+               symmetrize_to_hermitian, hermitian_upper_triangle_only: Applied per matrix, same as
+                   the single-operator method.
+
+          Returns:
+               List of ``MatrixOperator`` in the same order as ``ops``.
+          """
+          if not ops:
+               return []
+          n = len(ops)
+          if names is not None and len(names) != n:
+               raise ValueError(
+                    f"names length ({len(names)}) must match ops length ({n})"
+               )
+          name_list: list[str] = list(names) if names is not None else [""] * n
+
+          dim = len(self.eig_states)
+          ket_by_order, bra_by_order, max_order = self._adjacent_order_ket_bra_buckets()
+
+          def _assign_one(
+               stor: Any, mat_idx: int, i: int, j: int, val: complex
+          ) -> None:
+               if hermitian_upper_triangle_only and i <= j:
+                    return
+               if val == 0:
+                    return
+               stor[mat_idx][i, j] = val
+
+          if self.use_sparse:
+               from scipy.sparse import dok_matrix
+
+               dok_list = [
+                    dok_matrix((dim, dim), dtype=maths.complex_number_typ)
+                    for _ in range(n)
+               ]
+               for o in range(0, max_order + 1):
+                    for i, ket in ket_by_order.get(o, []):
+                         for j, bra in bra_by_order.get(o + 1, []):
+                              for k in range(n):
+                                   val = bra * ops[k] * ket
+                                   _assign_one(dok_list, k, i, j, val)
+                    for i, ket in ket_by_order.get(o + 1, []):
+                         for j, bra in bra_by_order.get(o, []):
+                              for k in range(n):
+                                   val = bra * ops[k] * ket
+                                   _assign_one(dok_list, k, i, j, val)
+               out: list[MatrixOperator] = []
+               for k in range(n):
+                    csr = dok_list[k].tocsr()
+                    if hermitian_upper_triangle_only:
+                         csr = csr + csr.getH()
+                    if symmetrize_to_hermitian:
+                         csr = 0.5 * (csr + csr.getH())
+                    out.append(
+                         MatrixOperator(
+                              maths.SparseMatrix(csr),
+                              name=name_list[k],
+                              subsys_name=subsys_name,
+                         )
+                    )
+               return out
+
+          mx_list = [
+               np.zeros((dim, dim), dtype=maths.complex_number_typ) for _ in range(n)
+          ]
+          for o in range(0, max_order + 1):
+               for i, ket in ket_by_order.get(o, []):
+                    for j, bra in bra_by_order.get(o + 1, []):
+                         for k in range(n):
+                              val = bra * ops[k] * ket
+                              _assign_one(mx_list, k, i, j, val)
+               for i, ket in ket_by_order.get(o + 1, []):
+                    for j, bra in bra_by_order.get(o, []):
+                         for k in range(n):
+                              val = bra * ops[k] * ket
+                              _assign_one(mx_list, k, i, j, val)
+          out_dense: list[MatrixOperator] = []
+          for k in range(n):
+               mx_op = mx_list[k]
+               if hermitian_upper_triangle_only:
+                    mx_op = mx_op + np.conjugate(mx_op.T)
+               if symmetrize_to_hermitian:
+                    mx_op = 0.5 * (mx_op + np.conjugate(mx_op.T))
+               out_dense.append(
+                    MatrixOperator(
+                         maths.Matrix(mx_op),
+                         name=name_list[k],
+                         subsys_name=subsys_name,
+                    )
+               )
+          return out_dense
 
 
 class eigen_vectors:

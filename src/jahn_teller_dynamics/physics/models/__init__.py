@@ -19,12 +19,6 @@ from .system_builder import (
     MultiModePhononSystem,
 )
 from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
-from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
-from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
-from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
-from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
-from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
-from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
 
 from .reduction_factors import (
     compute_reduction_factors,
@@ -45,6 +39,10 @@ from .lvc_model import (
     LVC_model,
 )
 
+from .pvc_model import (
+    PVC_model,
+)
+
 from .position_expr_parser import (
     tokenize,
     PositionExprParser,
@@ -54,11 +52,9 @@ from .position_expr_parser import (
 __all__ = [
     'build_electron_phonon_system',
     'build_phonon_system_constrained',
-    'MultiModeConstrainedPhononSystem',
     'build_spin_electron_phonon_system',
     'build_minimal_model_system',
     'build_phonon_system',
-    'build_phonon_system_constrained',
     'MultiModePhononSystem',
     'MultiModeConstrainedPhononSystem',
     'compute_reduction_factors',
@@ -68,6 +64,7 @@ __all__ = [
     'add_operator_to_hamiltonian',
     'multi_config_electron',
     'LVC_model',
+    'PVC_model',
     'tokenize',
     'PositionExprParser',
     'evaluate_position_expression',

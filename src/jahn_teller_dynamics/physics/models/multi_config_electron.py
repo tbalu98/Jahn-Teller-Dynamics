@@ -18,7 +18,7 @@ Example (semicolon separated):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
@@ -94,6 +94,47 @@ class multi_config_electron:
         # Keep track of sparse preference on the node (consistent with other builders)
         node.use_sparse = use_sparse
 
+        state_to_index = {s: i for i, s in enumerate(states)}
+        return cls(node=node, state_to_index=state_to_index)
+
+    @classmethod
+    def from_state_energy_list(
+        cls,
+        states: List[str],
+        values: Union[np.ndarray, Sequence[float]],
+        *,
+        subsystem_id: str = "electron_system",
+        qm_nums_name: str = "state",
+        use_sparse: bool = True,
+    ) -> "multi_config_electron":
+        """
+        Build electron subsystem from parallel lists of state labels and energies (no file I/O).
+
+        Same layout as :meth:`from_csv` after reading ``state`` / ``value`` columns.
+        """
+        values = np.asarray(values, dtype=float)
+        reader = CSVReader(separator=";")
+        bases = mm.hilber_space_bases().from_qm_nums_list(
+            [[s] for s in states],
+            qm_nums_names=[qm_nums_name],
+        )
+        dim = bases.dim
+        if len(values) != dim:
+            raise ValueError(f"len(values) ({len(values)}) != number of states ({dim})")
+        state_energy_op = reader.build_epsilon_operator(
+            values=values, dim=dim, use_sparse=use_sparse
+        )
+        state_energy_op.subsys_name = subsystem_id
+        node = qs.quantum_system_node(
+            subsystem_id,
+            base_states=bases,
+            operators={
+                "state_energy": state_energy_op,
+                "epsilon": state_energy_op,
+            },
+            dim=dim,
+        )
+        node.use_sparse = use_sparse
         state_to_index = {s: i for i, s in enumerate(states)}
         return cls(node=node, state_to_index=state_to_index)
 
@@ -270,7 +311,7 @@ class multi_config_electron:
 
         CSV format (semicolon separated by default):
             state;vibrational_mode;value
-            11;1;-0.00399
+            11;q1;-0.00399
             ...
 
         For each state, the value is placed on the diagonal at the index determined
@@ -340,7 +381,7 @@ class multi_config_electron:
 
         CSV format (semicolon separated by default):
             state_i;state_j;vibrational_mode;value
-            11;12;1;-2.6579e-05
+            11;12;q1;-2.6579e-05
             ...
 
         The ``state_i`` / ``state_j`` labels are mapped to row/column indices using

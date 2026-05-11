@@ -40,7 +40,7 @@ def _read_dipole_matrix_csv(path: str | Path, sep: str = ";") -> np.ndarray:
                 arr[i, j] = np.nan
     if arr.shape[0] != arr.shape[1]:
         raise ValueError(f"Dipole matrix must be square, got shape {arr.shape}")
-    np.fill_diagonal(arr, 0.0)
+    #np.fill_diagonal(arr, 0.0)
     return arr
 
 
@@ -77,7 +77,7 @@ class SpectrumCalculator:
         dipole_x_path: str = "",
         dipole_y_path: str = "",
         dipole_z_path: str = "",
-        results_folder: str = "",
+        output_folder: str = "",
         output_prefix: str = "spectrum",
         out_path: str = "",
         separator: str = ";",
@@ -93,7 +93,7 @@ class SpectrumCalculator:
             npz_path: Absolute path to eigenvectors.npz.
             dipole_path: Path to single dipole matrix CSV (when use_dipole_xyz is False).
             dipole_x_path, dipole_y_path, dipole_z_path: Paths to dipole X/Y/Z CSVs.
-            results_folder: Base folder for output (absolute or relative to repo).
+            output_folder: Base folder for output (absolute or relative to repo).
             output_prefix: Prefix for output files.
             out_path: Output filename override.
             separator: CSV separator for dipole files.
@@ -108,7 +108,7 @@ class SpectrumCalculator:
         self.dipole_x_path = dipole_x_path
         self.dipole_y_path = dipole_y_path
         self.dipole_z_path = dipole_z_path
-        self.results_folder = results_folder
+        self.output_folder = output_folder
         self.output_prefix = output_prefix
         self.out_path = out_path
         self.separator = separator or ";"
@@ -119,9 +119,9 @@ class SpectrumCalculator:
         self.smearing = smearing
         self._run_dir = Path(run_dir) if run_dir is not None else Path.cwd()
 
-    def _resolve_results_folder(self) -> Path:
-        """Resolved results folder (all outputs go here). Paths relative to run_dir (cwd)."""
-        rf = self.results_folder
+    def _resolve_output_folder(self) -> Path:
+        """Resolved output folder (all outputs go here). Paths relative to run_dir (cwd)."""
+        rf = self.output_folder
         if rf:
             p = Path(rf).expanduser()
             if not p.is_absolute():
@@ -131,7 +131,7 @@ class SpectrumCalculator:
 
     def _resolve_output_path(self) -> Path:
         """Resolved output PNG path."""
-        res_folder = self._resolve_results_folder()
+        res_folder = self._resolve_output_folder()
         if self.out_path:
             out = Path(self.out_path)
             rel = out.name if out.is_absolute() else self.out_path
@@ -318,28 +318,41 @@ class SpectrumCalculator:
         n_states = eig_vecs.shape[1]
         E0 = complex(eig_vals[0]).real
 
-        intensities = [0.0] * len(range_eV)
+        intensity_smears = [0.0] * len(range_eV)
+        intensity_peaks = []
+        delta_energies = []
         for i in range(n_states):
             ei = eig_vecs[:, i]
             Ei = complex(eig_vals[i]).real
             delta_energy = _energy_to_eV([Ei - E0], self.energy_unit)[0] 
             if delta_energy  > max_energy or delta_energy < min_energy:
                 continue
-            total = 0.0
+            total = np.float64(0.0)
             for M_full in M_fulls:
                 mat_el = np.vdot(e0, M_full @ ei)
                 total += np.abs(mat_el) ** 2
             self.smearing.center = delta_energy
             if total > 0.0:
+                delta_energies.append(delta_energy)
+                intensity_peaks.append(total)
+
                 for j, energy in enumerate(range_eV):
-                    intensities[j] += total * self.smearing.evaluate(energy )
+                    intensity_smears[j] += total * self.smearing.evaluate(energy )
 
         out_path = self._resolve_output_path()
         create_directory(out_path.parent)
 
+
+
+
+
         fig, ax = plt.subplots(figsize=(8, 5))
+        ax.stem(
+            delta_energies, intensity_peaks,
+            linefmt="C0-", basefmt=" ", markerfmt="C0o"
+        )
         ax.plot(
-            range_eV, intensities,
+            range_eV, intensity_smears,
             color="C0"
         )
         ax.set_xlabel(r"$\Delta E$ (eV)")
@@ -360,7 +373,7 @@ class SpectrumCalculator:
         spec_csv = out_path.with_suffix(".csv")
         pd.DataFrame({
             "delta_E_eV": range_eV,
-            "intensity_smearing": intensities,
+            "intensity_smearing": intensity_smears,
         }).to_csv(spec_csv, index=False, sep=";")
         print(f"Spectrum data saved to {spec_csv}")
 

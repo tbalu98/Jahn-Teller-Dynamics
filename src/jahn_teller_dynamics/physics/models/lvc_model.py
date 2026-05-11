@@ -87,7 +87,7 @@ class LVC_model(qs.quantum_system_tree):
         epsilon_csv_path: Optional[str] = None,
         lambda_csv_path: Optional[str] = None,
         kappa_csv_path: Optional[str] = None,
-        order: int,
+        order: Optional[int] = None,
         modes: Optional[Sequence[float]] = None,
         modes_csv_path: Optional[str] = None,
         mode_numbers: Optional[Sequence[int]] = None,
@@ -121,11 +121,28 @@ class LVC_model(qs.quantum_system_tree):
             use_sparse=use_sparse,
         )
 
+        cmax = (
+            max_phonon_quanta
+            if max_phonon_quanta is not None and max_phonon_quanta > 0
+            else None
+        )
+        per_mode_order = order if order is not None and order > 0 else None
+        if cmax is not None and per_mode_order is not None:
+            raise ValueError(
+                "LVC_model.from_csvs: pass only one of max_phonon_quanta > 0 "
+                "(constrained multimode, sum_i n_i <= N) or order > 0 (unconstrained per-mode cutoff)."
+            )
+        if cmax is None and per_mode_order is None:
+            raise ValueError(
+                "LVC_model.from_csvs: set max_phonon_quanta > 0 for constrained phonons "
+                "or order > 0 for unconstrained MultiModePhononSystem."
+            )
+
         if modes_csv_path is not None:
-            if max_phonon_quanta is not None:
+            if cmax is not None:
                 phonons = build_phonon_system_constrained_from_csv(
                     modes_csv_path,
-                    order=max_phonon_quanta,
+                    order=cmax,
                     use_sparse=use_sparse,
                     phonon_system_id=phonon_system_id,
                     separator=separator,
@@ -136,7 +153,7 @@ class LVC_model(qs.quantum_system_tree):
             else:
                 phonons = build_phonon_system_from_csv(
                     modes_csv_path,
-                    order=order,
+                    order=per_mode_order,
                     use_sparse=use_sparse,
                     phonon_system_id=phonon_system_id,
                     separator=separator,
@@ -148,10 +165,10 @@ class LVC_model(qs.quantum_system_tree):
         else:
             if modes is None:
                 raise ValueError("Either modes_csv_path or modes must be provided")
-            if max_phonon_quanta is not None:
+            if cmax is not None:
                 phonons = build_phonon_system_constrained(
                     modes=modes,
-                    order=max_phonon_quanta,
+                    order=cmax,
                     use_sparse=use_sparse,
                     phonon_system_id=phonon_system_id,
                     dimensionless_coordinates=dimensionless_coordinates,
@@ -160,13 +177,13 @@ class LVC_model(qs.quantum_system_tree):
             else:
                 phonons = build_phonon_system(
                     modes=modes,
-                    order=order,
+                    order=per_mode_order,
                     use_sparse=use_sparse,
                     phonon_system_id=phonon_system_id,
                     dimensionless_coordinates=dimensionless_coordinates,
                     null_point_vib=null_point_vib,
                 )
-            num_modes = len(modes)
+            num_modes = len(phonons.modes)
 
         model = cls.build(electron=electron, phonons=phonons, system_id=system_id, use_sparse=use_sparse)
 

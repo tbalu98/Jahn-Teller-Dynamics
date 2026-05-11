@@ -38,6 +38,8 @@ def resolve_path_relative(
     """
     Resolve a path; if relative, interpret relative to base (itself relative to repo_root).
 
+    Prefer RunContext.resolve() for new code; this is kept for backward compatibility.
+
     Args:
         path_str: Path string (can be absolute or relative)
         base: Base path for relative resolution (relative to repo_root if not absolute)

@@ -10,6 +10,7 @@ This module provides core mathematical utilities including:
 
 # Export main classes for convenience
 from jahn_teller_dynamics.math.matrix_mechanics import (
+    BasisStateIndexer,
     MatrixOperator,
     ket_vector,
     bra_vector,
@@ -26,6 +27,7 @@ from jahn_teller_dynamics.math.eigen_solver import (
 from jahn_teller_dynamics.math.maths import Lorentzian, lorentzian
 
 __all__ = [
+    'BasisStateIndexer',
     'MatrixOperator',
     'ket_vector',
     'bra_vector',
