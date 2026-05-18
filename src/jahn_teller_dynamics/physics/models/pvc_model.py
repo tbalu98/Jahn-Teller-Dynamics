@@ -123,6 +123,8 @@ class PVC_model(qs.quantum_system_tree):
         mode_numbers: Optional[Sequence[int]] = None,
         build_log: Optional[Callable[[str], None]] = None,
         exp_approximation_order: Optional[int] = None,
+        tune_tuning: float = 1.0,
+        tune_coupling: float = 1.0,
     ) -> "PVC_model":
         reader = CSVReader()
         states, values = reader.read_diagonal_state_energies(electron_energies_csv_path)
@@ -236,12 +238,19 @@ class PVC_model(qs.quantum_system_tree):
             return idx
 
         for _, row in df.iterrows():
+            el1 = _resolve_el_state_token(row["el_state_1"])
+            el2 = _resolve_el_state_token(row["el_state_2"])
+            coeff = float(row["coeff"])
+            if el1 == el2:
+                coeff *= float(tune_tuning)
+            else:
+                coeff *= float(tune_coupling)
             coupling_rows.append(
                 DJTCouplingRow(
-                    _resolve_el_state_token(row["el_state_1"]),
-                    _resolve_el_state_token(row["el_state_2"]),
+                    el1,
+                    el2,
                     str(row["polinom"]).strip(),
-                    float(row["coeff"]),
+                    coeff,
                 )
             )
         if build_log is not None:

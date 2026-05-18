@@ -59,7 +59,20 @@ def main() -> int:
         default="",
         help="Path to .cfg file with [spectrum] section (overrides other args)",
     )
-    parser.add_argument("--npz", type=str, default="", help="Path to eigenvectors.npz")
+    parser.add_argument(
+        "--npz",
+        type=str,
+        nargs="+",
+        default=[],
+        metavar="EIGVECS.npz",
+        help=(
+            "One or more paths to eigenvectors NPZ files. The FIRST file is "
+            "treated as the ground-state file (defines e0/E0); the remaining "
+            "files contribute additional final-state eigenkets — useful when "
+            "each NPZ was produced by a separate SLEPc shift–invert run "
+            "targeting a specific energy window."
+        ),
+    )
     parser.add_argument("--dipole", type=str, default="", help="Path to dipole matrix CSV (d×d), or use dipole_x/y/z for total")
     parser.add_argument("--dipole-x", type=str, default="", dest="dipole_x", help="Path to dipole X matrix CSV")
     parser.add_argument("--dipole-y", type=str, default="", dest="dipole_y", help="Path to dipole Y matrix CSV")
@@ -121,7 +134,7 @@ def main() -> int:
 
     calculator = SpectrumBuilder.build_from_config(cfg_path, run_dir=run_ctx.run_dir, overrides=overrides)
 
-    if not calculator.npz_path:
+    if not calculator.npz_paths:
         parser.error("--npz is required, or provide --config with npz in [spectrum]")
     if not calculator.use_dipole_xyz and not calculator.dipole_path:
         parser.error(

@@ -51,6 +51,12 @@ class PVCCalculation:
     - ``eigensolver_spectral_which`` (aliases ``eigensolver_which``, ``spectral_which``) —
       e.g. ``smallest_real``, ``largest_real``, ``smallest_magnitude``, ``nearest`` (``nearest``
       requires ``eigensolver_sigma``), or SciPy tokens ``SA`` / ``LA`` / ``SM`` / ``LM``.
+
+    Coupling CSV coefficient scaling (after ``el_state_1`` / ``el_state_2`` are resolved to the
+    same 1-based indices as ``electron_energies.csv`` row order):
+
+    - ``tune_tuning`` — multiply ``coeff`` when both indices are equal (default ``1.0``).
+    - ``tune_coupling`` — multiply ``coeff`` when the indices differ (default ``1.0``).
     """
 
     data_dir: str = ""
@@ -80,6 +86,13 @@ class PVCCalculation:
     exp_approximation_order: Optional[int] = None
     save_npz: bool = False
     save_csv: bool = True
+    # Filename (or path) used when saving eigenvectors as NPZ. A bare filename
+    # is resolved under ``out_dir``; an absolute / explicit relative path is
+    # used as given. ``.npz`` is appended if missing.
+    npz_filename: str = "eigenvectors.npz"
+
+    tune_tuning: float = 1.0
+    tune_coupling: float = 1.0
 
     def resolve_input_paths(self, run_dir: Optional[Path] = None) -> tuple[Path, Path, Path]:
         """
@@ -117,6 +130,30 @@ class PVCCalculation:
                 p = (rd / p).resolve()
             return p.resolve()
         return (rd / "results" / "PVC").resolve()
+
+    def resolve_npz_path(self, run_dir: Optional[Path] = None) -> Path:
+        """
+        Resolve the absolute path of the eigenvectors NPZ output file.
+
+        A bare filename (e.g. ``"eigenvectors_excited_1eV.npz"``) is placed
+        under :meth:`resolve_out_dir`; a relative path is joined to
+        ``run_dir``; an absolute path is used as-is. A ``.npz`` suffix is
+        appended if missing.
+        """
+        rd = run_dir or get_run_dir()
+        name = (self.npz_filename or "eigenvectors.npz").strip()
+        if not name:
+            name = "eigenvectors.npz"
+        if not name.lower().endswith(".npz"):
+            name = name + ".npz"
+        p = Path(name).expanduser()
+        if p.is_absolute():
+            return p.resolve()
+        # No directory component → place under out_dir; otherwise resolve
+        # against the run directory.
+        if p.parent == Path(""):
+            return (self.resolve_out_dir(rd) / p).resolve()
+        return (rd / p).resolve()
 
 
 class PVCConfigParser:
@@ -331,5 +368,19 @@ class PVCConfigParser:
 
         if (v := self._get_nonneg_int_maybe_expr("exp_approximation_order")) is not None:
             calc.exp_approximation_order = v
+
+        for key in ("npz_filename", "eigenvectors_npz_filename", "output_npz_filename"):
+            v = self._get_str(key, "").strip()
+            if v:
+                calc.npz_filename = v
+                break
+
+        for key, attr in (
+            ("tune_tuning", "tune_tuning"),
+            ("tune_coupling", "tune_coupling"),
+        ):
+            v = self._get_str(key, "").strip()
+            if v:
+                setattr(calc, attr, float(v))
 
         return calc

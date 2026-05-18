@@ -19,6 +19,10 @@ Spectral knobs in ``[PVC]`` / ``[essentials]``: ``num_eigs``, ``eigensolver_sigm
 Coupling exponentials (``exp(...)`` in coupling CSV expressions): ``exp_approximation_order`` (INI,
 non-negative integer) selects a truncated Taylor sum for the matrix exponential; omit for exact ``expm``. CLI: ``--exp-approximation-order``.
 
+Coupling CSV ``coeff`` scaling: ``tune_tuning`` (INI / ``--tune-tuning``) multiplies ``coeff`` when
+``el_state_1`` and ``el_state_2`` resolve to the same 1-based index; ``tune_coupling`` when they differ.
+Defaults are ``1.0``.
+
 Run (from repo root)::
 
     python3 -m jahn_teller_dynamics.PVC
@@ -60,6 +64,64 @@ def _pvc_mpi_secondary_rank_skip_file_io(backend_norm: str) -> bool:
         return False
 
 
+def _human_bytes(n: float) -> str:
+    """Format a byte count as a short human-readable string."""
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    size = float(n)
+    for u in units:
+        if size < 1024.0 or u == units[-1]:
+            return f"{size:.0f} {u}" if u == "B" else f"{size:.2f} {u}"
+        size /= 1024.0
+    return f"{size:.2f} PiB"
+
+
+def describe_hamiltonian_matrix(H: Any) -> str:
+    """
+    Return a one-line description of the Hamiltonian matrix backing the
+    eigensolver: wrapper class, underlying object (e.g. ``csr_matrix``),
+    shape, sparse format / nnz / density (sparse case) or dense memory,
+    dtype, and rough storage size.
+    """
+    wrapper = getattr(H, "matrix", H)
+    inner = getattr(wrapper, "matrix", wrapper)
+
+    parts: list[str] = [
+        f"wrapper={type(wrapper).__name__}",
+        f"backend={type(inner).__module__}.{type(inner).__name__}",
+    ]
+    shape = getattr(inner, "shape", None)
+    if shape is not None:
+        parts.append(f"shape={tuple(int(x) for x in shape)}")
+
+    nnz = getattr(inner, "nnz", None)
+    fmt = getattr(inner, "format", None)
+    is_sparse = nnz is not None
+    if is_sparse:
+        if fmt:
+            parts.append(f"format={fmt}")
+        parts.append(f"nnz={int(nnz)}")
+        if shape is not None:
+            n_total = int(shape[0]) * int(shape[1])
+            if n_total > 0:
+                density = float(nnz) / float(n_total)
+                parts.append(f"density={density:.3e}")
+        try:
+            mem = int(inner.data.nbytes) + int(inner.indices.nbytes) + int(inner.indptr.nbytes)
+            parts.append(f"mem≈{_human_bytes(mem)}")
+        except AttributeError:
+            pass
+    else:
+        nbytes = getattr(inner, "nbytes", None)
+        if nbytes is not None:
+            parts.append(f"mem≈{_human_bytes(int(nbytes))}")
+
+    dtype = getattr(inner, "dtype", None)
+    if dtype is not None:
+        parts.append(f"dtype={dtype}")
+
+    return ", ".join(parts)
+
+
 def _calc_to_argparse_defaults(calc: PVCCalculation) -> dict[str, Any]:
     return {
         "data_dir": calc.data_dir,
@@ -86,6 +148,9 @@ def _calc_to_argparse_defaults(calc: PVCCalculation) -> dict[str, Any]:
         "eigensolver_sigma": calc.eigensolver_sigma,
         "eigensolver_spectral_which": calc.eigensolver_spectral_which,
         "exp_approximation_order": calc.exp_approximation_order,
+        "npz_filename": calc.npz_filename,
+        "tune_tuning": calc.tune_tuning,
+        "tune_coupling": calc.tune_coupling,
     }
 
 
@@ -125,6 +190,9 @@ def _args_to_calculation(args: argparse.Namespace, run_dir: Path) -> PVCCalculat
             getattr(args, "eigensolver_spectral_which", "") or ""
         ),
         exp_approximation_order=getattr(args, "exp_approximation_order", None),
+        npz_filename=str(getattr(args, "npz_filename", "") or "eigenvectors.npz"),
+        tune_tuning=float(getattr(args, "tune_tuning", 1.0)),
+        tune_coupling=float(getattr(args, "tune_coupling", 1.0)),
     )
 
 
@@ -246,6 +314,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Taylor order N for coupling exp(...) (sum A^k/k! through k=N); omit for exact scipy expm.",
     )
     p.add_argument(
+        "--tune-tuning",
+        dest="tune_tuning",
+        type=float,
+        default=1.0,
+        metavar="X",
+        help="Multiply coupling CSV coeff when el_state_1 and el_state_2 resolve to the same index (default 1).",
+    )
+    p.add_argument(
+        "--tune-coupling",
+        dest="tune_coupling",
+        type=float,
+        default=1.0,
+        metavar="X",
+        help="Multiply coupling CSV coeff when el_state_1 and el_state_2 resolve to different indices (default 1).",
+    )
+    p.add_argument(
         "--num-eigs",
         type=int,
         default=None,
@@ -329,6 +413,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Save eigenvectors and eigenvalues in compressed NPZ format.",
+    )
+    p.add_argument(
+        "--npz-filename",
+        dest="npz_filename",
+        type=str,
+        default="eigenvectors.npz",
+        metavar="NAME",
+        help=(
+            "Filename (or path) for the saved eigenvectors NPZ. A bare "
+            "filename is placed under out_dir; absolute or relative paths "
+            "are used as-is. '.npz' is appended if missing. "
+            "Default: eigenvectors.npz."
+        ),
     )
     p.add_argument(
         "--save-csv",
@@ -450,6 +547,8 @@ def main(argv: list[str] | None = None) -> int:
             mode_numbers=calc.modes_to_use,
             build_log=build_log,
             exp_approximation_order=calc.exp_approximation_order,
+            tune_tuning=calc.tune_tuning,
+            tune_coupling=calc.tune_coupling,
         )
         quantum_bases = model.root_node.base_states
         _out(
@@ -504,6 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         f"  → Eigen backend: {backend}"
         + (" (PETSc/SLEPc — pass -eps_* options before script args if needed)" if backend == "slepc" else "")
     )
+    _out(f"  → Matrix being diagonalized: {describe_hamiltonian_matrix(H)}")
 
     sw = (getattr(calc, "eigensolver_spectral_which", "") or "").strip()
 
@@ -541,7 +641,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         eig_vals_arr = np.array([complex(k.eigen_val) for k in eig_space.eigen_kets])
         basis_labels = np.array([str(s) for s in model.root_node.base_states._ket_states])
-        npz_path = out_dir / "eigenvectors.npz"
+        npz_path = calc.resolve_npz_path(run_dir)
+        npz_path.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             npz_path,
             eigenvectors=eig_vecs,

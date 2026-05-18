@@ -1,6 +1,9 @@
 """
 SpectrumCalculator - Computes LVC absorption spectrum from eigenvectors and dipole matrices.
 
+The full-space dipole ``kron(D_el, I_ph)`` is kept in sparse CSR form so spectrum runs do not
+allocate a dense ``dim(H) × dim(H)`` matrix.
+
 Receives resolved paths and settings; has no knowledge of .cfg files.
 Configuration is set by SpectrumBuilder.
 """
@@ -13,6 +16,7 @@ from typing import List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix, eye, kron as sp_kron, lil_matrix
 
 from jahn_teller_dynamics.io.file_io.npz_reader import load_lvc_npz
 from jahn_teller_dynamics.io.utils.file_utils import create_directory
@@ -23,12 +27,131 @@ from jahn_teller_dynamics.math.maths import Lorentzian
 HARTREE_TO_EV = 27.211386245988
 
 
-def _read_dipole_matrix_csv(path: str | Path, sep: str = ";") -> np.ndarray:
+_DIPOLE_CSV_COLUMNS = ("state_i", "state_j", "value")
+
+
+def _is_dipole_csv(path: str | Path, sep: str = ";") -> bool:
+    """Return True if ``path`` is a ``state_i;state_j;value`` dipole CSV."""
+    try:
+        header = pd.read_csv(path, sep=sep, nrows=0).columns
+    except Exception:
+        return False
+    cols_norm = {str(c).strip().lower() for c in header}
+    return set(_DIPOLE_CSV_COLUMNS).issubset(cols_norm)
+
+
+def _read_dipole_csv(
+    path: str | Path,
+    sep: str = ";",
+) -> csr_matrix:
     """
-    Read dipole matrix from CSV. Expects d×d matrix.
-    Diagonal elements are set to zero.
+    Read a dipole matrix from a ``state_i;state_j;value`` CSV and return
+    a sparse Hermitian CSR matrix.
+
+    Expected columns: ``state_i;state_j;value`` (case-insensitive). The
+    matrix dimension is the number of *distinct* labels in the
+    ``state_i`` column; each label is mapped to a matrix index by its
+    order of first appearance (repeated labels do not increase the
+    dimension). ``state_j`` values must all be among those labels.
+
+    Each row contributes one matrix entry ``M[i, j] = value``; the
+    conjugate transposed entry ``M[j, i] = conj(value)`` is filled
+    automatically, so only one triangle of the matrix needs to be listed
+    in the file. The diagonal is taken to be real (any imaginary
+    component is discarded with a warning).
+
+    Args:
+        path: CSV file path.
+        sep: CSV separator (default ``;``).
+
+    Returns:
+        Hermitian complex :class:`scipy.sparse.csr_matrix` of shape
+        ``(dim, dim)`` where ``dim`` is the number of distinct ``state_i``
+        labels.
     """
     path = Path(path)
+    df = pd.read_csv(path, sep=sep)
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    missing = [c for c in _DIPOLE_CSV_COLUMNS if c not in cols]
+    if missing:
+        raise ValueError(
+            f"Dipole CSV {path} is missing column(s) {missing}; "
+            f"found {list(df.columns)}"
+        )
+
+    i_labels_raw = df[cols["state_i"]].tolist()
+    j_labels_raw = df[cols["state_j"]].tolist()
+    v_arr = [complex(v) for v in df[cols["value"]].tolist()]
+
+    if not i_labels_raw:
+        raise ValueError(f"Dipole CSV {path} contains no rows")
+
+    label_to_idx: dict[object, int] = {}
+    for lbl in i_labels_raw:
+        if lbl not in label_to_idx:
+            label_to_idx[lbl] = len(label_to_idx)
+    dim = len(label_to_idx)
+
+    unknown_j = sorted({lbl for lbl in j_labels_raw if lbl not in label_to_idx},
+                       key=str)
+    if unknown_j:
+        raise ValueError(
+            f"Dipole CSV {path}: state_j contains label(s) {unknown_j} "
+            f"that do not appear in the state_i column; the basis is defined "
+            f"by the distinct values of state_i."
+        )
+
+    # Electronic dimension is typically small; use lil so assignments match
+    # dense semantics if the file lists both (i,j) and (j,i).
+    M = lil_matrix((dim, dim), dtype=np.complex128)
+    seen: dict[tuple[int, int], complex] = {}
+    for lbl_i, lbl_j, v in zip(i_labels_raw, j_labels_raw, v_arr):
+        i = label_to_idx[lbl_i]
+        j = label_to_idx[lbl_j]
+        prior = seen.get((i, j))
+        if prior is not None:
+            if not np.isclose(prior, v):
+                raise ValueError(
+                    f"Dipole CSV {path} has conflicting entries for "
+                    f"(state_i={lbl_i}, state_j={lbl_j}): {prior} vs {v}"
+                )
+            continue
+        if i == j:
+            if v.imag != 0.0:
+                print(
+                    f"Warning: discarding imaginary part of diagonal dipole entry "
+                    f"(state_i=state_j={lbl_i}) = {v} in {path}"
+                )
+            M[i, i] = v.real
+        else:
+            mirror = seen.get((j, i))
+            if mirror is not None and not np.isclose(mirror, np.conjugate(v)):
+                raise ValueError(
+                    f"Dipole CSV {path} is not Hermitian at "
+                    f"(state_i={lbl_i}, state_j={lbl_j}): "
+                    f"M[{lbl_i},{lbl_j}]={v}, M[{lbl_j},{lbl_i}]={mirror} "
+                    f"(expected the latter to equal conj of the former)"
+                )
+            M[i, j] = v
+            M[j, i] = np.conjugate(v)
+        seen[(i, j)] = v
+
+    return M.tocsr()
+
+
+def _read_dipole_matrix_csv(path: str | Path, sep: str = ";") -> csr_matrix:
+    """
+    Read a dipole matrix from CSV. Two formats are auto-detected:
+
+    1. ``state_i;state_j;value`` dipole CSV — see :func:`_read_dipole_csv`.
+    2. Legacy dense ``d × d`` matrix — first column is the row index,
+       the header row contains column indices. Returned as CSR (small
+       ``d`` only; prefer triplet CSV for large operators).
+    """
+    path = Path(path)
+    if _is_dipole_csv(path, sep=sep):
+        return _read_dipole_csv(path, sep=sep)
+
     df = pd.read_csv(path, sep=sep, index_col=0)
     arr = np.zeros((len(df), len(df.columns)), dtype=complex)
     for i in range(len(df)):
@@ -40,8 +163,25 @@ def _read_dipole_matrix_csv(path: str | Path, sep: str = ";") -> np.ndarray:
                 arr[i, j] = np.nan
     if arr.shape[0] != arr.shape[1]:
         raise ValueError(f"Dipole matrix must be square, got shape {arr.shape}")
-    #np.fill_diagonal(arr, 0.0)
-    return arr
+    return csr_matrix(arr)
+
+
+def _kron_d_el_identity_nph(
+    d_el: csr_matrix,
+    n_ph: int,
+) -> csr_matrix:
+    """
+    Sparse ``kron(D_el, I_{n_ph})`` matching the legacy dense layout.
+
+    The previous implementation used ``np.kron(d, np.eye(n_ph))``, which
+    allocated a full ``(dim, dim)`` dense matrix with ``dim = d_el * n_ph``
+    and was the dominant memory cost. Here ``nnz`` is at most
+    ``nnz(D_el) * n_ph``.
+    """
+    dtype = np.promote_types(d_el.dtype, np.complex128)
+    d_csr = d_el.astype(dtype, copy=False).tocsr()
+    Iph = eye(n_ph, dtype=dtype, format="csr")
+    return sp_kron(d_csr, Iph, format="csr")
 
 
 def _energy_to_eV(
@@ -87,10 +227,20 @@ class SpectrumCalculator:
         spectrum_range_max: float = 2.0,
         smearing: Optional[Lorentzian] = None,
         run_dir: Optional[Path] = None,
+        npz_paths: Optional[List[str]] = None,
     ):
         """
         Args:
-            npz_path: Absolute path to eigenvectors.npz.
+            npz_path: Absolute path to eigenvectors.npz. Equivalent to passing
+                a single-element ``npz_paths`` list; kept for backwards
+                compatibility with callers that have only one NPZ.
+            npz_paths: Ordered list of eigenvectors NPZs. The first file is
+                assumed to contain the ground state (used to define ``e0``
+                / ``E0``); the remaining files contribute additional
+                final-state eigenkets. Useful when each NPZ comes from a
+                separate SLEPc shift–invert run targeting a different
+                energy window so you don't have to diagonalize the full
+                spectrum.
             dipole_path: Path to single dipole matrix CSV (when use_dipole_xyz is False).
             dipole_x_path, dipole_y_path, dipole_z_path: Paths to dipole X/Y/Z CSVs.
             output_folder: Base folder for output (absolute or relative to repo).
@@ -103,7 +253,12 @@ class SpectrumCalculator:
             spectrum_range_max: Maximum energy (eV) for spectrum x-axis.
             smearing: Optional Lorentzian smearing instance; None if no smearing.
         """
-        self.npz_path = npz_path
+        paths: List[str] = []
+        if npz_paths:
+            paths = [str(p) for p in npz_paths if str(p).strip()]
+        elif npz_path:
+            paths = [str(npz_path)]
+        self.npz_paths: List[str] = paths
         self.dipole_path = dipole_path
         self.dipole_x_path = dipole_x_path
         self.dipole_y_path = dipole_y_path
@@ -118,6 +273,60 @@ class SpectrumCalculator:
         self.spectrum_range_max = spectrum_range_max
         self.smearing = smearing
         self._run_dir = Path(run_dir) if run_dir is not None else Path.cwd()
+
+    @property
+    def npz_path(self) -> str:
+        """First NPZ path (ground-state file). Empty if none configured."""
+        return self.npz_paths[0] if self.npz_paths else ""
+
+    def _check_npz_paths_exist(self) -> Optional[str]:
+        """Return an error message if any configured NPZ path is missing."""
+        if not self.npz_paths:
+            return "Error: npz path not configured"
+        for p in self.npz_paths:
+            if not Path(p).exists():
+                return f"NPZ not found: {p}"
+        return None
+
+    def _load_eigen_data(self) -> tuple[np.ndarray, np.ndarray, int]:
+        """
+        Load eigenvectors/eigenvalues from all configured NPZs and concatenate.
+
+        The first file is treated as the ground-state file: its column 0
+        contributes ``e0`` and its eigenvalue 0 contributes ``E0`` in the
+        callers. The full concatenated stack is returned so callers may
+        use every eigenpair as a candidate final state.
+
+        All NPZs must share the same Hilbert-space dimension ``dim`` and
+        eigenvector length; mismatches raise ``ValueError``.
+        """
+        if not self.npz_paths:
+            raise ValueError("SpectrumCalculator: no NPZ paths configured")
+        first = load_lvc_npz(Path(self.npz_paths[0]))
+        vecs_list = [np.asarray(first["eigenvectors"])]
+        vals_list = [np.asarray(first["eigenvalues"])]
+        dim = int(first["dim"])
+        vec_len = vecs_list[0].shape[0]
+        for p in self.npz_paths[1:]:
+            ni = load_lvc_npz(Path(p))
+            di = int(ni["dim"])
+            if di != dim:
+                raise ValueError(
+                    f"NPZ {p}: dim={di} differs from {self.npz_paths[0]} "
+                    f"(dim={dim}); cannot combine eigenpairs across "
+                    "incompatible Hilbert spaces."
+                )
+            vi = np.asarray(ni["eigenvectors"])
+            if vi.shape[0] != vec_len:
+                raise ValueError(
+                    f"NPZ {p}: eigenvectors have length {vi.shape[0]}, "
+                    f"expected {vec_len} from {self.npz_paths[0]}"
+                )
+            vecs_list.append(vi)
+            vals_list.append(np.asarray(ni["eigenvalues"]))
+        eig_vecs = np.concatenate(vecs_list, axis=1)
+        eig_vals = np.concatenate(vals_list)
+        return eig_vecs, eig_vals, dim
 
     def _resolve_output_folder(self) -> Path:
         """Resolved output folder (all outputs go here). Paths relative to run_dir (cwd)."""
@@ -138,8 +347,8 @@ class SpectrumCalculator:
             return res_folder / rel
         return res_folder / f"{self.output_prefix}.png"
 
-    def _load_dipoles(self) -> List[np.ndarray]:
-        """Load dipole matrix/matrices from CSV(s)."""
+    def _load_dipoles(self) -> List[csr_matrix]:
+        """Load dipole matrix/matrices from CSV(s) as sparse CSR."""
         sep = self.separator or ";"
         if self.use_dipole_xyz:
             paths = [
@@ -165,8 +374,9 @@ class SpectrumCalculator:
         Returns:
             0 on success, 1 on error (e.g. file not found).
         """
-        if not self.npz_path:
-            print("Error: npz path not configured")
+        err = self._check_npz_paths_exist()
+        if err is not None:
+            print(err)
             return 1
         if not self.use_dipole_xyz and not self.dipole_path:
             print("Error: dipole or dipole_x/y/z paths not configured")
@@ -175,11 +385,6 @@ class SpectrumCalculator:
             [self.dipole_x_path, self.dipole_y_path, self.dipole_z_path]
         ):
             print("Error: all of dipole_x, dipole_y, dipole_z must be set")
-            return 1
-
-        npz_path = Path(self.npz_path)
-        if not npz_path.exists():
-            print(f"NPZ not found: {npz_path}")
             return 1
 
         if self.use_dipole_xyz:
@@ -194,10 +399,7 @@ class SpectrumCalculator:
         dipoles = self._load_dipoles()
 
         d_el = dipoles[0].shape[0]
-        data = load_lvc_npz(npz_path)
-        eig_vecs = data["eigenvectors"]
-        eig_vals = data["eigenvalues"]
-        dim = data["dim"]
+        eig_vecs, eig_vals, dim = self._load_eigen_data()
 
         if dim % d_el != 0:
             raise ValueError(
@@ -205,9 +407,7 @@ class SpectrumCalculator:
             )
         n_ph = dim // d_el
 
-        M_fulls = [
-            np.kron(d, np.eye(n_ph, dtype=complex)) for d in dipoles
-        ]
+        M_fulls = [_kron_d_el_identity_nph(d, n_ph) for d in dipoles]
 
         e0 = eig_vecs[:, 0]
         n_states = eig_vecs.shape[1]
@@ -269,9 +469,10 @@ class SpectrumCalculator:
         
         min_energy = min(range_eV)
         max_energy = max(range_eV)
-        
-        if not self.npz_path:
-            print("Error: npz path not configured")
+
+        err = self._check_npz_paths_exist()
+        if err is not None:
+            print(err)
             return 1
         if not self.use_dipole_xyz and not self.dipole_path:
             print("Error: dipole or dipole_x/y/z paths not configured")
@@ -280,11 +481,6 @@ class SpectrumCalculator:
             [self.dipole_x_path, self.dipole_y_path, self.dipole_z_path]
         ):
             print("Error: all of dipole_x, dipole_y, dipole_z must be set")
-            return 1
-
-        npz_path = Path(self.npz_path)
-        if not npz_path.exists():
-            print(f"NPZ not found: {npz_path}")
             return 1
 
         if self.use_dipole_xyz:
@@ -299,10 +495,13 @@ class SpectrumCalculator:
         dipoles = self._load_dipoles()
 
         d_el = dipoles[0].shape[0]
-        data = load_lvc_npz(npz_path)
-        eig_vecs = data["eigenvectors"]
-        eig_vals = data["eigenvalues"]
-        dim = data["dim"]
+        eig_vecs, eig_vals, dim = self._load_eigen_data()
+        if len(self.npz_paths) > 1:
+            print(
+                f"Spectrum: loaded {eig_vecs.shape[1]} eigenpair(s) from "
+                f"{len(self.npz_paths)} NPZ file(s) "
+                f"(ground state from {self.npz_paths[0]})"
+            )
 
         if dim % d_el != 0:
             raise ValueError(
@@ -310,9 +509,7 @@ class SpectrumCalculator:
             )
         n_ph = dim // d_el
 
-        M_fulls = [
-            np.kron(d, np.eye(n_ph, dtype=complex)) for d in dipoles
-        ]
+        M_fulls = [_kron_d_el_identity_nph(d, n_ph) for d in dipoles]
 
         e0 = eig_vecs[:, 0]
         n_states = eig_vecs.shape[1]

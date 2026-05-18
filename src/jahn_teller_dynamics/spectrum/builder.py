@@ -53,7 +53,7 @@ class SpectrumBuilder:
         )
         run_dir_resolved = run_dir if run_dir is not None else Path.cwd()
         return SpectrumCalculator(
-            npz_path=config.npz_path,
+            npz_paths=config.npz_paths,
             dipole_path=config.dipole_path,
             dipole_x_path=config.dipole_x_path,
             dipole_y_path=config.dipole_y_path,

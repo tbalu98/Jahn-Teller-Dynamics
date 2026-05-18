@@ -8,9 +8,9 @@ relative to data_folder and output_folder. Uses PathManager and file_utils.
 from __future__ import annotations
 
 from configparser import ConfigParser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from jahn_teller_dynamics.io.config.reader import ConfigReader
 from jahn_teller_dynamics.io.config.constants import (
@@ -47,6 +47,34 @@ def _parse_smearing_float(
         return fallback
 
 
+def _parse_npz_value(val: object) -> List[str]:
+    """
+    Normalise the ``npz`` option to an ordered list of (unresolved) paths.
+
+    Accepts:
+      * ``None`` / empty → ``[]``
+      * ``list`` / ``tuple`` (from CLI ``--npz a.npz b.npz``)
+      * single string (from .cfg or single-value override)
+      * comma-separated or newline-separated string
+        (e.g. ``npz = ground.npz, excited_1eV.npz`` in .cfg)
+
+    The first entry is conventionally the file containing the ground state.
+    """
+    if val is None:
+        return []
+    if isinstance(val, (list, tuple)):
+        return [str(x).strip() for x in val if str(x).strip()]
+    if not isinstance(val, str):
+        val = str(val)
+    out: List[str] = []
+    for line in val.splitlines():
+        for chunk in line.split(","):
+            chunk = chunk.strip()
+            if chunk:
+                out.append(chunk)
+    return out
+
+
 @dataclass
 class SpectrumConfig:
     """
@@ -54,9 +82,16 @@ class SpectrumConfig:
 
     All paths are resolved to absolute paths. Paths in config are relative to
     data_folder (for dipole) or output_folder (for npz, out).
+
+    The ``npz`` option may name a single eigenvectors NPZ or a list of them
+    (comma- or newline-separated in .cfg, or multiple values on the CLI). The
+    first NPZ is assumed to contain the ground state; the remaining files
+    contribute additional final-state eigenkets to the absorption spectrum
+    (useful when each NPZ is produced by a separate SLEPc shift–invert run
+    targeting a specific energy window).
     """
 
-    npz_path: str = ""
+    npz_paths: List[str] = field(default_factory=list)
     dipole_path: str = ""
     dipole_x_path: str = ""
     dipole_y_path: str = ""
@@ -73,6 +108,16 @@ class SpectrumConfig:
     smearing_function: str = ""
     smearing_HWHM: Optional[float] = None
     smearing_amplitude: float = 1.0
+
+    @property
+    def npz_path(self) -> str:
+        """First NPZ path (ground state); empty when no NPZ is configured.
+
+        Kept as a property for backwards compatibility with single-file
+        callers (``vertical_excitation.py``, the existing CLI argument
+        parser, etc.). Multi-file consumers should read ``npz_paths``.
+        """
+        return self.npz_paths[0] if self.npz_paths else ""
 
     @classmethod
     def from_config_reader(
@@ -118,13 +163,25 @@ class SpectrumConfig:
         if output_folder_raw:
             output_folder_path = ctx.resolve(output_folder_raw)
 
-        npz_raw = get("npz")
+        # `npz` may be a single path, a comma-separated list, or — via CLI
+        # override — a true Python list. Special-case it because `get()`
+        # str()-ifies everything (which would mangle a list).
+        npz_override = overrides.get("npz")
+        if npz_override is not None:
+            npz_list_raw = _parse_npz_value(npz_override)
+        else:
+            npz_list_raw = _parse_npz_value(
+                path_manager.get_option_from_section(spectrum_section, "npz", "")
+            )
+
         dipole_raw = get("dipole")
         dipole_x_raw = get("dipole_x")
         dipole_y_raw = get("dipole_y")
         dipole_z_raw = get("dipole_z")
 
-        npz_path = str(ctx.resolve(npz_raw, base=output_folder_path)) if npz_raw else ""
+        npz_paths = [
+            str(ctx.resolve(p, base=output_folder_path)) for p in npz_list_raw
+        ]
         dipole_path = str(ctx.resolve(dipole_raw, base=data_folder)) if dipole_raw else ""
         dipole_x_path = str(ctx.resolve(dipole_x_raw, base=data_folder)) if dipole_x_raw else ""
         dipole_y_path = str(ctx.resolve(dipole_y_raw, base=data_folder)) if dipole_y_raw else ""
@@ -185,7 +242,7 @@ class SpectrumConfig:
                     smearing_amplitude = 1.0
 
         return cls(
-            npz_path=npz_path,
+            npz_paths=npz_paths,
             dipole_path=dipole_path,
             dipole_x_path=dipole_x_path,
             dipole_y_path=dipole_y_path,
@@ -242,15 +299,16 @@ class SpectrumConfig:
             output_folder_path = ctx.resolve(of_raw or ".")
             data_folder = ctx.resolve(data_folder_raw or ".")
 
-            npz_raw = overrides.get("npz", "")
+            npz_raw = overrides.get("npz")
             dipole_raw = overrides.get("dipole", "")
             dx = overrides.get("dipole_x", "")
             dy = overrides.get("dipole_y", "")
             dz = overrides.get("dipole_z", "")
 
-            npz_path = (
-                str(ctx.resolve(npz_raw, base=output_folder_path)) if npz_raw else ""
-            )
+            npz_paths = [
+                str(ctx.resolve(p, base=output_folder_path))
+                for p in _parse_npz_value(npz_raw)
+            ]
             dipole_path = str(ctx.resolve(dipole_raw, base=data_folder)) if dipole_raw else ""
             dipole_x_path = str(ctx.resolve(dx, base=data_folder)) if dx else ""
             dipole_y_path = str(ctx.resolve(dy, base=data_folder)) if dy else ""
@@ -263,7 +321,7 @@ class SpectrumConfig:
             sh = _parse_smearing_float(overrides.get("smearing_HWHM"), None)
             sa = _parse_smearing_float(overrides.get("smearing_amplitude"), 1.0) or 1.0
             return cls(
-                npz_path=npz_path,
+                npz_paths=npz_paths,
                 dipole_path=dipole_path,
                 dipole_x_path=dipole_x_path,
                 dipole_y_path=dipole_y_path,
