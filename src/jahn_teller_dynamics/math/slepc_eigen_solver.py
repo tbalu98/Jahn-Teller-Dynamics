@@ -25,7 +25,13 @@ import numpy as np
 from scipy.sparse import csr_matrix
 
 import jahn_teller_dynamics.math.maths as maths
+from jahn_teller_dynamics.io.utils.timestamp_print import print_ts
 from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver, EigenSolver
+
+_SLEPC_DEFAULT_TOL = 1e-10
+_SLEPC_DEFAULT_MAX_IT = 10000
+_SLEPC_MIN_NCV = 30
+_SLEPC_NCV_FACTOR = 2
 from jahn_teller_dynamics.math.matrix_mechanics import (
     DEFAULT_ROUNDING_PRECISION,
     MatrixOperator,
@@ -134,6 +140,35 @@ def _slepc_st_shift_invert(st, sigma: float, SLEPc) -> None:
     raise RuntimeError("SLEPc spectral transform: ST object has no setShift/setSigma")
 
 
+def _slepc_clear_shift_invert(st, SLEPc) -> None:
+    """
+    On the existing ``ST``, leave shift-and-invert (e.g. from ``-st_type sinvert`` in PETSc options).
+    Does not replace ``eps.setST`` (that breaks ``EPSSetOperators`` state).
+    """
+    ST = SLEPc.ST.Type
+    for name in ("SHIFT", "CAYLEY", "SHELL"):
+        tn = getattr(ST, name, None)
+        if tn is None:
+            continue
+        try:
+            st.setType(tn)
+            if name == "SHIFT" and hasattr(st, "setShift"):
+                st.setShift(0.0)
+            return
+        except Exception:
+            continue
+    for name in ("shift", "cayley", "shell"):
+        try:
+            st.setType(name)
+            return
+        except Exception:
+            continue
+
+
+def _slepc_pick_ncv(nev: int, dim: int) -> int:
+    return min(dim, max(_SLEPC_MIN_NCV, _SLEPC_NCV_FACTOR * int(nev) + 1))
+
+
 def _slepc_configure_spectrum(
     eps,
     spectral_sigma: Optional[float],
@@ -185,6 +220,8 @@ def _slepc_configure_spectrum(
         raise ValueError(
             "SLEPc: spectral selection 'nearest' requires eigensolver_sigma (shift–invert target)."
         )
+
+    _slepc_clear_shift_invert(eps.getST(), SLEPc)
 
     Which = SLEPc.EPS.Which
     if not s or s in ("smallest_real", "smallest_algebraic"):
@@ -291,14 +328,37 @@ class SLEPcEigenSolver(EigenSolver):
         eps = SLEPc.EPS().create(comm=comm)
         eps.setOperators(A_mat)
         eps.setProblemType(SLEPc.EPS.ProblemType.HEP)
-        eps.setDimensions(nev=nev)
-        eps.setTolerances(1e-10)
+        try:
+            eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
+        except Exception:
+            try:
+                eps.setType("krylovschur")
+            except Exception:
+                pass
+
+        ncv = _slepc_pick_ncv(nev, dim)
+        try:
+            eps.setDimensions(nev=nev, ncv=ncv)
+        except TypeError:
+            eps.setDimensions(nev=nev)
+
+        eps.setTolerances(_SLEPC_DEFAULT_TOL, _SLEPC_DEFAULT_MAX_IT)
+        # Do not use eps.setMonitor(True): slepc4py expects a callable, not a bool.
+
         eps.setFromOptions()
         # Apply spectrum *after* setFromOptions so defaults / CLI do not wipe target shift–invert
         # settings (EPSWhich.TARGET_MAGNITUDE + EPSSetTarget), required since SLEPc ~3.23.
         _slepc_configure_spectrum(
             eps, spectral_sigma, spectral_which, ordering_type, SLEPc
         )
+        if comm.getRank() == 0:
+            sw = (spectral_which or "").strip() or "smallest_real"
+            print_ts(
+                f"  → SLEPc: dim={dim}, nev={nev}, ncv={ncv}, "
+                f"tol={_SLEPC_DEFAULT_TOL}, max_it={_SLEPC_DEFAULT_MAX_IT}, "
+                f"spectral_which={sw!r}",
+                flush=True,
+            )
         eps.solve()
 
         nconv = eps.getConverged()
@@ -306,6 +366,14 @@ class SLEPcEigenSolver(EigenSolver):
             raise RuntimeError(
                 "SLEPc EPS: no eigenpairs converged (check Hermiticity, nev, and -eps_* options)."
             )
+        if nconv < nev:
+            warnings.warn(
+                f"SLEPc: only {nconv}/{nev} eigenpairs converged.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        if comm.getRank() == 0:
+            print_ts(f"  → SLEPc: nconv={nconv}/{nev}", flush=True)
 
         take = min(int(nconv), int(nev))
 

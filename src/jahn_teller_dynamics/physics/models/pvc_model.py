@@ -3,20 +3,21 @@ PVC (polynomial vibronic coupling) quantum system tree.
 
 Like :class:`LVC_model`, this is a :class:`quantum_system_tree` with:
 
-- ``electron_system``: :class:`multi_config_electron`
-- ``phonon_system``: :class:`~jahn_teller_dynamics.physics.models.constrained_multimode_phonon.MultiModeConstrainedPhononSystem`
-  (total phonon number) or :class:`~jahn_teller_dynamics.physics.models.system_builder.MultiModePhononSystem`
-  (tensor product with per-mode truncation)
+- ``orbital_system`` (alias ``electron_system``): :class:`multi_config_electron`
+- ``phonon_system``: constrained or tensor-product multimode phonons
 
-Polynomial coupling data live in a separate table (CSV); use
-:func:`jahn_teller_dynamics.physics.hamiltonians.djt_polynomial_hamiltonian.create_pvc_hamiltonian`
-to build the composite Hamiltonian from this tree.
+Polynomial coupling data live in a separate table (CSV). Build the composite Hamiltonian with:
+
+- Row-by-row: :func:`~jahn_teller_dynamics.physics.hamiltonians.djt_polynomial_hamiltonian.create_pvc_hamiltonian`
+- Grouped by expression: :func:`~jahn_teller_dynamics.physics.hamiltonians.djt_polynomial_hamiltonian_grouped.create_pvc_hamiltonian_grouped`
 """
 
 from __future__ import annotations
 
 import time
-from typing import Callable, List, Optional, Sequence, Union
+from typing import Callable, Dict, List, Optional, Sequence, Union
+
+import jahn_teller_dynamics.math.matrix_mechanics as mm
 
 import numpy as np
 
@@ -38,8 +39,11 @@ class PVC_model(qs.quantum_system_tree):
     Composite PVC system tree:
 
         PVC_model(root)
-        ├── electron_system  (multi_config_electron.node)
+        ├── orbital_system   (multi_config_electron.node; alias electron_system)
         └── phonon_system    (constrained or tensor-product multimode phonons)
+
+    Grouped coupling builders attach one :math:`N \\times N` operator per CSV expression
+    on the orbital node (``coupling_<expression>`` keys) for inspection and spin extensions.
     """
 
     def __init__(
@@ -56,6 +60,13 @@ class PVC_model(qs.quantum_system_tree):
         self.phonons = phonons
         self.coupling_rows = list(coupling_rows)
         self.electron_energies = electron_energies
+        self.orbital_coupling_operators: Dict[str, mm.MatrixOperator] = {}
+        self.orbital_coupling_operator_names: Dict[str, str] = {}
+
+    @property
+    def orbital(self) -> multi_config_electron:
+        """Orbital subsystem (same node as ``electron``; extension point for spin)."""
+        return self.electron
 
     @property
     def node(self) -> qs.quantum_system_node:  # pragma: no cover
@@ -115,7 +126,7 @@ class PVC_model(qs.quantum_system_tree):
         maximum_quanta_per_mode: Optional[int] = None,
         maximum_total_phonon_quanta: Optional[int] = None,
         system_id: str = "PVC_model",
-        electron_system_id: str = "electron_system",
+        electron_system_id: str = "orbital_system",
         phonon_system_id: str = "phonon_system",
         use_sparse: bool = True,
         dimensionless_coordinates: bool = True,

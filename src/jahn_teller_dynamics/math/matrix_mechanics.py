@@ -1328,6 +1328,17 @@ class MatrixOperator:
                subsys_name=self.subsys_name,
                solver=self._eigen_solver,
           )
+
+     def symmetrize_hermitian(self) -> 'MatrixOperator':
+          """
+          Hermitian part :math:`(A + A^\\dagger) / 2` in the same matrix representation.
+
+          Use after assembling a Hamiltonian from coupling rows when phonon polynomials
+          do not commute or row-level Hermitian completion is insufficient.
+          """
+          herm = 0.5 * (self + self.adjoint())
+          herm.set_eigen_solver(self._eigen_solver)
+          return herm
      
      def set_quantum_states(self, quantum_states: 'hilber_space_bases') -> None:
           self.quantum_state_bases = quantum_states

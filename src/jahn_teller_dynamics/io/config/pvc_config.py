@@ -17,6 +17,25 @@ from jahn_teller_dynamics.io.utils.safe_numeric_expr import parse_config_int_exp
 from jahn_teller_dynamics.io.utils.path_manager import PathManager
 from jahn_teller_dynamics.io.utils.run_context import run_dir as get_run_dir
 
+_HAMILTONIAN_BUILDER_GROUPED = frozenset({"grouped", "expression", "expressions"})
+_HAMILTONIAN_BUILDER_LINED = frozenset({"lined", "line", "row", "rows", "legacy"})
+
+
+def normalize_hamiltonian_builder(raw: str) -> str:
+    """
+    Normalize ``hamiltonian_builder`` from .cfg / CLI to ``grouped`` or ``lined``.
+
+    - ``grouped`` (aliases ``expression``, ``expressions``) — one orbital matrix per CSV expression.
+    - ``lined`` (aliases ``row``, ``line``, ``legacy``) — legacy row-by-row ``|i⟩⟨j| ⊗ V(p)``.
+    """
+    value = (raw or "lined").strip().lower()
+    if value in _HAMILTONIAN_BUILDER_GROUPED:
+        return "grouped"
+    if value in _HAMILTONIAN_BUILDER_LINED:
+        return "lined"
+    allowed = ", ".join(sorted(_HAMILTONIAN_BUILDER_GROUPED | _HAMILTONIAN_BUILDER_LINED))
+    raise ValueError(f"hamiltonian_builder must be one of: {allowed}; got {raw!r}")
+
 
 @dataclass
 class PVCCalculation:
@@ -51,12 +70,30 @@ class PVCCalculation:
     - ``eigensolver_spectral_which`` (aliases ``eigensolver_which``, ``spectral_which``) —
       e.g. ``smallest_real``, ``largest_real``, ``smallest_magnitude``, ``nearest`` (``nearest``
       requires ``eigensolver_sigma``), or SciPy tokens ``SA`` / ``LA`` / ``SM`` / ``LM``.
+    - ``eigensolver_tol``, ``eigensolver_max_it`` (``eigensolver_maxiter``), ``eigensolver_ncv`` —
+      scipy ``eigsh`` convergence knobs (sparse backend only; defaults ``1e-10``, ``10000``, auto).
 
     Coupling CSV coefficient scaling (after ``el_state_1`` / ``el_state_2`` are resolved to the
     same 1-based indices as ``electron_energies.csv`` row order):
 
     - ``tune_tuning`` — multiply ``coeff`` when both indices are equal (default ``1.0``).
     - ``tune_coupling`` — multiply ``coeff`` when the indices differ (default ``1.0``).
+
+    Coupling-table completion before building ``H`` (see
+    :func:`~jahn_teller_dynamics.physics.hamiltonians.djt_polynomial_hamiltonian.build_polynomial_coupling_hamiltonian`):
+
+    - ``hermitian_completion`` — if ``true``, add missing partner rows ``(j, i, p†, c)`` for
+      off-diagonal ``(i, j, p, c)`` (default ``true``).
+    - ``diagonal_completion`` — if ``true``, replicate each diagonal row ``(i, i, p, c)`` to all
+      other electronic states (default ``false``).
+    - ``symmetrize_hamiltonian`` — if ``true``, replace assembled ``H`` by ``(H + H†) / 2`` when row
+      completion did not already yield a Hermitian matrix (default ``true``).
+
+    Hamiltonian assembly (``hamiltonian_builder`` in ``[PVC]`` or ``[essentials]``):
+
+    - ``lined`` (default; alias ``row``) — legacy row-by-row ``|i⟩⟨j| ⊗ V(p)`` expansion.
+    - ``grouped`` (alias ``expression``) — one :math:`N \\times N` orbital operator per CSV
+      expression on the orbital subsystem, then tensored with phonon operators.
     """
 
     data_dir: str = ""
@@ -75,6 +112,9 @@ class PVCCalculation:
     num_eigs: Optional[int] = None
     eigensolver_sigma: Optional[float] = None
     eigensolver_spectral_which: str = ""
+    eigensolver_tol: Optional[float] = None
+    eigensolver_max_it: Optional[int] = None
+    eigensolver_ncv: Optional[int] = None
     use_sparse: bool = True
     eigensolver: str = ""
     running_environment: str = ""
@@ -93,6 +133,10 @@ class PVCCalculation:
 
     tune_tuning: float = 1.0
     tune_coupling: float = 1.0
+    hermitian_completion: bool = True
+    diagonal_completion: bool = False
+    symmetrize_hamiltonian: bool = True
+    hamiltonian_builder: str = "lined"
 
     def resolve_input_paths(self, run_dir: Optional[Path] = None) -> tuple[Path, Path, Path]:
         """
@@ -348,6 +392,22 @@ class PVCConfigParser:
                 calc.eigensolver_spectral_which = v
                 break
 
+        for key in ("eigensolver_tol", "eigsh_tol", "eps_tol"):
+            v = self._get_str(key, "").strip()
+            if v:
+                calc.eigensolver_tol = float(v)
+                break
+        for key in ("eigensolver_max_it", "eigensolver_maxiter", "eigsh_maxiter"):
+            v = self._get_str(key, "").strip()
+            if v:
+                calc.eigensolver_max_it = int(float(v))
+                break
+        for key in ("eigensolver_ncv", "eigsh_ncv"):
+            v = self._get_str(key, "").strip()
+            if v:
+                calc.eigensolver_ncv = int(float(v))
+                break
+
         # Phonon / output flags may appear in [PVC] or [essentials]; [PVC] wins if both set.
         for opt, attr in [
             ("dimensionless_coordinates", "dimensionless_coordinates"),
@@ -382,5 +442,19 @@ class PVCConfigParser:
             v = self._get_str(key, "").strip()
             if v:
                 setattr(calc, attr, float(v))
+
+        for opt, attr in (
+            ("hermitian_completion", "hermitian_completion"),
+            ("diagonal_completion", "diagonal_completion"),
+            ("symmetrize_hamiltonian", "symmetrize_hamiltonian"),
+        ):
+            if (v := self._get_bool(opt)) is not None:
+                setattr(calc, attr, v)
+
+        for key in ("hamiltonian_builder", "hamiltonian_build", "pvc_hamiltonian_builder"):
+            v = self._get_str(key, "").strip()
+            if v:
+                calc.hamiltonian_builder = normalize_hamiltonian_builder(v)
+                break
 
         return calc

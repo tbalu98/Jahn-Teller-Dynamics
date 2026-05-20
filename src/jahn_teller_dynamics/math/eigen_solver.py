@@ -23,13 +23,16 @@ Example usage:
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Optional, List, Tuple, Any, Union
 import warnings
 
 import numpy as np
 from scipy.sparse import block_diag
 from scipy.linalg import eig as eigs
+from scipy.sparse.linalg import norm as sparse_norm
 import jahn_teller_dynamics.math.maths as maths
+from jahn_teller_dynamics.io.utils.timestamp_print import print_ts
 from jahn_teller_dynamics.math.matrix_mechanics import (
     MatrixOperator,
     ket_vector,
@@ -37,6 +40,129 @@ from jahn_teller_dynamics.math.matrix_mechanics import (
     hilber_space_bases,
     DEFAULT_ROUNDING_PRECISION,
 )
+
+# Defaults for ``scipy.sparse.linalg.eigsh`` (override via PVC .cfg or CLI).
+_SPARSE_EIGSH_DEFAULT_TOL = 1e-10
+_SPARSE_EIGSH_DEFAULT_MAXITER = 10000
+_SPARSE_EIGSH_MIN_NCV = 30
+_SPARSE_EIGSH_NCV_FACTOR = 2
+
+
+@dataclass(frozen=True)
+class HermitianCheckResult:
+    """Residual norms for :math:`H - H^\\dagger` on a :class:`MatrixOperator`."""
+
+    fro_residual: float
+    fro_norm_h: float
+    relative_fro: float
+    max_abs_residual: float
+    max_imag_diagonal: float
+    is_hermitian: bool
+    rtol: float
+    atol: float
+
+    def summary_line(self) -> str:
+        status = "OK" if self.is_hermitian else "FAILED"
+        return (
+            f"||H-H†||_F/||H||_F={self.relative_fro:.3e}, "
+            f"max|H-H†|={self.max_abs_residual:.3e}, "
+            f"max|Im(diag H)|={self.max_imag_diagonal:.3e} ({status})"
+        )
+
+
+def _frobenius_norm_matrix_operator(op: MatrixOperator) -> float:
+    matrix = op.matrix
+    if isinstance(matrix, maths.SparseMatrix):
+        return float(sparse_norm(matrix.matrix, ord="fro"))
+    arr = np.asarray(matrix.matrix, dtype=np.complex128)
+    return float(np.linalg.norm(arr, ord="fro"))
+
+
+def _max_abs_element_matrix_operator(op: MatrixOperator) -> float:
+    matrix = op.matrix
+    if isinstance(matrix, maths.SparseMatrix):
+        data = matrix.matrix.data
+        if data.size == 0:
+            return 0.0
+        return float(np.max(np.abs(data)))
+    arr = np.asarray(matrix.matrix, dtype=np.complex128)
+    if arr.size == 0:
+        return 0.0
+    return float(np.max(np.abs(arr)))
+
+
+def _max_imag_diagonal_matrix_operator(op: MatrixOperator) -> float:
+    matrix = op.matrix
+    if isinstance(matrix, maths.SparseMatrix):
+        diag = matrix.matrix.tocsr().diagonal()
+    else:
+        diag = np.diagonal(np.asarray(matrix.matrix, dtype=np.complex128))
+    if diag.size == 0:
+        return 0.0
+    return float(np.max(np.abs(np.imag(diag))))
+
+
+def check_matrix_operator_hermiticity(
+    matrix_operator: MatrixOperator,
+    *,
+    rtol: float = 1e-10,
+    atol: float = 1e-12,
+) -> HermitianCheckResult:
+    """
+    Measure how close ``matrix_operator`` is to its adjoint (Hermitian residual).
+
+    Uses Frobenius norm of ``H - H†``, max stored entry of ``|H - H†|``, and
+    ``max|Im(diag H)|``. Passes when all three are within ``atol + rtol * scale``
+    with ``scale`` taken from ``||H||_F`` or ``max|H_ij|``.
+    """
+    diff = matrix_operator - matrix_operator.adjoint()
+    fro_h = _frobenius_norm_matrix_operator(matrix_operator)
+    fro_res = _frobenius_norm_matrix_operator(diff)
+    max_abs_res = _max_abs_element_matrix_operator(diff)
+    max_imag_diag = _max_imag_diagonal_matrix_operator(matrix_operator)
+    max_abs_h = _max_abs_element_matrix_operator(matrix_operator)
+
+    scale_fro = max(fro_h, 1.0)
+    scale_abs = max(max_abs_h, 1.0)
+    tol_fro = float(atol) + float(rtol) * scale_fro
+    tol_abs = float(atol) + float(rtol) * scale_abs
+
+    is_hermitian = (
+        fro_res <= tol_fro
+        and max_abs_res <= tol_abs
+        and max_imag_diag <= tol_abs
+    )
+    relative_fro = fro_res / fro_h if fro_h > 0.0 else fro_res
+
+    return HermitianCheckResult(
+        fro_residual=fro_res,
+        fro_norm_h=fro_h,
+        relative_fro=relative_fro,
+        max_abs_residual=max_abs_res,
+        max_imag_diagonal=max_imag_diag,
+        is_hermitian=is_hermitian,
+        rtol=rtol,
+        atol=atol,
+    )
+
+
+def assert_matrix_operator_hermitian(
+    matrix_operator: MatrixOperator,
+    *,
+    rtol: float = 1e-10,
+    atol: float = 1e-12,
+    context: str = "Matrix",
+) -> HermitianCheckResult:
+    """Raise :class:`ValueError` if ``matrix_operator`` is not Hermitian within tolerances."""
+    report = check_matrix_operator_hermiticity(
+        matrix_operator, rtol=rtol, atol=atol
+    )
+    if not report.is_hermitian:
+        raise ValueError(
+            f"{context} is not Hermitian within rtol={rtol}, atol={atol}: "
+            f"{report.summary_line()}"
+        )
+    return report
 
 
 def spectral_which_to_scipy_eigsh(
@@ -88,6 +214,64 @@ def spectral_which_to_scipy_eigsh(
     if s in scipy_which_aliases:
         return s.upper()
     return "SA"
+
+
+def _sparse_pick_ncv(k: int, dim: int, ncv: Optional[int]) -> int:
+    """Lanczos subspace dimension (``eigsh`` ``ncv``); must satisfy ``ncv > k``."""
+    if ncv is not None:
+        return min(dim, max(int(ncv), k + 1))
+    return min(dim, max(_SPARSE_EIGSH_MIN_NCV, _SPARSE_EIGSH_NCV_FACTOR * k + 1))
+
+
+def _sparse_eigsh_residual(
+    matrix_csr,
+    lam: complex,
+    vec: np.ndarray,
+) -> float:
+    """Relative residual ``||H v - λ v|| / (||H||_F * ||v||)`` for one eigenpair."""
+    from scipy.sparse.linalg import norm as sparse_norm
+
+    v = np.asarray(vec, dtype=np.complex128).ravel()
+    Hv = np.asarray(matrix_csr @ v, dtype=np.complex128).ravel()
+    num = float(np.linalg.norm(Hv - lam * v))
+    den = float(sparse_norm(matrix_csr, ord="fro")) * float(np.linalg.norm(v))
+    return num / den if den > 0.0 else num
+
+
+def _sparse_log_eigsh_setup(
+    *,
+    dim: int,
+    k: int,
+    which: str,
+    tol: float,
+    maxiter: int,
+    ncv: int,
+    spectral_sigma: Optional[float],
+    spectral_which: Optional[str],
+) -> None:
+    sw = (spectral_which or "").strip() or "(default smallest_real)"
+    print_ts(
+        f"  → scipy eigsh: dim={dim}, k={k}, which={which!r}, ncv={ncv}, "
+        f"tol={tol}, maxiter={maxiter}",
+        flush=True,
+    )
+    print_ts(f"  → scipy eigsh: spectral_which={sw!r}", flush=True)
+    if spectral_sigma is not None:
+        print_ts(f"  → scipy eigsh: shift–invert sigma={float(spectral_sigma)}", flush=True)
+
+
+def _sparse_log_eigsh_residuals(matrix_csr, eigen_vals, eigen_vects, *, k_check: int = 3) -> None:
+    n = min(k_check, len(eigen_vals))
+    if n <= 0:
+        return
+    try:
+        parts = []
+        for i in range(n):
+            rel = _sparse_eigsh_residual(matrix_csr, eigen_vals[i], eigen_vects[:, i])
+            parts.append(f"λ{i + 1} res={rel:.3e}")
+        print_ts(f"  → scipy eigsh residuals: {', '.join(parts)}", flush=True)
+    except Exception as exc:
+        print_ts(f"  → scipy eigsh residuals: skipped ({exc})", flush=True)
 
 
 def dense_pick_indices(
@@ -328,6 +512,10 @@ class SparseEigenSolver(EigenSolver):
         quantum_states_bases: Optional[hilber_space_bases] = None,
         spectral_sigma: Optional[float] = None,
         spectral_which: Optional[str] = None,
+        *,
+        eigsh_tol: Optional[float] = None,
+        eigsh_maxiter: Optional[int] = None,
+        eigsh_ncv: Optional[int] = None,
     ) -> eigen_vector_space:
         """
         Sparse Hermitian eigenproblem via ``scipy.sparse.linalg.eigsh`` (optionally shift–invert).
@@ -339,6 +527,9 @@ class SparseEigenSolver(EigenSolver):
             quantum_states_bases: Output basis.
             spectral_sigma: Shift for ``eigsh(..., sigma=...)`` (interior / target region).
             spectral_which: ``smallest_real``, ``nearest``, or SciPy tokens ``SA``/``LM`` etc.
+            eigsh_tol: ARPACK convergence tolerance (default ``1e-10``).
+            eigsh_maxiter: Maximum Lanczos iterations (default ``10000``).
+            eigsh_ncv: Krylov subspace size; default ``min(dim, max(30, 2*k+1))``.
         """
         from scipy.sparse.linalg import eigsh as sparse_eigsh
         from scipy.sparse import csr_matrix
@@ -392,14 +583,41 @@ class SparseEigenSolver(EigenSolver):
 
         which_scipy = spectral_which_to_scipy_eigsh(sw_eff, spectral_sigma)
 
-        eigsh_kw: dict = {"k": k, "which": which_scipy}
+        tol = _SPARSE_EIGSH_DEFAULT_TOL if eigsh_tol is None else float(eigsh_tol)
+        maxiter = (
+            _SPARSE_EIGSH_DEFAULT_MAXITER
+            if eigsh_maxiter is None
+            else int(eigsh_maxiter)
+        )
+        ncv = _sparse_pick_ncv(k, dim, eigsh_ncv)
+
+        eigsh_kw: dict = {
+            "k": k,
+            "which": which_scipy,
+            "tol": tol,
+            "maxiter": maxiter,
+            "ncv": ncv,
+        }
         if spectral_sigma is not None:
             eigsh_kw["sigma"] = spectral_sigma
+
+        _sparse_log_eigsh_setup(
+            dim=dim,
+            k=k,
+            which=which_scipy,
+            tol=tol,
+            maxiter=maxiter,
+            ncv=ncv,
+            spectral_sigma=spectral_sigma,
+            spectral_which=sw_eff,
+        )
 
         eigen_vals, eigen_vects = sparse_eigsh(sparse_matrix, **eigsh_kw)
 
         eigen_vals = np.array(eigen_vals, dtype=maths.complex_number_typ)
         eigen_vects = np.array(eigen_vects, dtype=maths.complex_number_typ)
+
+        _sparse_log_eigsh_residuals(sparse_matrix, eigen_vals, eigen_vects)
 
         idx = np.argsort(eigen_vals.real)
         eigen_vals = eigen_vals[idx]

@@ -47,6 +47,9 @@ from .position_expr_parser import (
     tokenize,
     PositionExprParser,
     evaluate_position_expression,
+    hermitian_conjugate_polinom,
+    q_plus_cartesian_labels,
+    q_cartesian_labels,
 )
 
 __all__ = [
@@ -68,5 +71,8 @@ __all__ = [
     'tokenize',
     'PositionExprParser',
     'evaluate_position_expression',
+    'hermitian_conjugate_polinom',
+    'q_plus_cartesian_labels',
+    'q_cartesian_labels',
 ]
 

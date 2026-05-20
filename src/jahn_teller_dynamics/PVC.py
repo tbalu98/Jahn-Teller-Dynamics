@@ -14,7 +14,8 @@ or legacy ``order``: ``sum_i n_i <= N``), or tensor-product truncation with ``ma
 
 Spectral knobs in ``[PVC]`` / ``[essentials]``: ``num_eigs``, ``eigensolver_sigma`` (or
 ``eigensolver_target`` / ``spectral_sigma``), and ``eigensolver_spectral_which`` (or
-``spectral_which``). CLI: ``--num-eigs``, ``--eigensolver-sigma``, ``--eigensolver-spectral-which``.
+``spectral_which``). Sparse ``eigsh`` tuning: ``eigensolver_tol``, ``eigensolver_max_it``,
+``eigensolver_ncv``. CLI: ``--num-eigs``, ``--eigensolver-sigma``, ``--eigensolver-spectral-which``.
 
 Coupling exponentials (``exp(...)`` in coupling CSV expressions): ``exp_approximation_order`` (INI,
 non-negative integer) selects a truncated Taylor sum for the matrix exponential; omit for exact ``expm``. CLI: ``--exp-approximation-order``.
@@ -22,6 +23,12 @@ non-negative integer) selects a truncated Taylor sum for the matrix exponential;
 Coupling CSV ``coeff`` scaling: ``tune_tuning`` (INI / ``--tune-tuning``) multiplies ``coeff`` when
 ``el_state_1`` and ``el_state_2`` resolve to the same 1-based index; ``tune_coupling`` when they differ.
 Defaults are ``1.0``.
+
+Coupling completion: ``hermitian_completion``, ``diagonal_completion``, and ``symmetrize_hamiltonian``
+in ``[PVC]`` / ``[essentials]`` (partner rows, diagonal replication, and ``(H+H†)/2`` when needed).
+
+Hamiltonian assembly (``[PVC]`` / ``[essentials]``): ``hamiltonian_builder = lined`` (default,
+row-by-row CSV) or ``grouped`` (one orbital :math:`N \\times N` operator per expression).
 
 Run (from repo root)::
 
@@ -40,7 +47,11 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
-from jahn_teller_dynamics.io.config.pvc_config import PVCConfigParser, PVCCalculation
+from jahn_teller_dynamics.io.config.pvc_config import (
+    PVCConfigParser,
+    PVCCalculation,
+    normalize_hamiltonian_builder,
+)
 from jahn_teller_dynamics.io.utils.run_context import RunContext
 from jahn_teller_dynamics.io.utils.timestamp_print import print_ts
 
@@ -147,10 +158,17 @@ def _calc_to_argparse_defaults(calc: PVCCalculation) -> dict[str, Any]:
         "save_csv": calc.save_csv,
         "eigensolver_sigma": calc.eigensolver_sigma,
         "eigensolver_spectral_which": calc.eigensolver_spectral_which,
+        "eigensolver_tol": calc.eigensolver_tol,
+        "eigensolver_max_it": calc.eigensolver_max_it,
+        "eigensolver_ncv": calc.eigensolver_ncv,
         "exp_approximation_order": calc.exp_approximation_order,
         "npz_filename": calc.npz_filename,
         "tune_tuning": calc.tune_tuning,
         "tune_coupling": calc.tune_coupling,
+        "hermitian_completion": calc.hermitian_completion,
+        "diagonal_completion": calc.diagonal_completion,
+        "symmetrize_hamiltonian": calc.symmetrize_hamiltonian,
+        "hamiltonian_builder": calc.hamiltonian_builder,
     }
 
 
@@ -189,10 +207,19 @@ def _args_to_calculation(args: argparse.Namespace, run_dir: Path) -> PVCCalculat
         eigensolver_spectral_which=str(
             getattr(args, "eigensolver_spectral_which", "") or ""
         ),
+        eigensolver_tol=getattr(args, "eigensolver_tol", None),
+        eigensolver_max_it=getattr(args, "eigensolver_max_it", None),
+        eigensolver_ncv=getattr(args, "eigensolver_ncv", None),
         exp_approximation_order=getattr(args, "exp_approximation_order", None),
         npz_filename=str(getattr(args, "npz_filename", "") or "eigenvectors.npz"),
         tune_tuning=float(getattr(args, "tune_tuning", 1.0)),
         tune_coupling=float(getattr(args, "tune_coupling", 1.0)),
+        hermitian_completion=bool(getattr(args, "hermitian_completion", True)),
+        diagonal_completion=bool(getattr(args, "diagonal_completion", False)),
+        symmetrize_hamiltonian=bool(getattr(args, "symmetrize_hamiltonian", True)),
+        hamiltonian_builder=normalize_hamiltonian_builder(
+            str(getattr(args, "hamiltonian_builder", "lined") or "lined")
+        ),
     )
 
 
@@ -330,6 +357,35 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Multiply coupling CSV coeff when el_state_1 and el_state_2 resolve to different indices (default 1).",
     )
     p.add_argument(
+        "--hermitian-completion",
+        dest="hermitian_completion",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Add missing (j,i,p†,c) partner rows for off-diagonal coupling (default: on).",
+    )
+    p.add_argument(
+        "--diagonal-completion",
+        dest="diagonal_completion",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Replicate each diagonal (i,i,p,c) row to all other electronic states (default: off).",
+    )
+    p.add_argument(
+        "--symmetrize-hamiltonian",
+        dest="symmetrize_hamiltonian",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Apply (H + H†) / 2 when row completion did not yield a Hermitian H (default: on).",
+    )
+    p.add_argument(
+        "--hamiltonian-builder",
+        dest="hamiltonian_builder",
+        type=str,
+        default="lined",
+        metavar="MODE",
+        help="Hamiltonian assembly: lined (row-by-row, default) or grouped (one N×N orbital op per expression).",
+    )
+    p.add_argument(
         "--num-eigs",
         type=int,
         default=None,
@@ -367,6 +423,30 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="",
         metavar="MODE",
         help="Spectral selection: smallest_real, largest_real, nearest (needs --eigensolver-sigma), SA/LM, …",
+    )
+    p.add_argument(
+        "--eigensolver-tol",
+        dest="eigensolver_tol",
+        type=float,
+        default=None,
+        metavar="TOL",
+        help="scipy eigsh ARPACK tolerance (sparse backend; default 1e-10).",
+    )
+    p.add_argument(
+        "--eigensolver-max-it",
+        dest="eigensolver_max_it",
+        type=int,
+        default=None,
+        metavar="N",
+        help="scipy eigsh max Lanczos iterations (sparse backend; default 10000).",
+    )
+    p.add_argument(
+        "--eigensolver-ncv",
+        dest="eigensolver_ncv",
+        type=int,
+        default=None,
+        metavar="N",
+        help="scipy eigsh Krylov subspace size (sparse; default max(30, 2*num_eigs+1)).",
     )
     p.add_argument(
         "--out-dir",
@@ -454,9 +534,13 @@ def main(argv: list[str] | None = None) -> int:
     # Flush so batch schedulers (SLURM file redirect) show progress immediately.
     # Also set: PYTHONUNBUFFERED=1 or python -u on the job script.
     from jahn_teller_dynamics.physics.hamiltonians.djt_polynomial_hamiltonian import create_pvc_hamiltonian
+    from jahn_teller_dynamics.physics.hamiltonians.djt_polynomial_hamiltonian_grouped import (
+        create_pvc_hamiltonian_grouped,
+    )
     from jahn_teller_dynamics.physics.models.pvc_model import PVC_model
     from jahn_teller_dynamics.io.file_io.csv_writer import CSVWriter
     from jahn_teller_dynamics.math.eigen_solver import (
+        assert_matrix_operator_hermitian,
         create_pvc_eigen_solver,
         resolve_pvc_eigensolver_backend,
     )
@@ -556,10 +640,30 @@ def main(argv: list[str] | None = None) -> int:
             f"dim(phonon)={model.phonons.dim}, dim(full)={model.root_node.dim}"
         )
 
-        _out(
-            "[2/4] Constructing PVC Hamiltonian (diag electronic + polynomial coupling rows)..."
-        )
-        H = create_pvc_hamiltonian(model)
+        builder = normalize_hamiltonian_builder(getattr(calc, "hamiltonian_builder", "lined"))
+        _out(f"  → hamiltonian_builder = {builder}")
+        if builder == "grouped":
+            _out(
+                "[2/4] Constructing PVC Hamiltonian (grouped orbital operators per expression)..."
+            )
+            H = create_pvc_hamiltonian_grouped(
+                model,
+                hermitian_completion=calc.hermitian_completion,
+                diagonal_completion=calc.diagonal_completion,
+                symmetrize_hamiltonian=calc.symmetrize_hamiltonian,
+            )
+            n_orbital_ops = len(getattr(model, "orbital_coupling_operators", {}))
+            _out(f"  → Registered {n_orbital_ops} orbital coupling operator(s) on the tree")
+        else:
+            _out(
+                "[2/4] Constructing PVC Hamiltonian (diag electronic + polynomial coupling rows)..."
+            )
+            H = create_pvc_hamiltonian(
+                model,
+                hermitian_completion=calc.hermitian_completion,
+                diagonal_completion=calc.diagonal_completion,
+                symmetrize_hamiltonian=calc.symmetrize_hamiltonian,
+            )
         _out(f"  → Hamiltonian matrix: dim(H) = {H.matrix.dim}")
 
     if backend == "slepc" and mpi_size > 1 and mpi_comm is not None:
@@ -598,22 +702,34 @@ def main(argv: list[str] | None = None) -> int:
     if num_of_vals_req is None:
         num_of_vals_req = H.matrix.dim - 1
 
+    if mpi_rank == 0:
+        _out(f"  → Matrix being diagonalized: {describe_hamiltonian_matrix(H)}")
+        hc = assert_matrix_operator_hermitian(H, context="PVC Hamiltonian")
+        _out(f"  → Hermiticity check: {hc.summary_line()}")
+
     eigen_solver = create_pvc_eigen_solver(backend)
     _out(
         f"  → Eigen backend: {backend}"
         + (" (PETSc/SLEPc — pass -eps_* options before script args if needed)" if backend == "slepc" else "")
     )
-    _out(f"  → Matrix being diagonalized: {describe_hamiltonian_matrix(H)}")
 
     sw = (getattr(calc, "eigensolver_spectral_which", "") or "").strip()
 
-    eig_space = eigen_solver.solve(
-        H,
-        num_of_vals=num_of_vals_req,
-        quantum_states_bases=quantum_bases,
-        spectral_sigma=getattr(calc, "eigensolver_sigma", None),
-        spectral_which=sw if sw else None,
-    )
+    solve_kw: dict = {
+        "num_of_vals": num_of_vals_req,
+        "quantum_states_bases": quantum_bases,
+        "spectral_sigma": getattr(calc, "eigensolver_sigma", None),
+        "spectral_which": sw if sw else None,
+    }
+    if backend == "sparse":
+        if getattr(calc, "eigensolver_tol", None) is not None:
+            solve_kw["eigsh_tol"] = calc.eigensolver_tol
+        if getattr(calc, "eigensolver_max_it", None) is not None:
+            solve_kw["eigsh_maxiter"] = calc.eigensolver_max_it
+        if getattr(calc, "eigensolver_ncv", None) is not None:
+            solve_kw["eigsh_ncv"] = calc.eigensolver_ncv
+
+    eig_space = eigen_solver.solve(H, **solve_kw)
 
     eig_vals = [k.eigen_val for k in eig_space.eigen_kets]
     _out(f"  → Computed {len(eig_vals)} eigenvalues/eigenvectors")
