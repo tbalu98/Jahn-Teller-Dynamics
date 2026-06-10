@@ -22,7 +22,7 @@ from jahn_teller_dynamics.io.visualization.plotter import Plotter
 from jahn_teller_dynamics.io.theory.calculator import calc_transition_energies
 from jahn_teller_dynamics.io.utils import create_directory
 from jahn_teller_dynamics.io.config.constants import single_case_section
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 
 
 class JTOrchestrator:

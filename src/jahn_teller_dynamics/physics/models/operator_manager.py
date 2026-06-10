@@ -8,7 +8,7 @@ at the root node level for Hamiltonian construction.
 
 from typing import TYPE_CHECKING, Optional
 import jahn_teller_dynamics.physics.quantum_system as qs
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 
 if TYPE_CHECKING:
     pass

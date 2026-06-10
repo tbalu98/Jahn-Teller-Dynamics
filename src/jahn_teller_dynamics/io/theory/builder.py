@@ -14,7 +14,7 @@ import jahn_teller_dynamics.physics.jahn_teller_theory as jt
 import jahn_teller_dynamics.io.file_io.vasp as V
 import jahn_teller_dynamics.io.file_io.xml_parser as xml_parser
 import jahn_teller_dynamics.physics.quantum_physics as qmp
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 from collections import namedtuple
 from typing import TYPE_CHECKING
 

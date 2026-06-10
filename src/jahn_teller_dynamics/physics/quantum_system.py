@@ -21,9 +21,9 @@ the structure for organizing electron, spin, and phonon subsystems.
 import itertools
 import numpy as np
 import math
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 import copy
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 import operator
 from typing import List, Optional, Dict, Tuple, Any, TYPE_CHECKING
 

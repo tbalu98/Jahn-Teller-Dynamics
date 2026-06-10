@@ -11,29 +11,33 @@ Example usage:
     result = op.calc_eigen_vals_vects()
     
     # Custom solver (e.g., for sparse matrices)
-    from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver
+    from jahn_teller_dynamics.math_utils.eigen_solver import DenseEigenSolver
     solver = DenseEigenSolver()
     op.set_eigen_solver(solver)
     result = op.calc_eigen_vals_vects()
     
     # Sparse solver
-    # from jahn_teller_dynamics.math.eigen_solver import SparseEigenSolver
+    # from jahn_teller_dynamics.math_utils.eigen_solver import SparseEigenSolver
     # sparse_solver = SparseEigenSolver()
     # op.set_eigen_solver(sparse_solver)
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, Any, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, List, Tuple, Any, Union
 import warnings
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from jahn_teller_dynamics.io.config.pvc_config import PVCCalculation
 from scipy.sparse import block_diag
 from scipy.linalg import eig as eigs
 from scipy.sparse.linalg import norm as sparse_norm
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 from jahn_teller_dynamics.io.utils.timestamp_print import print_ts
-from jahn_teller_dynamics.math.matrix_mechanics import (
+from jahn_teller_dynamics.math_utils.matrix_mechanics import (
     MatrixOperator,
     ket_vector,
     eigen_vector_space,
@@ -216,6 +220,137 @@ def spectral_which_to_scipy_eigsh(
     return "SA"
 
 
+def spectral_which_to_scipy_eigs(
+    spectral_which: Optional[str], spectral_sigma: Optional[float]
+) -> str:
+    """
+    Map [.cfg-style] spectral selection to scipy ``eigs(..., which=...)`` (non-Hermitian).
+
+    Uses ``SR`` / ``LR`` for real-part extremes; ``SM`` / ``LM`` for magnitude.
+    """
+    s = (spectral_which or "").strip().lower().replace("-", "_")
+    if spectral_sigma is not None:
+        if not s or s in ("nearest", "closest", "lm", "target"):
+            return "LM"
+        if s in ("sm", "smallest_mag", "smallest_magnitude"):
+            return "LM"
+
+    raw_u = (spectral_which or "").strip().upper()
+    if raw_u in ("SR", "LR", "LM", "SM", "LI", "SI"):
+        return raw_u
+    friendly = {
+        "smallest_real": "SR",
+        "smallest_algebraic": "SR",
+        "smallest_mag": "SM",
+        "smallest_magnitude": "SM",
+        "largest_real": "LR",
+        "largest_algebraic": "LR",
+        "largest_mag": "LM",
+        "largest_magnitude": "LM",
+        "nearest": "LM",
+        "closest": "LM",
+        "ordering_sm": "SM",
+        "ordering_sa": "SR",
+        "ordering_la": "LR",
+    }
+    if s in friendly:
+        return friendly[s]
+    return "SR"
+
+
+def _eigen_kets_from_arrays(
+    eigen_vals: np.ndarray,
+    eigen_vects: np.ndarray,
+    *,
+    complex_eigenvalues: bool,
+) -> List[ket_vector]:
+    """Wrap ARPACK / dense eigenpairs as ``ket_vector`` objects."""
+    eigen_vals = np.asarray(eigen_vals, dtype=np.complex128).ravel()
+    eigen_vects = np.asarray(eigen_vects, dtype=np.complex128)
+    eigen_kets: List[ket_vector] = []
+    for i in range(eigen_vals.shape[0]):
+        vec = eigen_vects[:, i]
+        if complex_eigenvalues:
+            ev: Union[float, complex] = complex(eigen_vals[i])
+        else:
+            ev = round(float(np.real(eigen_vals[i])), DEFAULT_ROUNDING_PRECISION)
+        col_vec = maths.col_vector(
+            np.transpose(
+                np.round(
+                    np.matrix([vec]),
+                    DEFAULT_ROUNDING_PRECISION,
+                )
+            )
+        )
+        eigen_kets.append(ket_vector(col_vec, ev))
+    if complex_eigenvalues:
+        eigen_kets.sort(key=lambda k: (float(np.real(k.eigen_val)), float(np.imag(k.eigen_val))))
+    else:
+        eigen_kets.sort(key=lambda k: float(k.eigen_val))
+    return eigen_kets
+
+
+def load_eigsh_initial_vector(path: Union[str, Path], dim: int) -> np.ndarray:
+    """Load a 1-D initial Lanczos vector from ``.npy`` (length must equal ``dim``)."""
+    p = Path(path).expanduser().resolve()
+    if not p.is_file():
+        raise FileNotFoundError(f"eigsh v0 file not found: {p}")
+    arr = np.load(p)
+    v = np.asarray(arr, dtype=np.complex128).ravel()
+    if v.size != dim:
+        raise ValueError(f"eigsh v0 length {v.size} != matrix dimension {dim} (file {p})")
+    return v
+
+
+def sparse_eigsh_kwargs_from_calc(
+    calc: "PVCCalculation",
+    *,
+    dim: int,
+) -> dict[str, Any]:
+    """
+    Build keyword arguments for :meth:`SparseEigenSolver.solve` from :class:`PVCCalculation`.
+
+    Only includes keys explicitly set in the .cfg (``[eigensolver]`` / ``[PVC]``).
+    """
+    kw: dict[str, Any] = {}
+    if getattr(calc, "eigensolver_tol", None) is not None:
+        kw["eigsh_tol"] = calc.eigensolver_tol
+    if getattr(calc, "eigensolver_max_it", None) is not None:
+        kw["eigsh_maxiter"] = calc.eigensolver_max_it
+    if getattr(calc, "eigensolver_ncv", None) is not None:
+        kw["eigsh_ncv"] = calc.eigensolver_ncv
+    mode = (getattr(calc, "eigensolver_mode", "") or "").strip()
+    if mode:
+        kw["eigsh_mode"] = mode
+    v0_path = (getattr(calc, "eigensolver_v0_path", "") or "").strip()
+    if v0_path:
+        kw["eigsh_v0"] = load_eigsh_initial_vector(v0_path, dim)
+    if getattr(calc, "eigensolver_return_eigenvectors", None) is not None:
+        kw["eigsh_return_eigenvectors"] = calc.eigensolver_return_eigenvectors
+    if getattr(calc, "eigensolver_rng_seed", None) is not None and "eigsh_v0" not in kw:
+        kw["eigsh_rng_seed"] = int(calc.eigensolver_rng_seed)
+    return kw
+
+
+def slepc_kwargs_from_calc(calc: "PVCCalculation") -> dict[str, Any]:
+    """
+    Build keyword arguments for ``SLEPcEigenSolver.solve`` from :class:`PVCCalculation`.
+
+    Mirrors :func:`sparse_eigsh_kwargs_from_calc` for the SLEPc backend, so the
+    ``[eigensolver]`` ``tol`` / ``max_iter`` / ``ncv`` knobs apply there too.
+    Only includes keys explicitly set in the .cfg; unset keys fall back to the
+    SLEPc solver defaults.
+    """
+    kw: dict[str, Any] = {}
+    if getattr(calc, "eigensolver_tol", None) is not None:
+        kw["tol"] = calc.eigensolver_tol
+    if getattr(calc, "eigensolver_max_it", None) is not None:
+        kw["max_iter"] = calc.eigensolver_max_it
+    if getattr(calc, "eigensolver_ncv", None) is not None:
+        kw["ncv"] = calc.eigensolver_ncv
+    return kw
+
+
 def _sparse_pick_ncv(k: int, dim: int, ncv: Optional[int]) -> int:
     """Lanczos subspace dimension (``eigsh`` ``ncv``); must satisfy ``ncv > k``."""
     if ncv is not None:
@@ -238,8 +373,9 @@ def _sparse_eigsh_residual(
     return num / den if den > 0.0 else num
 
 
-def _sparse_log_eigsh_setup(
+def _sparse_log_arpack_setup(
     *,
+    solver_name: str,
     dim: int,
     k: int,
     which: str,
@@ -251,13 +387,37 @@ def _sparse_log_eigsh_setup(
 ) -> None:
     sw = (spectral_which or "").strip() or "(default smallest_real)"
     print_ts(
-        f"  → scipy eigsh: dim={dim}, k={k}, which={which!r}, ncv={ncv}, "
+        f"  → scipy {solver_name}: dim={dim}, k={k}, which={which!r}, ncv={ncv}, "
         f"tol={tol}, maxiter={maxiter}",
         flush=True,
     )
-    print_ts(f"  → scipy eigsh: spectral_which={sw!r}", flush=True)
+    print_ts(f"  → scipy {solver_name}: spectral_which={sw!r}", flush=True)
     if spectral_sigma is not None:
-        print_ts(f"  → scipy eigsh: shift–invert sigma={float(spectral_sigma)}", flush=True)
+        print_ts(f"  → scipy {solver_name}: shift–invert sigma={float(spectral_sigma)}", flush=True)
+
+
+def _sparse_log_eigsh_setup(
+    *,
+    dim: int,
+    k: int,
+    which: str,
+    tol: float,
+    maxiter: int,
+    ncv: int,
+    spectral_sigma: Optional[float],
+    spectral_which: Optional[str],
+) -> None:
+    _sparse_log_arpack_setup(
+        solver_name="eigsh",
+        dim=dim,
+        k=k,
+        which=which,
+        tol=tol,
+        maxiter=maxiter,
+        ncv=ncv,
+        spectral_sigma=spectral_sigma,
+        spectral_which=spectral_which,
+    )
 
 
 def _sparse_log_eigsh_residuals(matrix_csr, eigen_vals, eigen_vects, *, k_check: int = 3) -> None:
@@ -399,23 +559,15 @@ class DenseEigenSolver(EigenSolver):
         quantum_states_bases: Optional[hilber_space_bases] = None,
         spectral_sigma: Optional[float] = None,
         spectral_which: Optional[str] = None,
+        *,
+        allow_non_hermitian: bool = False,
     ) -> eigen_vector_space:
         """
-        Hermitian diagonalization via ``numpy.linalg.eigh`` with optional spectral selection.
+        Diagonalize ``matrix_operator``.
 
-        Uses ``spectral_sigma`` / ``spectral_which`` from [.cfg]; ``ordering_type`` is a legacy
-        alias when ``spectral_which`` is unset (e.g. ``SM``, ``LA`` SciPy-like tokens).
-        
-        Args:
-            matrix_operator: Matrix operator to solve
-            num_of_vals: Number of eigenvalues to calculate (None = all)
-            ordering_type: Type of ordering to apply (optional)
-            quantum_states_bases: Hilbert space basis for quantum states (optional)
-            spectral_sigma: Center eigenvalue — pick ``num_of_vals`` states closest (real axis).
-            spectral_which: ``smallest_real``, ``largest_real``, ``smallest_magnitude``, etc.
-            
-        Returns:
-            eigen_vector_space: Object containing eigen kets and basis
+        Hermitian (default): ``numpy.linalg.eigh`` on ``(H + H†) / 2``.
+        Non-Hermitian (``allow_non_hermitian=True``): ``scipy.linalg.eig`` or
+        ``scipy.sparse.linalg.eigs`` on the raw matrix.
         """
         matrix = matrix_operator.matrix
         if isinstance(matrix, maths.SparseMatrix):
@@ -424,15 +576,13 @@ class DenseEigenSolver(EigenSolver):
             H = np.array(matrix.matrix, dtype=maths.complex_number_typ)
         else:
             raise TypeError(f"DenseEigenSolver expects Matrix or SparseMatrix backend, got {type(matrix)}")
-        Herm = 0.5 * (H + np.conjugate(H.T))
-        dim = Herm.shape[0]
+        dim = H.shape[0]
         nev = dim if num_of_vals is None else min(max(1, int(num_of_vals)), dim)
         sw_eff = (
             spectral_which
             if (spectral_which is not None and str(spectral_which).strip())
             else ordering_type
         )
-        # Map legacy SciPy-ish ordering tokens
         if sw_eff:
             otl = str(sw_eff).strip().upper().replace("-", "_")
             if otl in {"SM"}:
@@ -441,35 +591,44 @@ class DenseEigenSolver(EigenSolver):
                 sw_eff = "smallest_real"
             elif otl in {"LA"}:
                 sw_eff = "largest_real"
-        eig_w, eig_V = np.linalg.eigh(Herm)
-        picks = dense_pick_indices(eig_w, nev, spectral_sigma, sw_eff)
-        eigen_vals = eig_w[picks]
-        eigen_vects = eig_V[:, picks]
-        
-        # Convert to ket vectors
-        eigen_kets = []
-        for i in range(len(eigen_vals)):
-            eigen_ket = ket_vector(
-                maths.col_vector(
-                    np.transpose(
-                        np.round(
-                            np.matrix([eigen_vects[:, i]]), 
-                            DEFAULT_ROUNDING_PRECISION
-                        )
-                    )
-                ),
-                round(eigen_vals[i].real, DEFAULT_ROUNDING_PRECISION)
-            )
-            eigen_kets.append(eigen_ket)
-        
-        # Sort by eigenvalue
-        eigen_kets = sorted(eigen_kets, key=lambda x: x.eigen_val)
-        
-        # Use provided basis or existing one
+
+        if allow_non_hermitian:
+            from scipy.sparse import csr_matrix
+            from scipy.sparse.linalg import eigs as sparse_eigs
+
+            if nev >= dim:
+                eigen_vals, eigen_vects = eigs(H)
+                picks = dense_pick_indices(eigen_vals, nev, spectral_sigma, sw_eff)
+                eigen_vals = eigen_vals[picks]
+                eigen_vects = eigen_vects[:, picks]
+            else:
+                which_scipy = spectral_which_to_scipy_eigs(sw_eff, spectral_sigma)
+                eigs_kw: dict = {"k": nev, "which": which_scipy}
+                if spectral_sigma is not None:
+                    eigs_kw["sigma"] = spectral_sigma
+                print_ts(
+                    f"  → Dense non-Hermitian: partial spectrum via scipy.sparse.linalg.eigs "
+                    f"(k={nev}, which={which_scipy!r})",
+                    flush=True,
+                )
+                eigen_vals, eigen_vects = sparse_eigs(csr_matrix(H), **eigs_kw)
+            complex_eigs = True
+        else:
+            Herm = 0.5 * (H + np.conjugate(H.T))
+            eig_w, eig_V = np.linalg.eigh(Herm)
+            picks = dense_pick_indices(eig_w, nev, spectral_sigma, sw_eff)
+            eigen_vals = eig_w[picks]
+            eigen_vects = eig_V[:, picks]
+            complex_eigs = False
+
+        eigen_kets = _eigen_kets_from_arrays(
+            eigen_vals, eigen_vects, complex_eigenvalues=complex_eigs
+        )
+
         basis = quantum_states_bases
         if basis is None:
             basis = matrix_operator.quantum_state_bases
-        
+
         return eigen_vector_space(basis, eigen_kets)
 
 
@@ -516,6 +675,11 @@ class SparseEigenSolver(EigenSolver):
         eigsh_tol: Optional[float] = None,
         eigsh_maxiter: Optional[int] = None,
         eigsh_ncv: Optional[int] = None,
+        eigsh_mode: Optional[str] = None,
+        eigsh_v0: Optional[np.ndarray] = None,
+        eigsh_return_eigenvectors: Optional[bool] = None,
+        eigsh_rng_seed: Optional[int] = None,
+        allow_non_hermitian: bool = False,
     ) -> eigen_vector_space:
         """
         Sparse Hermitian eigenproblem via ``scipy.sparse.linalg.eigsh`` (optionally shift–invert).
@@ -530,6 +694,10 @@ class SparseEigenSolver(EigenSolver):
             eigsh_tol: ARPACK convergence tolerance (default ``1e-10``).
             eigsh_maxiter: Maximum Lanczos iterations (default ``10000``).
             eigsh_ncv: Krylov subspace size; default ``min(dim, max(30, 2*k+1))``.
+            eigsh_mode: Shift–invert mode (``normal``, ``buckling``, ``cayley``) when ``sigma`` set.
+            eigsh_v0: Initial Lanczos vector (length ``dim``).
+            eigsh_return_eigenvectors: Passed to ``eigsh`` (default ``True``).
+            eigsh_rng_seed: Seed for random ``v0`` when ``eigsh_v0`` is not supplied.
         """
         from scipy.sparse.linalg import eigsh as sparse_eigsh
         from scipy.sparse import csr_matrix
@@ -570,18 +738,30 @@ class SparseEigenSolver(EigenSolver):
                 quantum_states_bases=quantum_states_bases,
                 spectral_sigma=spectral_sigma,
                 spectral_which=sw_eff,
+                allow_non_hermitian=allow_non_hermitian,
             )
-        # scipy eigsh requires k < dim; avoid falling back to a full dense H.
-        if k >= dim:
+        # scipy eigsh requires k < dim - 1 (ARPACK rejects k >= N - 1).
+        max_k = max(1, dim - 2) if dim > 2 else 1
+        if k > max_k:
             warnings.warn(
-                f"SparseEigenSolver: requested num_of_vals capped from {k} to {dim - 1} "
-                f"(matrix dim={dim}) to avoid allocating a dense Hamiltonian.",
+                f"SparseEigenSolver: requested num_of_vals capped from {k} to {max_k} "
+                f"(matrix dim={dim}; use eigensolver=dense and num_eigs=all for full spectrum).",
                 RuntimeWarning,
                 stacklevel=2,
             )
-            k = dim - 1
+            k = max_k
 
-        which_scipy = spectral_which_to_scipy_eigsh(sw_eff, spectral_sigma)
+        if allow_non_hermitian and k >= max(1, dim - 2):
+            dense_solver = DenseEigenSolver()
+            return dense_solver.solve(
+                matrix_operator,
+                num_of_vals=num_of_vals,
+                ordering_type=ordering_type,
+                quantum_states_bases=quantum_states_bases,
+                spectral_sigma=spectral_sigma,
+                spectral_which=sw_eff,
+                allow_non_hermitian=True,
+            )
 
         tol = _SPARSE_EIGSH_DEFAULT_TOL if eigsh_tol is None else float(eigsh_tol)
         maxiter = (
@@ -591,58 +771,70 @@ class SparseEigenSolver(EigenSolver):
         )
         ncv = _sparse_pick_ncv(k, dim, eigsh_ncv)
 
-        eigsh_kw: dict = {
+        arpack_kw: dict = {
             "k": k,
-            "which": which_scipy,
             "tol": tol,
             "maxiter": maxiter,
             "ncv": ncv,
         }
         if spectral_sigma is not None:
-            eigsh_kw["sigma"] = spectral_sigma
+            arpack_kw["sigma"] = spectral_sigma
+        if eigsh_mode and spectral_sigma is not None:
+            arpack_kw["mode"] = str(eigsh_mode).strip().lower()
+        if eigsh_v0 is not None:
+            v0 = np.asarray(eigsh_v0, dtype=np.complex128).ravel()
+            if v0.size != dim:
+                raise ValueError(f"eigsh v0 length {v0.size} != matrix dimension {dim}")
+            arpack_kw["v0"] = v0
+        elif eigsh_rng_seed is not None:
+            arpack_kw["v0"] = np.random.default_rng(int(eigsh_rng_seed)).standard_normal(dim)
+        if eigsh_return_eigenvectors is not None:
+            arpack_kw["return_eigenvectors"] = bool(eigsh_return_eigenvectors)
 
-        _sparse_log_eigsh_setup(
-            dim=dim,
-            k=k,
-            which=which_scipy,
-            tol=tol,
-            maxiter=maxiter,
-            ncv=ncv,
-            spectral_sigma=spectral_sigma,
-            spectral_which=sw_eff,
-        )
+        if allow_non_hermitian:
+            from scipy.sparse.linalg import eigs as sparse_eigs
 
-        eigen_vals, eigen_vects = sparse_eigsh(sparse_matrix, **eigsh_kw)
+            which_scipy = spectral_which_to_scipy_eigs(sw_eff, spectral_sigma)
+            arpack_kw["which"] = which_scipy
+            _sparse_log_arpack_setup(
+                solver_name="eigs",
+                dim=dim,
+                k=k,
+                which=which_scipy,
+                tol=tol,
+                maxiter=maxiter,
+                ncv=ncv,
+                spectral_sigma=spectral_sigma,
+                spectral_which=sw_eff,
+            )
+            eigen_vals, eigen_vects = sparse_eigs(sparse_matrix, **arpack_kw)
+            complex_eigs = True
+        else:
+            which_scipy = spectral_which_to_scipy_eigsh(sw_eff, spectral_sigma)
+            arpack_kw["which"] = which_scipy
+            _sparse_log_eigsh_setup(
+                dim=dim,
+                k=k,
+                which=which_scipy,
+                tol=tol,
+                maxiter=maxiter,
+                ncv=ncv,
+                spectral_sigma=spectral_sigma,
+                spectral_which=sw_eff,
+            )
+            from scipy.sparse.linalg import eigsh as sparse_eigsh
+
+            eigen_vals, eigen_vects = sparse_eigsh(sparse_matrix, **arpack_kw)
+            complex_eigs = False
 
         eigen_vals = np.array(eigen_vals, dtype=maths.complex_number_typ)
         eigen_vects = np.array(eigen_vects, dtype=maths.complex_number_typ)
 
         _sparse_log_eigsh_residuals(sparse_matrix, eigen_vals, eigen_vects)
 
-        idx = np.argsort(eigen_vals.real)
-        eigen_vals = eigen_vals[idx]
-        eigen_vects = eigen_vects[:, idx]
-        
-        # Wrap eigenpairs into ket vectors
-        eigen_kets = []
-        for i in range(len(eigen_vals)):
-            vec = eigen_vects[:, i]
-            col_vec = maths.col_vector(
-                np.transpose(
-                    np.round(
-                        np.matrix([vec]),
-                        DEFAULT_ROUNDING_PRECISION
-                    )
-                )
-            )
-            eigen_ket = ket_vector(
-                col_vec,
-                round(eigen_vals[i].real, DEFAULT_ROUNDING_PRECISION)
-            )
-            eigen_kets.append(eigen_ket)
-        
-        # Final sort by eigenvalue (defensive)
-        eigen_kets = sorted(eigen_kets, key=lambda x: x.eigen_val)
+        eigen_kets = _eigen_kets_from_arrays(
+            eigen_vals, eigen_vects, complex_eigenvalues=complex_eigs
+        )
         
         # Use provided basis or the operator's basis
         basis = quantum_states_bases
@@ -660,6 +852,9 @@ def resolve_pvc_eigensolver_backend(
 ) -> str:
     """
     Map config/CLI knobs to normalized PVC backends: ``"sparse"``, ``"dense"``, ``"slepc"``.
+
+    Sparse aliases (SciPy ``sparse.linalg.eigsh`` / Lanczos): ``scipy``, ``scipy_sparse``,
+    ``eigsh``, ``arpack``.
 
     * ``eigensolver`` beats ``running_environment``.
     * If neither selects SLEPc, ``use_sparse`` chooses scipy sparse vs dense.
@@ -684,15 +879,21 @@ def resolve_pvc_eigensolver_backend(
     return "sparse" if use_sparse else "dense"
 
 
-def create_pvc_eigen_solver(backend: str) -> EigenSolver:
-    """Instantiate the solver used by :mod:`jahn_teller_dynamics.PVC`."""
+def create_pvc_eigen_solver(
+    backend: str,
+    calc: Optional["PVCCalculation"] = None,
+) -> EigenSolver:
+    """Instantiate the solver used by :mod:`jahn_teller_dynamics.jtd_run`."""
     b = (backend or "").strip().lower()
     if b == "slepc":
-        from jahn_teller_dynamics.math.slepc_eigen_solver import SLEPcEigenSolver
+        from jahn_teller_dynamics.math_utils.slepc_eigen_solver import SLEPcEigenSolver
 
         return SLEPcEigenSolver()
     if b == "sparse":
-        return SparseEigenSolver(use_block_diagonalization=True)
+        use_block = True
+        if calc is not None and calc.eigensolver_use_block_diagonalization is not None:
+            use_block = bool(calc.eigensolver_use_block_diagonalization)
+        return SparseEigenSolver(use_block_diagonalization=use_block)
     if b == "dense":
         return DenseEigenSolver()
     raise ValueError(f"Unknown PVC eigensolver backend {backend!r}")

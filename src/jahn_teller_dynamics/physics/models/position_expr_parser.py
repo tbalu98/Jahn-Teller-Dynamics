@@ -18,16 +18,17 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, List, Optional, Protocol, Tuple
+from itertools import permutations, product
+from typing import Any, List, Optional, Protocol, Set, Tuple
 
 # ``q{stem}±`` = (q{stem}x ± i*q{stem}y) / sqrt(2)
-_INV_SQRT2 = 1.0 # 1.0 #/ math.sqrt(2.0)
+_INV_SQRT2 = 1.0 #/ math.sqrt(2.0) 
 
 import numpy as np
 from scipy.linalg import expm as scipy_expm
 
-import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 
 
 class _ModeProtocol(Protocol):
@@ -407,9 +408,9 @@ class PositionExprParser:
         op_x = self.mode_node.get_position_operator(cx)
         op_y = self.mode_node.get_position_operator(cy)
         if subtract_imag:
-            combo = op_x - (1j * op_y)
+            combo = (op_x - (1j * op_y))
         else:
-            combo = op_x + (1j * op_y)
+            combo = (op_x + (1j * op_y))
         return _INV_SQRT2 * combo
 
     def _parse_q_product(self) -> mm.MatrixOperator:
@@ -558,6 +559,412 @@ class _PolinomHermitianConjugator:
         return "*".join(reversed(atoms))
 
 
+def _is_coordinate_factor(factor: str) -> bool:
+    """True if ``factor`` is a phonon coordinate atom (``q1``, ``q2+``, ``q3x^2``, …)."""
+    s = factor.strip()
+    if not s or s[0] != "q":
+        return False
+    if s.startswith("exp("):
+        return False
+    return True
+
+
+def _format_product(factors: List[str]) -> str:
+    if len(factors) == 1:
+        return factors[0]
+    return "*".join(factors)
+
+
+def _assemble_signed_sum(terms: List[Tuple[int, Tuple[str, ...]]]) -> str:
+    """Build an additive expression from signed term factor tuples."""
+    out = ""
+    for sign, factors in terms:
+        term = _format_product(list(factors))
+        if not out:
+            if sign < 0:
+                out = f"-{term}" if not term.startswith("-") else term
+            else:
+                out = term
+            continue
+        if sign < 0:
+            if term.startswith("-"):
+                out = f"{out}+{term[1:]}"
+            else:
+                out = f"{out}-{term}"
+        elif term.startswith("-"):
+            out = f"{out}{term}"
+        else:
+            out = f"{out}+{term}"
+    return out
+
+
+def _expand_coordinate_power_factor(factor: str) -> List[str]:
+    """
+    Expand a simple coordinate power ``qk^n`` into ``n`` copies of ``qk``.
+
+    Only applies to bare labels (``q1^2``, ``q3x^2``, ``q2+^2`` is not split — left as-is).
+    Parenthesized or composite factors are unchanged.
+    """
+    s = factor.strip()
+    if not _is_coordinate_factor(s) or "^" not in s or "(" in s:
+        return [s]
+    base, sep, exp_str = s.partition("^")
+    if not sep or not exp_str.isdigit():
+        return [s]
+    n = int(exp_str)
+    if n <= 1:
+        return [base] if n == 1 else []
+    return [base] * n
+
+
+def _expand_coordinate_powers(factors: List[str]) -> List[str]:
+    """Expand every ``qk^n`` factor into repeated ``qk`` atoms for permutation counting."""
+    out: List[str] = []
+    for f in factors:
+        out.extend(_expand_coordinate_power_factor(f))
+    return out
+
+
+def _permute_coordinate_factors(factors: List[str]) -> List[Tuple[str, ...]]:
+    """
+    All positional permutations of coordinate factors in one multiplicative term.
+
+    Powers ``qk^n`` are expanded to ``n`` separate ``qk`` slots first. Each slot is
+    permuted (``q1*q1*q2`` → ``3!`` orderings); identical labels are **not** merged
+    early — duplicate-looking strings (e.g. two ``q1*q1*q2``) are kept for Taylor /
+    multinomial coupling bookkeeping.
+    """
+    expanded = _expand_coordinate_powers(factors)
+    idx = [i for i, f in enumerate(expanded) if _is_coordinate_factor(f)]
+    if len(idx) < 2:
+        return [tuple(expanded)]
+    coords = [expanded[i] for i in idx]
+    variants: List[Tuple[str, ...]] = []
+    for perm in permutations(coords):
+        new = list(expanded)
+        for i, v in zip(idx, perm):
+            new[i] = v
+        variants.append(tuple(new))
+    return variants
+
+
+class _PolinomFactorCollector:
+    """Collect additive terms and multiplicative coordinate factors from a polynomial string."""
+
+    def __init__(self, tokens: List[_Token]) -> None:
+        self.tokens = tokens
+        self.pos = 0
+
+    def _peek(self) -> _Token:
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else ("EOF",)
+
+    def _consume(self) -> _Token:
+        if self.pos >= len(self.tokens):
+            raise ValueError("Unexpected end of expression")
+        tok = self.tokens[self.pos]
+        self.pos += 1
+        return tok
+
+    def collect_terms(self) -> List[Tuple[int, List[str]]]:
+        terms: List[Tuple[int, List[str]]] = [(+1, self._collect_term_factors())]
+        while self._peek()[0] in ("PLUS", "MINUS"):
+            sign = +1 if self._consume()[0] == "PLUS" else -1
+            terms.append((sign, self._collect_term_factors()))
+        if self._peek()[0] != "EOF":
+            raise ValueError(f"Unexpected token after expression: {self._peek()}")
+        return terms
+
+    def _collect_term_factors(self) -> List[str]:
+        factors: List[str] = []
+        factors.extend(self._collect_unary_factors())
+        while self._peek()[0] == "MUL":
+            self._consume()
+            factors.extend(self._collect_unary_factors())
+        return factors
+
+    def _collect_unary_factors(self) -> List[str]:
+        if self._peek()[0] == "MINUS":
+            self._consume()
+            inner = self._collect_unary_factors()
+            if len(inner) == 1:
+                f = inner[0]
+                if f.startswith("(") and f.endswith(")"):
+                    return [f"-{f}"]
+                if f.startswith("-"):
+                    return [f[1:]]
+                return [f"-{f}"]
+            return [f"-({_format_product(inner)})"]
+        if self._peek()[0] == "IMAG":
+            self._consume()
+            had_mul = False
+            if self._peek()[0] == "MUL":
+                self._consume()
+                had_mul = True
+            if self._peek()[0] == "EOF":
+                return ["i"]
+            inner = self._collect_unary_factors()
+            if len(inner) == 1 and not had_mul:
+                return [f"i*{inner[0]}"]
+            inner_str = inner[0] if len(inner) == 1 else f"({_format_product(inner)})"
+            return [f"i*{inner_str}"]
+        return self._collect_postfix_factors()
+
+    def _collect_postfix_factors(self) -> List[str]:
+        atoms = self._collect_molecule_factors()
+        while self._peek()[0] in ("CARET", "POW2"):
+            self._consume()
+            _, val = self._consume()
+            n = int(round(val))
+            if len(atoms) != 1:
+                atoms = [_format_product(atoms)]
+            base = atoms[0]
+            atoms = [
+                f"({base})^{n}"
+                if "+" in base or "-" in base or "*" in base
+                else f"{base}^{n}"
+            ]
+        return atoms
+
+    def _collect_molecule_factors(self) -> List[str]:
+        t = self._peek()[0]
+        if t == "EXP":
+            self._consume()
+            if self._consume()[0] != "LPAREN":
+                raise ValueError("exp must be followed by '('")
+            inner_terms = self._collect_add_inner()
+            if self._consume()[0] != "RPAREN":
+                raise ValueError("Missing ')' after exp(...)")
+            return [f"exp({_assemble_signed_sum(inner_terms)})"]
+        if t == "NUMBER":
+            _, val = self._consume()
+            if val == int(val):
+                return [str(int(val))]
+            return [str(val)]
+        if t == "Q":
+            return self._collect_q_atoms()
+        if t == "Q_PLUS":
+            _, stem = self._consume()
+            return [f"q{stem}+"]
+        if t == "Q_MINUS":
+            _, stem = self._consume()
+            return [f"q{stem}-"]
+        if t == "LPAREN":
+            self._consume()
+            inner_terms = self._collect_add_inner()
+            if self._consume()[0] != "RPAREN":
+                raise ValueError("Missing closing parenthesis")
+            return [f"({_assemble_signed_sum(inner_terms)})"]
+        raise ValueError(f"Unexpected token: {self._peek()}")
+
+    def _collect_add_inner(self) -> List[Tuple[int, Tuple[str, ...]]]:
+        terms: List[Tuple[int, Tuple[str, ...]]] = [
+            (+1, tuple(self._collect_term_factors()))
+        ]
+        while self._peek()[0] in ("PLUS", "MINUS"):
+            sign = +1 if self._consume()[0] == "PLUS" else -1
+            terms.append((sign, tuple(self._collect_term_factors())))
+        return terms
+
+    def _collect_q_atoms(self) -> List[str]:
+        def q_atom() -> str:
+            _, label = self._consume()
+            if self._peek()[0] in ("CARET", "POW2"):
+                self._consume()
+                _, val = self._consume()
+                n = int(round(val))
+                return f"{label}^{n}"
+            return label
+
+        atoms = [q_atom()]
+        while self._peek()[0] == "Q":
+            atoms.append(q_atom())
+        return atoms
+
+
+def collect_polinom_addends(expr: str) -> List[Tuple[int, str]]:
+    """
+    Top-level additive split of a phonon polynomial (``+`` / ``-`` only).
+
+    Returns ``(sign, product_string)`` with ``sign`` in ``{+1, -1}`` and each
+    product_string a single multiplicative term (no bare ``+``/``-`` at top level).
+    """
+    raw = expr.replace(" ", "").replace("\t", "")
+    if not raw:
+        return []
+    terms = _PolinomFactorCollector(tokenize(raw)).collect_terms()
+    return [(sign, _format_product(list(factors))) for sign, factors in terms]
+
+
+def split_polinom_addends(expr: str) -> List[str]:
+    """Signed addend strings, e.g. ``q1^2*q2 + q2^3`` → ``['q1^2*q2', 'q2^3']``."""
+    out: List[str] = []
+    for sign, term in collect_polinom_addends(expr):
+        if sign < 0:
+            out.append(f"-{term}" if not term.startswith("-") else term)
+        else:
+            out.append(term)
+    return out
+
+
+def split_addend_sign(addend: str) -> Tuple[int, str]:
+    s = addend.strip()
+    if s.startswith("-"):
+        return -1, s[1:]
+    return +1, s
+
+
+def prepend_polinom_sign(sign: int, term: str) -> str:
+    if sign < 0:
+        return f"-{term}" if not term.startswith("-") else term
+    return term
+
+
+def _split_addend_sign(addend: str) -> Tuple[int, str]:
+    return split_addend_sign(addend)
+
+
+def _prepend_sign(sign: int, term: str) -> str:
+    return prepend_polinom_sign(sign, term)
+
+
+def _factors_for_single_term(term: str) -> List[str]:
+    raw = term.replace(" ", "").replace("\t", "")
+    if not raw:
+        return []
+    parsed = _PolinomFactorCollector(tokenize(raw)).collect_terms()
+    if len(parsed) != 1:
+        raise ValueError(
+            "Expected a single multiplicative term without top-level '+' or '-'; "
+            f"got {term!r}"
+        )
+    return list(parsed[0][1])
+
+
+def _permutation_variant_strings_for_factors(factors: List[str]) -> List[str]:
+    return [_format_product(list(factor_tuple)) for factor_tuple in _permute_coordinate_factors(factors)]
+
+
+def distinct_term_permutation_variants(term: str) -> List[str]:
+    """
+    Distinct coordinate permutations of **one** multiplicative term.
+
+    Permutation with repetition: repeated identical slots are not double-counted
+    (``q1*q1`` → ``1`` string; ``q1^2*q2`` → ``3`` strings).
+    """
+    factors = _factors_for_single_term(term)
+    if not factors:
+        return [term.strip()]
+    return sorted(set(_permutation_variant_strings_for_factors(factors)))
+
+
+def term_permutation_count(term: str) -> int:
+    """Number of distinct coordinate permutations for a single multiplicative term."""
+    return len(distinct_term_permutation_variants(term))
+
+
+def canonical_commuting_term(term: str) -> str:
+    """Lexicographically smallest distinct permutation of one multiplicative term."""
+    variants = distinct_term_permutation_variants(term)
+    return variants[0] if variants else term.strip()
+
+
+def expand_addend_coordinate_powers(addend: str) -> str:
+    """
+    Expand ``qk^n`` within one addend without reordering factors.
+
+    ``q1^2*q2`` → ``q1*q1*q2``; ``q2*q1`` is unchanged.
+    """
+    sign, bare = split_addend_sign(addend)
+    factors = _factors_for_single_term(bare)
+    expanded = _format_product(_expand_coordinate_powers(factors))
+    return prepend_polinom_sign(sign, expanded)
+
+
+def permutation_polinom_variants(expr: str) -> List[str]:
+    """
+    All labeled-slot permutations within each multiplicative term.
+
+    For sums/subtractions, each addend is permuted **independently**; results are
+    not cross-multiplied across addends (Taylor coupling treats each term separately).
+
+    Integer powers (``q1^2``) expand to repeated coordinate slots before permuting.
+    Every ``n!`` slot ordering is kept, including duplicate strings from identical slots.
+    """
+    raw = expr.replace(" ", "").replace("\t", "")
+    if not raw:
+        return [raw]
+    addends = split_polinom_addends(raw)
+    if not addends:
+        return [raw]
+    variants: List[str] = []
+    for addend in addends:
+        sign, bare = _split_addend_sign(addend)
+        factors = _factors_for_single_term(bare)
+        for product in _permutation_variant_strings_for_factors(factors):
+            variants.append(_prepend_sign(sign, product))
+    return variants
+
+
+def distinct_permutation_polinom_variants(expr: str) -> List[str]:
+    """
+    Distinct coordinate permutations, addend by addend.
+
+    For a sum such as ``q1^2*q2 + q2^3``, returns the union of distinct permutations
+    of each addend (``3 + 1 = 4`` strings), **not** a Cartesian product of full-sum
+    variants.
+    """
+    raw = expr.replace(" ", "").replace("\t", "")
+    if not raw:
+        return [raw]
+    out: Set[str] = set()
+    for addend in split_polinom_addends(raw):
+        sign, bare = _split_addend_sign(addend)
+        for variant in distinct_term_permutation_variants(bare):
+            out.add(_prepend_sign(sign, variant))
+    return sorted(out)
+
+
+def coordinate_permutation_count(expr: str) -> int:
+    """
+    Distinct permutation count for a **single** multiplicative term.
+
+    For sums/subtractions, use :func:`split_polinom_addends` and
+    :func:`term_permutation_count` on each addend separately.
+    """
+    addends = split_polinom_addends(expr)
+    if len(addends) != 1:
+        raise ValueError(
+            "coordinate_permutation_count applies to one multiplicative term only; "
+            f"split addends first: {addends!r}"
+        )
+    _, bare = _split_addend_sign(addends[0])
+    return term_permutation_count(bare)
+
+
+def canonical_commuting_polinom(expr: str) -> str:
+    """
+    Canonical form under commuting coordinates, addend by addend.
+
+    Each multiplicative term is replaced by its lexicographically smallest distinct
+    permutation; top-level ``+`` / ``-`` structure is preserved.
+    """
+    parts: List[str] = []
+    for addend in split_polinom_addends(expr):
+        sign, bare = _split_addend_sign(addend)
+        parts.append(_prepend_sign(sign, canonical_commuting_term(bare)))
+    if not parts:
+        return expr.strip()
+    if len(parts) == 1:
+        return parts[0]
+    out = parts[0]
+    for part in parts[1:]:
+        if part.startswith("-"):
+            out = f"{out}-{part[1:]}"
+        else:
+            out = f"{out}+{part}"
+    return out
+
+
 def hermitian_conjugate_polinom(expr: str) -> str:
     """
     Hermitian-conjugate a phonon position-operator polynomial string.
@@ -605,7 +1012,7 @@ def evaluate_position_expression(
             ``getattr(mode_node, "exp_approximation_order", None)`` for a phonon-subsystem value.
 
     Returns:
-        The resulting :class:`~jahn_teller_dynamics.math.matrix_mechanics.MatrixOperator`.
+        The resulting :class:`~jahn_teller_dynamics.math_utils.matrix_mechanics.MatrixOperator`.
     """
     order_eff = exp_approximation_order
     if order_eff is None:

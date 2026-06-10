@@ -1,6 +1,6 @@
-import jahn_teller_dynamics.math.matrix_mechanics as mm
-import jahn_teller_dynamics.math.braket_formalism as bf
-from jahn_teller_dynamics.math.matrix_mechanics import MatrixOperator
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.braket_formalism as bf
+from jahn_teller_dynamics.math_utils.matrix_mechanics import MatrixOperator
 import numpy as np
 import math
 from typing import TYPE_CHECKING, Optional
@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import jahn_teller_dynamics.physics.jahn_teller_theory as jt
 else:
     import jahn_teller_dynamics.physics.jahn_teller_theory as jt
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 import jahn_teller_dynamics.physics.quantum_system as qs
 import copy
 import pandas as pd
@@ -321,7 +321,7 @@ class OneDimPhononSys(qs.quantum_system_node):
     :math:`(a^\\dagger)_{n+1,n}=\\sqrt{n+1}`; the annihilator is its Hermitian conjugate.
     With ``use_sparse=True`` (default), ladder operators are built as CSR :class:`~scipy.sparse.csr_matrix`
     without densifying the full harmonic window; ``q``, ``N``, and ``K`` then stay sparse through
-    :class:`~jahn_teller_dynamics.math.matrix_mechanics.MatrixOperator` arithmetic.
+    :class:`~jahn_teller_dynamics.math_utils.matrix_mechanics.MatrixOperator` arithmetic.
     Position :math:`q` and phonon Hamiltonian follow the same formulas as ``one_mode_phonon_sys``.
 
     If ``matching_phonon_order`` is set (same meaning as ``order`` in ``one_mode_phonon_sys``),
@@ -1155,12 +1155,12 @@ class Exe_tree:
         # When H_int is created from operations, it might not have the correct solver
         # Fix the solver based on matrix type to ensure block diagonalization works
         if isinstance(self.H_int.matrix, maths.SparseMatrix):
-            from jahn_teller_dynamics.math.eigen_solver import SparseEigenSolver
+            from jahn_teller_dynamics.math_utils.eigen_solver import SparseEigenSolver
             if not isinstance(self.H_int._eigen_solver, SparseEigenSolver):
                 # Set correct sparse solver with block diagonalization
                 self.H_int.set_eigen_solver(SparseEigenSolver(use_block_diagonalization=True))
         elif isinstance(self.H_int.matrix, maths.Matrix):
-            from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver
+            from jahn_teller_dynamics.math_utils.eigen_solver import DenseEigenSolver
             if not isinstance(self.H_int._eigen_solver, DenseEigenSolver):
                 # Set correct dense solver
                 self.H_int.set_eigen_solver(DenseEigenSolver())

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from jahn_teller_dynamics.math.matrix_mechanics import eigen_vector_space, ket_vector
+    from jahn_teller_dynamics.math_utils.matrix_mechanics import eigen_vector_space, ket_vector
 
 
 def load_lvc_npz(path: str | Path) -> dict:
@@ -49,7 +49,7 @@ def load_ket_vectors_from_npz(path: str | Path) -> list["ket_vector"]:
     Returns:
         List of ket_vector objects (one per eigenstate) with coeffs and eigen_val set.
     """
-    from jahn_teller_dynamics.math.matrix_mechanics import ket_vector
+    from jahn_teller_dynamics.math_utils.matrix_mechanics import ket_vector
 
     raw = load_lvc_npz(path)
     eig_vecs = raw["eigenvectors"]  # (dim, num_eigs)
@@ -76,7 +76,7 @@ def load_eigen_vector_space_from_npz(path: str | Path) -> "eigen_vector_space":
     Returns:
         eigen_vector_space with eigen_kets and quantum_states_basis.
     """
-    from jahn_teller_dynamics.math.matrix_mechanics import (
+    from jahn_teller_dynamics.math_utils.matrix_mechanics import (
         hilber_space_bases,
         eigen_vector_space,
     )

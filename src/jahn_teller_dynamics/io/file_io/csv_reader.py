@@ -22,17 +22,42 @@ Supported CSV formats (semicolon separated by default):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+
+
+_COMPLEX_I_SUFFIX = re.compile(r"(?<=[0-9.])[iI]\b")
+
+
+def parse_complex_coeff(value: Union[str, int, float, complex, np.number]) -> complex:
+    """
+    Parse a PVC coupling ``coeff`` from CSV.
+
+    Accepts real numbers and complex literals such as ``1.0+2.0i``, ``3.0i``,
+    ``0.5-1.5i``, or Python-style ``1+2j``.
+    """
+    if isinstance(value, complex):
+        return value
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return complex(value)
+    text = str(value).strip().replace(" ", "")
+    if not text:
+        raise ValueError("empty complex coefficient")
+    text = _COMPLEX_I_SUFFIX.sub("j", text)
+    try:
+        return complex(text)
+    except ValueError as exc:
+        raise ValueError(f"invalid complex coefficient {value!r}") from exc
 from scipy.sparse import diags as sp_diags
 from scipy.sparse import dok_matrix
 
-import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 
 
 @dataclass(frozen=True)
@@ -44,10 +69,15 @@ class ModesFromCsv:
     a purely numeric ``mode`` column, ``labels`` are ``q1``, ``q2``, ... in
     **sorted** mode-number order. For a string ``mode`` column (e.g. ``q1``,
     ``q3x``), ``labels`` are those strings in **file order**.
+
+    ``maximum_quanta`` is a per-mode integer cap :math:`N_i` (basis includes
+    occupations :math:`n_i \\in \\{0,1,\\ldots,N_i\\}`); ``None`` when the CSV
+    omits the ``maximum_quanta`` column.
     """
 
     labels: List[str]
     omegas: List[float]
+    maximum_quanta: Optional[List[int]] = None
 
 
 @dataclass
@@ -121,6 +151,88 @@ class CSVReader:
             "Expected columns (state, value) or (el_state, energy); got: "
             f"{list(df.columns)}"
         )
+
+    def read_orbital_spin_electron_table(
+        self, path: Union[str, Path]
+    ) -> "OrbitalSpinElectronTable":
+        """
+        Orbital energies with spin quantum number per orbital row.
+
+        Columns: ``el_state``, ``energy``, ``spin`` (total spin *S*, e.g. ``1/2``).
+        One row per orbital; spin multiplicity ``2S+1`` defines the local Hilbert dimension.
+        """
+        from jahn_teller_dynamics.physics.models.orbital_spin_electron import (
+            OrbitalSpinElectronTable,
+            ms_values_for_spin,
+            parse_spin_quantum_number,
+        )
+
+        df = self.read_df_auto(path)
+        required = {"el_state", "energy", "spin"}
+        if not required.issubset(df.columns):
+            raise ValueError(
+                f"Orbital–spin electron CSV must contain {sorted(required)}; "
+                f"got {list(df.columns)}"
+            )
+        df = df[["el_state", "energy", "spin"]].copy()
+        df["el_state"] = df["el_state"].astype(str).str.strip()
+        if (df["el_state"] == "").any():
+            raise ValueError("Orbital–spin CSV contains an empty el_state label")
+        if df["el_state"].duplicated().any():
+            raise ValueError("Orbital–spin CSV contains duplicate el_state labels")
+        df["energy"] = pd.to_numeric(df["energy"], errors="raise")
+
+        orbital_labels: List[str] = []
+        spin_S: List[float] = []
+        energies: List[float] = []
+        for _, row in df.iterrows():
+            label = str(row["el_state"]).strip()
+            e_orb = float(row["energy"])
+            s = parse_spin_quantum_number(row["spin"])
+            orbital_labels.append(label)
+            spin_S.append(s)
+            for _ms in ms_values_for_spin(s):
+                energies.append(e_orb)
+
+        return OrbitalSpinElectronTable(
+            orbital_labels=orbital_labels,
+            spin_S=spin_S,
+            energies=np.asarray(energies, dtype=float),
+        )
+
+    def read_square_matrix_csv(
+        self,
+        path: Union[str, Path],
+        *,
+        expected_dim: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Read a dense square complex matrix from CSV.
+
+        Format: first column is the row index, header row lists column indices
+        (legacy dense matrix layout, same as dipole matrix files in
+        :mod:`jahn_teller_dynamics.spectrum.calculator`).
+
+        Returns:
+            ``(d, d)`` ``numpy`` array with ``dtype=complex128``.
+        """
+        path = Path(path)
+        sep = self.detect_separator(path)
+        df = pd.read_csv(path, sep=sep, index_col=0)
+        arr = np.zeros((len(df), len(df.columns)), dtype=np.complex128)
+        for i in range(len(df)):
+            for j in range(len(df.columns)):
+                val = df.iloc[i, j]
+                if pd.isna(val):
+                    continue
+                arr[i, j] = complex(val)
+        if arr.shape[0] != arr.shape[1]:
+            raise ValueError(f"Matrix CSV must be square, got shape {arr.shape} from {path}")
+        if expected_dim is not None and arr.shape[0] != int(expected_dim):
+            raise ValueError(
+                f"Matrix CSV {path} has dimension {arr.shape[0]}, expected {expected_dim}"
+            )
+        return arr
 
     def build_epsilon_operator(
         self,
@@ -318,9 +430,22 @@ class CSVReader:
             raise ValueError(
                 f"Modes CSV must contain 'mode' and 'omega' or 'energy'; got {list(df.columns)}"
             )
-        work = df[["mode", omega_col]].copy()
-        work.columns = ["mode", "omega"]
+        has_quanta = "maximum_quanta" in df.columns
+        cols = ["mode", omega_col] + (["maximum_quanta"] if has_quanta else [])
+        work = df[cols].copy()
+        work.columns = ["mode", "omega"] + (["maximum_quanta"] if has_quanta else [])
         work["omega"] = pd.to_numeric(work["omega"], errors="raise").astype(float)
+        if has_quanta:
+            mq_series = pd.to_numeric(work["maximum_quanta"], errors="raise")
+            if (mq_series.dropna() % 1 != 0).any():
+                raise ValueError(
+                    "Modes CSV 'maximum_quanta' column must contain integer values"
+                )
+            if (mq_series.dropna() < 0).any():
+                raise ValueError(
+                    "Modes CSV 'maximum_quanta' column must contain non-negative integers"
+                )
+            work["maximum_quanta"] = mq_series.astype("Int64")
 
         mode_num = pd.to_numeric(work["mode"], errors="coerce")
         use_int_mode = bool(mode_num.notna().all())
@@ -346,7 +471,12 @@ class CSVReader:
                 raise ValueError("Modes CSV is empty (or no modes match mode_numbers)")
             labels = work["label"].tolist()
             omegas = work["omega"].tolist()
-            return ModesFromCsv(labels=labels, omegas=omegas)
+            mq = (
+                [int(v) for v in work["maximum_quanta"].tolist()]
+                if has_quanta
+                else None
+            )
+            return ModesFromCsv(labels=labels, omegas=omegas, maximum_quanta=mq)
 
         work["mode"] = mode_num.astype(int)
         if (mode_num != work["mode"]).any():
@@ -371,11 +501,18 @@ class CSVReader:
         n = len(modes)
         labels = [f"q{i}" for i in range(1, n + 1)]
         omegas = work["omega"].to_list()
-        return ModesFromCsv(labels=labels, omegas=omegas)
+        mq = (
+            [int(v) for v in work["maximum_quanta"].tolist()]
+            if has_quanta
+            else None
+        )
+        return ModesFromCsv(labels=labels, omegas=omegas, maximum_quanta=mq)
 
     def read_pvc_coupling_rows(self, path: Union[str, Path]) -> "pd.DataFrame":
         """
         PVC coupling table: ``el_state_1``, ``el_state_2``, coupling expression, ``coeff``.
+
+        ``coeff`` may be real or complex (e.g. ``1.0``, ``1.0+2.0i``, ``3.0i``).
 
         The expression column may be named ``expression`` (preferred), ``polinom``, or
         ``polynomial`` (exactly one of these must be present).
@@ -402,7 +539,7 @@ class CSVReader:
         out["el_state_2"] = out["el_state_2"].astype(str).str.strip()
         if (out["el_state_1"] == "").any() or (out["el_state_2"] == "").any():
             raise ValueError("PVC coupling CSV contains empty el_state_1/el_state_2 labels")
-        out["coeff"] = pd.to_numeric(out["coeff"], errors="raise").astype(float)
+        out["coeff"] = out["coeff"].map(parse_complex_coeff).astype(np.complex128)
         out["polinom"] = out["polinom"].astype(str).str.strip()
         return out
 

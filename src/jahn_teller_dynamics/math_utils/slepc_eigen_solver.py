@@ -7,11 +7,11 @@ may be appended to the launch command ahead of PVC arguments.
 
 Distributed layout: each MPI rank contributes a contiguous block of CSR rows to a PETSc ``Mat``.
 Eigenvectors gathered on rank zero via ``Scatter.toZero``, then broadcast to all ranks so
-:class:`~jahn_teller_dynamics.math.matrix_mechanics.eigen_vector_space` matches non-MPI callers.
+:class:`~jahn_teller_dynamics.math_utils.matrix_mechanics.eigen_vector_space` matches non-MPI callers.
 
 ``nev`` is clamped to ``dim - 1`` (when ``dim > 1``) if the request is ``>= dim``, with a
 ``RuntimeWarning``, so the Hamiltonian is **not** copied to a dense array (cf.
-:class:`~jahn_teller_dynamics.math.eigen_solver.DenseEigenSolver` for explicit full dense diagonalization).
+:class:`~jahn_teller_dynamics.math_utils.eigen_solver.DenseEigenSolver` for explicit full dense diagonalization).
 Only the trivial ``dim <= 1`` case uses that dense helper.
 """
 
@@ -24,15 +24,15 @@ from typing import Optional
 import numpy as np
 from scipy.sparse import csr_matrix
 
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 from jahn_teller_dynamics.io.utils.timestamp_print import print_ts
-from jahn_teller_dynamics.math.eigen_solver import DenseEigenSolver, EigenSolver
+from jahn_teller_dynamics.math_utils.eigen_solver import DenseEigenSolver, EigenSolver
 
 _SLEPC_DEFAULT_TOL = 1e-10
 _SLEPC_DEFAULT_MAX_IT = 10000
 _SLEPC_MIN_NCV = 30
 _SLEPC_NCV_FACTOR = 2
-from jahn_teller_dynamics.math.matrix_mechanics import (
+from jahn_teller_dynamics.math_utils.matrix_mechanics import (
     DEFAULT_ROUNDING_PRECISION,
     MatrixOperator,
     eigen_vector_space,
@@ -246,8 +246,33 @@ def _slepc_configure_spectrum(
             eps.setWhichEigenpairs(Which.SMALLEST_REAL)
 
 
+def _assert_petsc_supports_complex_hamiltonian(A_csr: csr_matrix) -> None:
+    """PETSc built with real scalars silently keeps only Re(H) when casting CSR data."""
+    from petsc4py import PETSc
+
+    if not np.iscomplexobj(A_csr.data):
+        return
+    if np.issubdtype(PETSc.ScalarType, np.complexfloating):
+        return
+    imag = np.abs(A_csr.data.imag)
+    scale = np.maximum(1.0, np.abs(A_csr.data.real))
+    n_imag = int(np.count_nonzero(imag > 1e-12 * scale))
+    if n_imag == 0:
+        return
+    raise TypeError(
+        "SLEPc/PETSc was built with real scalars (PETSc.ScalarType is real), but the "
+        f"Hamiltonian has {n_imag}/{A_csr.data.size} CSR entries with significant imaginary "
+        "parts. petsc4py will cast those to float64 (real part only), so SLEPc diagonalizes "
+        "Re(H), not H — eigenvalues then disagree with scipy.sparse.linalg.eigsh on the full "
+        "complex matrix. Rebuild PETSc and SLEPc with --with-scalar-type=complex (or use "
+        "eigensolver solver = sparse / dense for this model)."
+    )
+
+
 def _csr_to_mpi_aij(A_csr: csr_matrix, comm):
     from petsc4py import PETSc
+
+    _assert_petsc_supports_complex_hamiltonian(A_csr)
 
     nrows, ncols = A_csr.shape
     rank = comm.getRank()
@@ -283,6 +308,11 @@ class SLEPcEigenSolver(EigenSolver):
         quantum_states_bases: Optional[hilber_space_bases] = None,
         spectral_sigma: Optional[float] = None,
         spectral_which: Optional[str] = None,
+        *,
+        allow_non_hermitian: bool = False,
+        tol: Optional[float] = None,
+        max_iter: Optional[int] = None,
+        ncv: Optional[int] = None,
     ) -> eigen_vector_space:
         try:
             from petsc4py import PETSc
@@ -313,6 +343,7 @@ class SLEPcEigenSolver(EigenSolver):
                 quantum_states_bases=quantum_states_bases,
                 spectral_sigma=spectral_sigma,
                 spectral_which=spectral_which,
+                allow_non_hermitian=allow_non_hermitian,
             )
         if nev >= dim:
             warnings.warn(
@@ -327,7 +358,10 @@ class SLEPcEigenSolver(EigenSolver):
 
         eps = SLEPc.EPS().create(comm=comm)
         eps.setOperators(A_mat)
-        eps.setProblemType(SLEPc.EPS.ProblemType.HEP)
+        if allow_non_hermitian:
+            eps.setProblemType(SLEPc.EPS.ProblemType.NHEP)
+        else:
+            eps.setProblemType(SLEPc.EPS.ProblemType.HEP)
         try:
             eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
         except Exception:
@@ -336,13 +370,20 @@ class SLEPcEigenSolver(EigenSolver):
             except Exception:
                 pass
 
-        ncv = _slepc_pick_ncv(nev, dim)
+        # ncv: honor an explicit cfg value (clamped to nev < ncv <= dim); else auto-pick.
+        if ncv is not None:
+            ncv = min(dim, max(int(ncv), nev + 1))
+        else:
+            ncv = _slepc_pick_ncv(nev, dim)
         try:
             eps.setDimensions(nev=nev, ncv=ncv)
         except TypeError:
             eps.setDimensions(nev=nev)
 
-        eps.setTolerances(_SLEPC_DEFAULT_TOL, _SLEPC_DEFAULT_MAX_IT)
+        # tol / max_iter: honor explicit cfg values, else fall back to defaults.
+        eff_tol = float(tol) if tol is not None else _SLEPC_DEFAULT_TOL
+        eff_max_it = int(max_iter) if max_iter is not None else _SLEPC_DEFAULT_MAX_IT
+        eps.setTolerances(eff_tol, eff_max_it)
         # Do not use eps.setMonitor(True): slepc4py expects a callable, not a bool.
 
         eps.setFromOptions()
@@ -353,10 +394,11 @@ class SLEPcEigenSolver(EigenSolver):
         )
         if comm.getRank() == 0:
             sw = (spectral_which or "").strip() or "smallest_real"
+            problem = "NHEP" if allow_non_hermitian else "HEP"
             print_ts(
                 f"  → SLEPc: dim={dim}, nev={nev}, ncv={ncv}, "
-                f"tol={_SLEPC_DEFAULT_TOL}, max_it={_SLEPC_DEFAULT_MAX_IT}, "
-                f"spectral_which={sw!r}",
+                f"tol={eff_tol}, max_it={eff_max_it}, "
+                f"problem={problem}, spectral_which={sw!r}",
                 flush=True,
             )
         eps.solve()
@@ -377,15 +419,17 @@ class SLEPcEigenSolver(EigenSolver):
 
         take = min(int(nconv), int(nev))
 
-        eigen_vals: list[float] = []
+        eigen_vals: list[complex] = []
         cols: list[np.ndarray] = []
         for i in range(take):
             lam_r, lam_i = _slepc_eigenvalue_real_imag(eps, i)
-            eigen_vals.append(float(lam_r))
-            if abs(lam_i) > 1e-8 * max(1.0, abs(lam_r)):
+            lam = complex(lam_r, lam_i)
+            if not allow_non_hermitian and abs(lam_i) > 1e-8 * max(1.0, abs(lam_r)):
                 raise NotImplementedError(
-                    "Non-real eigenvalues from SLEPc HEP — matrix may not be Hermitian in PETSc."
+                    "Non-real eigenvalues from SLEPc HEP — matrix may not be Hermitian in PETSc. "
+                    "Set require_hermitian=false in the PVC config to use the NHEP solver."
                 )
+            eigen_vals.append(lam)
             vr, vi = A_mat.createVecs()
             eps.getEigenpair(i, vr, vi)
             pr = _scatter_dist_vec_and_bcast_to_all(vr, comm)
@@ -394,9 +438,9 @@ class SLEPcEigenSolver(EigenSolver):
             cols.append(full)
 
         eig_mat = np.column_stack(cols)
-        eig_arr = np.array(eigen_vals, dtype=float)
+        eig_arr = np.array(eigen_vals, dtype=np.complex128)
 
-        order = np.argsort(eig_arr)
+        order = np.lexsort((eig_arr.imag, eig_arr.real))
         eig_arr = eig_arr[order]
         eig_mat = eig_mat[:, order]
 
@@ -411,9 +455,8 @@ class SLEPcEigenSolver(EigenSolver):
                     )
                 )
             )
-            eigen_kets.append(
-                ket_vector(col_vec, round(float(eig_arr[j]), DEFAULT_ROUNDING_PRECISION))
-            )
+            ev = complex(eig_arr[j]) if allow_non_hermitian else round(float(eig_arr[j].real), DEFAULT_ROUNDING_PRECISION)
+            eigen_kets.append(ket_vector(col_vec, ev))
 
         basis = quantum_states_bases
         if basis is None:

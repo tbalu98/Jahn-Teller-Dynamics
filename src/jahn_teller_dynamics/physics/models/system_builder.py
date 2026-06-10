@@ -65,8 +65,8 @@ class _MultiModeTensorCouplingExprView:
         self._mm = phonon
 
     def create_id_op(self):
-        import jahn_teller_dynamics.math.matrix_mechanics as mm
-        import jahn_teller_dynamics.math.maths as maths
+        import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+        import jahn_teller_dynamics.math_utils.maths as maths
 
         use_sparse = getattr(self._mm, "use_sparse", False)
         matrix_type = maths.SparseMatrix if use_sparse else maths.Matrix
@@ -97,7 +97,9 @@ class MultiModePhononSystem(qs.quantum_system_node):
     Args:
         modes: See factory :func:`build_phonon_system`.
         order: Per-mode truncation (same semantics as legacy ``one_mode_phonon_sys`` for one axis):
-            active dimension ``order + 1`` per 1D mode.
+            active dimension ``order + 1`` per 1D mode. Either a single integer (applied to every
+            flattened mode) or a sequence of integers ``[N_1, N_2, ..., N_M]`` with one entry per
+            **flattened** mode (after ``(omega, ['x','y'])`` expansion).
         use_sparse: Matrix backend for ladder and related operators.
         phonon_system_id: Root node id.
         dimensionless_coordinates: If True, :math:`q=(a+a^\\dagger)/\\sqrt{2}`.
@@ -109,7 +111,7 @@ class MultiModePhononSystem(qs.quantum_system_node):
     def __init__(
         self,
         modes: Sequence[Union[float, Tuple[float, Sequence[str]]]],
-        order: int,
+        order: Union[int, Sequence[int]],
         use_sparse: bool = True,
         phonon_system_id: str = "phonon_system",
         dimensionless_coordinates: bool = True,
@@ -119,28 +121,44 @@ class MultiModePhononSystem(qs.quantum_system_node):
     ) -> None:
         from jahn_teller_dynamics.physics.quantum_physics import OneDimPhononSys
 
-        self.order = order
         self.use_sparse = use_sparse
         self.exp_approximation_order = exp_approximation_order
         flat_modes = _expand_multimode_to_one_dim_modes(modes)
         self._mode_configs = [(omega, [label]) for omega, label in flat_modes]
         self.modes = [omega for omega, _ in flat_modes]
 
-        eff_dim = order + 1
+        if isinstance(order, int):
+            per_mode_orders = [int(order)] * len(flat_modes)
+            self.order = int(order)
+        else:
+            per_mode_orders = [int(n) for n in order]
+            if len(per_mode_orders) != len(flat_modes):
+                raise ValueError(
+                    f"order has {len(per_mode_orders)} entries but there are "
+                    f"{len(flat_modes)} flattened 1D modes; pass one integer per mode "
+                    "(after (omega, ['x','y']) expansion) or a single int."
+                )
+            self.order = max(per_mode_orders) if per_mode_orders else 0
+        if any(n < 0 for n in per_mode_orders):
+            raise ValueError("Per-mode order entries must be non-negative")
+        self.per_mode_orders = per_mode_orders
+
         mode_nodes: List["qs.quantum_system_node"] = []
-        for i, (omega, coord_name) in enumerate(flat_modes, start=1):
+        for i, ((omega, coord_name), n_i) in enumerate(
+            zip(flat_modes, per_mode_orders), start=1
+        ):
             mode_id = f"mode_{i}"
             mode_nodes.append(
                 OneDimPhononSys(
                     omega,
-                    eff_dim,
+                    n_i + 1,
                     coord_name=coord_name,
                     phonon_sys_name=mode_id,
                     id=mode_id,
                     use_sparse=use_sparse,
                     dimensionless_coordinates=dimensionless_coordinates,
                     null_point_vib=null_point_vib,
-                    matching_phonon_order=order,
+                    matching_phonon_order=n_i,
                 )
             )
 
@@ -297,8 +315,8 @@ class MultiModePhononSystem(qs.quantum_system_node):
         """Embed a subsystem operator into the full phonon space."""
         import itertools
         import operator as op_mod
-        import jahn_teller_dynamics.math.matrix_mechanics as mm
-        import jahn_teller_dynamics.math.maths as maths
+        import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+        import jahn_teller_dynamics.math_utils.maths as maths
 
         left_systems, system, right_systems = self.find_leaves_avoid(mode_id)
         if system is None:
@@ -316,7 +334,7 @@ class MultiModePhononSystem(qs.quantum_system_node):
 
 def build_phonon_system(
     modes: Sequence[Union[float, Tuple[float, Sequence[str]]]],
-    order: int,
+    order: Union[int, Sequence[int]],
     use_sparse: bool = False,
     phonon_system_id: str = "phonon_system",
     dimensionless_coordinates: bool = True,
@@ -333,6 +351,8 @@ def build_phonon_system(
             - ``(omega, labels)``: one row per label—``(1.0, ['x','y'])`` yields **two**
               :class:`OneDimPhononSys` children (both with ``omega=1.0``), tensor-multiplied together.
         order: Per-axis truncation order (active Fock dimension ``order + 1`` each).
+            Either an ``int`` applied to every flattened 1D mode, or a sequence with one
+            entry per flattened mode (after the ``(omega, ['x','y'])`` expansion).
         use_sparse: If True, prefer sparse operators.
         phonon_system_id: Parent node id.
         dimensionless_coordinates: If True (default), use dimensionless q=(a+a†)/√2.
@@ -393,6 +413,52 @@ def build_phonon_system_constrained(
         null_point_vib=null_point_vib,
         mode_names=mode_names,
         build_log=build_log,
+        exp_approximation_order=exp_approximation_order,
+    )
+
+
+def build_phonon_system_energy_cutoff(
+    modes: Sequence[float],
+    phonon_encut: float,
+    use_sparse: bool = False,
+    phonon_system_id: str = "phonon_system",
+    dimensionless_coordinates: bool = True,
+    null_point_vib: bool = True,
+    mode_names: Optional[Sequence[str]] = None,
+    build_log: Optional[Callable[[str], None]] = None,
+    *,
+    exp_approximation_order: Optional[int] = None,
+) -> "qs.quantum_system_node":
+    """
+    Build a multi-mode phonon system truncated by phonon excitation energy.
+
+    Hilbert space: ``|n1,...,nN⟩`` with ``sum_i n_i * modes[i] <= phonon_encut``.
+
+    Args:
+        modes: Per-mode phonon quanta energies (:math:`\\hbar\\omega_i`).
+        phonon_encut: Maximum allowed ``sum_i n_i e_i``.
+        use_sparse: If True, use sparse matrices.
+        phonon_system_id: Node id.
+        dimensionless_coordinates: If True, q = (a+a†)/√2.
+        null_point_vib: If True, include zero-point energy.
+        mode_names: Optional one label per mode; default ``q1``..``qN``.
+        build_log: Optional callback for build progress and timings.
+
+    Returns:
+        MultiModeConstrainedPhononSystem.
+    """
+    from .constrained_multimode_phonon import MultiModeConstrainedPhononSystem
+
+    return MultiModeConstrainedPhononSystem(
+        modes=list(modes),
+        order=0,
+        use_sparse=use_sparse,
+        phonon_system_id=phonon_system_id,
+        dimensionless_coordinates=dimensionless_coordinates,
+        null_point_vib=null_point_vib,
+        mode_names=mode_names,
+        build_log=build_log,
+        phonon_encut=phonon_encut,
         exp_approximation_order=exp_approximation_order,
     )
 

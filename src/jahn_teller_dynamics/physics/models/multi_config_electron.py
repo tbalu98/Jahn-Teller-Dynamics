@@ -22,8 +22,8 @@ from typing import Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
-import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 import jahn_teller_dynamics.physics.quantum_system as qs
 from jahn_teller_dynamics.io.file_io.csv_reader import CSVReader
 

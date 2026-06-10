@@ -18,8 +18,8 @@ import os
 
 import jahn_teller_dynamics.physics.quantum_physics as qmp
 import jahn_teller_dynamics.io.file_io.vasp as V
-import jahn_teller_dynamics.math.matrix_mechanics as mm
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
 # Lazy import to avoid circular dependencies
 # results_formatter is imported inside functions that need it
 

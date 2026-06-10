@@ -13,8 +13,8 @@ import os
 import pandas as pd
 import jahn_teller_dynamics.physics.quantum_physics as qmp
 import jahn_teller_dynamics.physics.jahn_teller_theory as jt
-import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 import jahn_teller_dynamics.io.file_io.csv_writer as csv_writer
 from jahn_teller_dynamics.io.config.parser import JTConfigParser
 from jahn_teller_dynamics.io.config.constants import mag_field_strength_csv_col
@@ -407,7 +407,7 @@ class JT_Calculator:
         4. Adds perturbation and calculates reduction factor
         5. Stores the reduction factor in JT_int.p_factor
         """
-        import jahn_teller_dynamics.math.matrix_mechanics as mm
+        import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
         import jahn_teller_dynamics.physics.quantum_system as qs
         
         JT_int = self.JT_int

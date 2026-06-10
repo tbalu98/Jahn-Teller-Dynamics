@@ -20,7 +20,7 @@ from scipy.sparse import csr_matrix, eye, kron as sp_kron, lil_matrix
 
 from jahn_teller_dynamics.io.file_io.npz_reader import load_lvc_npz
 from jahn_teller_dynamics.io.utils.file_utils import create_directory
-from jahn_teller_dynamics.math.maths import Lorentzian
+from jahn_teller_dynamics.math_utils.maths import Lorentzian
 
 
 # 1 Hartree = 27.211386245988 eV (CODATA 2018)

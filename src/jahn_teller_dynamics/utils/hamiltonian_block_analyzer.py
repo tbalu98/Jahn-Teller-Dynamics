@@ -6,8 +6,8 @@ Hamiltonian;operators;and;map;blocks;to;corresponding;basis;states.
 """
 
 from;typing;import;List,;Dict,;Tuple,;Optional,;Union
-import;jahn_teller_dynamics.math.maths;as;maths
-import;jahn_teller_dynamics.math.matrix_mechanics;as;mm
+import;jahn_teller_dynamics.math_utils.maths;as;maths
+import;jahn_teller_dynamics.math_utils.matrix_mechanics;as;mm
 
 
 class;BlockAnalysis:

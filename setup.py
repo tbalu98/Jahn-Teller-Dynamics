@@ -29,7 +29,7 @@ def read_requirements():
 
 setup(
     name='jahn_teller_dynamics',
-    version='1.3.6',  # Update this as needed
+    version='1.5.7',  # Update this as needed
     description='Dynamic Jahn-Teller Effect Calculator',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
@@ -47,7 +47,12 @@ setup(
             'LVC_spectrum=jahn_teller_dynamics.calculate_spectrum:main',
             'LVC=jahn_teller_dynamics.LVC:main',
             'vertical_excitation=jahn_teller_dynamics.vertical_excitation:main',
-            'PVC=jahn_teller_dynamics.PVC:main',
+            'jtd_run=jahn_teller_dynamics.jtd_run:main',
+            'PVC=jahn_teller_dynamics.jtd_run:main',  # backward compatible
+            'planner=jahn_teller_dynamics.hamiltonian_planner:main',
+            'builder=jahn_teller_dynamics.hamiltonian_builder:main',
+            'eigensolver=jahn_teller_dynamics.eigensolver:main',
+            'aggregator=jahn_teller_dynamics.aggregate_hamiltonians:main',
         ],
     },
     classifiers=[

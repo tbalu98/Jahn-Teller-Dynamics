@@ -7,7 +7,7 @@ basis vectors from configuration files.
 
 from typing import Optional, List
 import numpy as np
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 
 from jahn_teller_dynamics.io.config.reader import ConfigReader
 

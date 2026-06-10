@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from jahn_teller_dynamics.math.maths import Lorentzian
+from jahn_teller_dynamics.math_utils.maths import Lorentzian
 
 from .config import SpectrumConfig
 from .calculator import SpectrumCalculator

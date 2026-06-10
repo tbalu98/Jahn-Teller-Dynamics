@@ -1,10 +1,13 @@
 """
-Multi-mode quantum harmonic oscillator with constrained total phonon number.
+Multi-mode quantum harmonic oscillator with constrained phonon Hilbert space.
 
-This module provides a phonon system where the Hilbert space is restricted to
-states with sum(n_i) <= order across all modes, yielding a smaller basis than
-the product space (order+1)^N. Each mode has a distinct energy quantum (hbar*omega)
-and position operator prefactor.
+This module provides a phonon system where the Hilbert space is restricted either by
+
+- total phonon number ``sum(n_i) <= order``, or
+- phonon excitation energy ``sum(n_i * e_i) <= phonon_encut``,
+
+yielding a smaller basis than the product space. Each mode has a distinct energy quantum
+(hbar*omega) and position operator prefactor.
 
 This is a **single node** with many operators. The Hilbert space cannot be
 expressed as a tensor product of single-mode spaces, so there are no child nodes.
@@ -18,15 +21,15 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Union, Literal, Dict, TYPE_CHECKING, Callable, Tuple
 
-import jahn_teller_dynamics.math.braket_formalism as bf
-import jahn_teller_dynamics.math.matrix_mechanics as mm
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.braket_formalism as bf
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
 import jahn_teller_dynamics.physics.quantum_system as qs
 import numpy as np
 
 if TYPE_CHECKING:
-    from jahn_teller_dynamics.math.matrix_mechanics import MatrixOperator
-    from jahn_teller_dynamics.math.braket_formalism import ket_state
+    from jahn_teller_dynamics.math_utils.matrix_mechanics import MatrixOperator
+    from jahn_teller_dynamics.math_utils.braket_formalism import ket_state
 
 
 class _ModeView:
@@ -70,11 +73,76 @@ class _ModeView:
 
 @dataclass(frozen=True)
 class ConstrainedFockLadderBuild:
-    """Hilbert basis + ladder operators from :func:`build_constrained_fock_basis_and_ladder_operators`."""
+    """Hilbert basis + ladder operators from constrained Fock builders in this module."""
 
     calculation_bases: mm.hilber_space_bases
     create_mx_ops: Dict[str, mm.MatrixOperator]
     annil_mx_ops: Dict[str, mm.MatrixOperator]
+
+
+_PHONON_ENERGY_CUTOFF_TOL = 1e-9
+
+
+def _occupation_phonon_energy(
+    occ: Sequence[int], mode_energies: Sequence[float]
+) -> float:
+    """Return :math:`\\sum_i n_i e_i` for occupation tuple ``occ``."""
+    return float(sum(n * e for n, e in zip(occ, mode_energies)))
+
+
+def _assemble_constrained_fock_ladder_build(
+    names: Sequence[str],
+    bras: List[bf.bra_state],
+    kets: List[bf.ket_state],
+    edges_per_mode: List[List[Tuple[int, int, float]]],
+    indexer: mm.BasisStateIndexer,
+    *,
+    subsystem_name: str,
+    use_sparse: bool,
+) -> ConstrainedFockLadderBuild:
+    """Pack DFS-built basis + per-mode ladder edges into operators."""
+    dim_total = len(kets)
+    bases = mm.hilber_space_bases(bra_states=bras, ket_states=kets, names=list(names))
+    bases.basis_state_indexer = indexer
+    bases.basis_parent_of = indexer.parent_of
+
+    create_mx_ops: Dict[str, mm.MatrixOperator] = {}
+    annil_mx_ops: Dict[str, mm.MatrixOperator] = {}
+    complex_dtype = maths.complex_number_typ
+
+    if use_sparse:
+        from scipy.sparse import dok_matrix
+
+        for mi, nm in enumerate(names):
+            dok = dok_matrix((dim_total, dim_total), dtype=complex_dtype)
+            for ci, pi, val in edges_per_mode[mi]:
+                dok[ci, pi] = val + 0j
+            csr = dok.tocsr()
+            c_op = mm.MatrixOperator(
+                maths.SparseMatrix(csr),
+                name="",
+                subsys_name=subsystem_name,
+            )
+            create_mx_ops[nm] = c_op
+            annil_mx_ops[nm] = c_op.adjoint()
+    else:
+        for mi, nm in enumerate(names):
+            mat = np.zeros((dim_total, dim_total), dtype=complex_dtype)
+            for ci, pi, val in edges_per_mode[mi]:
+                mat[ci, pi] = val + 0j
+            c_op = mm.MatrixOperator(
+                maths.Matrix(mat),
+                name="",
+                subsys_name=subsystem_name,
+            )
+            create_mx_ops[nm] = c_op
+            annil_mx_ops[nm] = c_op.adjoint()
+
+    return ConstrainedFockLadderBuild(
+        calculation_bases=bases,
+        create_mx_ops=create_mx_ops,
+        annil_mx_ops=annil_mx_ops,
+    )
 
 
 def build_constrained_fock_basis_and_ladder_operators(
@@ -90,13 +158,13 @@ def build_constrained_fock_basis_and_ladder_operators(
 
     For each transition ``|\\text{parent}\\rangle \\to |\\text{child}\\rangle`` that adds one
     quantum in mode ``m``, the matrix element is filled as ``M[i,j] = bra_j(\\cdots)ket_i``
-    expects in :mod:`~jahn_teller_dynamics.math.matrix_mechanics` adjacent-order ladder builds:
+    expects in :mod:`~jahn_teller_dynamics.math_utils.matrix_mechanics` adjacent-order ladder builds:
     ``i`` is the ket index for the **child** (raised occupation) and ``j`` the ket/bra partner
     index for the **parent**, with value :math:`\\sqrt{n_m^{(\\text{child})}}`.
 
 
     Basis order and indexing follow the same DFS as
-    :meth:`~jahn_teller_dynamics.math.matrix_mechanics.hilber_space_bases.dynamic_create_hosc_eigen_states_list`.
+    :meth:`~jahn_teller_dynamics.math_utils.matrix_mechanics.hilber_space_bases.dynamic_create_hosc_eigen_states_list`.
     """
     names = [str(n).strip() for n in qm_nums_names]
     if len(names) != num_modes:
@@ -155,47 +223,105 @@ def build_constrained_fock_basis_and_ladder_operators(
             f"Internal error: expected dim {dim_total} from combinatorics, got {len(kets)}"
         )
 
-    bases = mm.hilber_space_bases(bra_states=bras, ket_states=kets, names=list(names))
-    bases.basis_state_indexer = indexer
-    bases.basis_parent_of = indexer.parent_of
+    return _assemble_constrained_fock_ladder_build(
+        names,
+        bras,
+        kets,
+        edges_per_mode,
+        indexer,
+        subsystem_name=subsystem_name,
+        use_sparse=use_sparse,
+    )
 
-    create_mx_ops: Dict[str, mm.MatrixOperator] = {}
-    annil_mx_ops: Dict[str, mm.MatrixOperator] = {}
 
-    complex_dtype = maths.complex_number_typ
+def build_energy_cutoff_fock_basis_and_ladder_operators(
+    mode_energies: Sequence[float],
+    phonon_encut: float,
+    qm_nums_names: Sequence[str],
+    *,
+    subsystem_name: str = "phonon_system",
+    use_sparse: bool = True,
+    energy_tolerance: float = _PHONON_ENERGY_CUTOFF_TOL,
+) -> ConstrainedFockLadderBuild:
+    """
+    Build a constrained Fock basis with phonon **energy** cutoff and bosonic ladder operators.
 
-    if use_sparse:
-        from scipy.sparse import dok_matrix
+    Hilbert space: occupation tuples ``(n_1, \\ldots, n_N)`` with
 
-        for mi, nm in enumerate(names):
-            dok = dok_matrix((dim_total, dim_total), dtype=complex_dtype)
-            for ci, pi, val in edges_per_mode[mi]:
-                dok[ci, pi] = val + 0j
-            csr = dok.tocsr()
-            c_op = mm.MatrixOperator(
-                maths.SparseMatrix(csr),
-                name="",
-                subsys_name=subsystem_name,
-            )
-            create_mx_ops[nm] = c_op
-            annil_mx_ops[nm] = c_op.adjoint()
-    else:
-        for mi, nm in enumerate(names):
-            mat = np.zeros((dim_total, dim_total), dtype=complex_dtype)
-            for ci, pi, val in edges_per_mode[mi]:
-                mat[ci, pi] = val + 0j
-            c_op = mm.MatrixOperator(
-                maths.Matrix(mat),
-                name="",
-                subsys_name=subsystem_name,
-            )
-            create_mx_ops[nm] = c_op
-            annil_mx_ops[nm] = c_op.adjoint()
+    .. math::
 
-    return ConstrainedFockLadderBuild(
-        calculation_bases=bases,
-        create_mx_ops=create_mx_ops,
-        annil_mx_ops=annil_mx_ops,
+        E_{\\mathrm{ph}} = \\sum_i n_i e_i \\le E_{\\mathrm{cut}}
+
+    where ``e_i`` are the per-mode phonon quanta energies (``mode_energies``, typically
+    :math:`\\hbar\\omega_i` in cm\\ :sup:`-1`) and ``phonon_encut`` is ``E_cut``.
+
+    Ladder matrix conventions match :func:`build_constrained_fock_basis_and_ladder_operators`.
+    """
+    energies = [float(e) for e in mode_energies]
+    num_modes = len(energies)
+    names = [str(n).strip() for n in qm_nums_names]
+    if len(names) != num_modes:
+        raise ValueError(
+            f"qm_nums_names has length {len(names)} but mode_energies has {num_modes} entries"
+        )
+    if num_modes < 1:
+        raise ValueError("mode_energies must be non-empty")
+    if phonon_encut < 0:
+        raise ValueError("phonon_encut must be non-negative")
+    if any(e <= 0 for e in energies):
+        raise ValueError(
+            "All mode_energies must be positive for an energy-cutoff basis "
+            "(zero-energy modes would allow unbounded occupation)."
+        )
+    encut = float(phonon_encut)
+    tol = max(float(energy_tolerance), 0.0)
+
+    bras: List[bf.bra_state] = []
+    kets: List[bf.ket_state] = []
+    indexer = mm.BasisStateIndexer()
+    seen: set[Tuple[int, ...]] = set()
+    occ_to_index: Dict[Tuple[int, ...], int] = {}
+    edges_per_mode: List[List[Tuple[int, int, float]]] = [[] for _ in range(num_modes)]
+
+    ground = tuple([0] * num_modes)
+    seen.add(ground)
+    root_idx = indexer.allocate(None)
+    occ_to_index[ground] = root_idx
+    bras.append(bf.bra_state(qm_nums=list(ground)))
+    kets.append(bf.ket_state(qm_nums=list(ground)))
+
+    def dfs(parent_occ: List[int], parent_basis_index: int, parent_energy: float) -> None:
+        for mi in range(num_modes):
+            child_energy = parent_energy + energies[mi]
+            if child_energy > encut + tol:
+                continue
+            occ = copy.copy(parent_occ)
+            occ[mi] += 1
+            tup = tuple(occ)
+            amp = math.sqrt(float(tup[mi]))
+
+            if tup not in seen:
+                seen.add(tup)
+                child_idx = indexer.allocate(parent_basis_index)
+                occ_to_index[tup] = child_idx
+                edges_per_mode[mi].append((child_idx, parent_basis_index, amp))
+                bras.append(bf.bra_state(qm_nums=list(tup)))
+                kets.append(bf.ket_state(qm_nums=list(tup)))
+                dfs(list(tup), child_idx, child_energy)
+            else:
+                child_idx = occ_to_index[tup]
+                edges_per_mode[mi].append((child_idx, parent_basis_index, amp))
+
+    dfs(list(ground), root_idx, 0.0)
+
+    return _assemble_constrained_fock_ladder_build(
+        names,
+        bras,
+        kets,
+        edges_per_mode,
+        indexer,
+        subsystem_name=subsystem_name,
+        use_sparse=use_sparse,
     )
 
 
@@ -203,9 +329,14 @@ class MultiModeConstrainedPhononSystem(qs.quantum_system_node):
     """
     Single-node multi-mode quantum harmonic oscillator with total-phonon-number constraint.
 
-    Hilbert space: |n1, n2, ..., nN⟩ with n1 + n2 + ... + nN <= order.
+    Hilbert space: |n1, n2, ..., nN⟩ with either
+
+    - ``sum_i n_i <= order`` (default), or
+    - ``sum_i n_i e_i <= phonon_encut`` when ``phonon_encut`` is set.
+
     Basis states and bosonic ladder matrices are built together by
-    :func:`build_constrained_fock_basis_and_ladder_operators` (single DFS over occupations).
+    :func:`build_constrained_fock_basis_and_ladder_operators` or
+    :func:`build_energy_cutoff_fock_basis_and_ladder_operators`.
     Each mode i has energy hbar*omega_i and position prefactor ∝ 1/sqrt(omega_i)
     when dimensionless_coordinates=False.
 
@@ -229,16 +360,18 @@ class MultiModeConstrainedPhononSystem(qs.quantum_system_node):
         mode_names: Optional[Sequence[str]] = None,
         build_log: Optional[Callable[[str], None]] = None,
         *,
+        phonon_encut: Optional[float] = None,
         exp_approximation_order: Optional[int] = None,
     ) -> None:
         """
         Args:
             modes: List of mode energies (hbar*omega) for each mode.
-            order: Maximum total phonon number (sum of quantum numbers <= order).
+            order: Maximum total phonon number (``sum_i n_i <= order``). Ignored when
+                ``phonon_encut`` is set.
             use_sparse: If True, creator/annihilator matrices are CSR
-                :class:`~jahn_teller_dynamics.math.maths.SparseMatrix` (built in one pass with
-                :func:`build_constrained_fock_basis_and_ladder_operators`; no full dense
-                ``dim×dim`` ladder fill). If False, dense NumPy matrices are used for the same graph.
+                :class:`~jahn_teller_dynamics.math_utils.maths.SparseMatrix` (built in one pass with
+                the constrained Fock builders; no full dense ``dim×dim`` ladder fill). If False,
+                dense NumPy matrices are used for the same graph.
             phonon_system_id: ID for this node.
             dimensionless_coordinates: If True, q = (a+a†)/√2; else q = (a+a†)/(√2 ω^0.5).
             null_point_vib: If True, include 0.5*hbar*omega zero-point energy in H.
@@ -247,10 +380,19 @@ class MultiModeConstrainedPhononSystem(qs.quantum_system_node):
                 :attr:`qm_nums_names` and position-operator keys.
             build_log: If set, called with short human-readable build progress and timings
                 (Hilbert basis, ladder operators, Hamiltonian/position build).
+            phonon_encut: If set, truncate by phonon excitation energy
+                ``sum_i n_i * modes[i] <= phonon_encut`` instead of ``order``.
             exp_approximation_order: If a non-negative int ``N``, ``exp(...)`` in coupling
                 expressions uses ``sum_{k=0}^N A^k/k!``; ``None`` uses exact ``expm``.
         """
+        if phonon_encut is None:
+            if order < 0:
+                raise ValueError("order must be non-negative when phonon_encut is not set")
+        elif float(phonon_encut) < 0:
+            raise ValueError("phonon_encut must be non-negative")
+
         self.order = order
+        self.phonon_encut = float(phonon_encut) if phonon_encut is not None else None
         self.modes = list(modes)
         self.use_sparse = use_sparse
         self.dimensionless_coordinates = dimensionless_coordinates
@@ -273,22 +415,37 @@ class MultiModeConstrainedPhononSystem(qs.quantum_system_node):
         else:
             qm_nums_names = [f"q{i}" for i in range(1, num_modes + 1)]
 
-        # Build Hilbert space: states |n1,...,nN⟩ with sum <= order
+        # Build Hilbert space: sum n_i <= order, or sum n_i e_i <= phonon_encut
         t_basis = time.perf_counter()
         if build_log is not None:
-            build_log(
-                f"Phonon [{phonon_system_id}]: building quantum states "
-                f"(constrained Fock basis: {num_modes} mode(s), sum n_i <= {order})"
-            )
+            if self.phonon_encut is not None:
+                build_log(
+                    f"Phonon [{phonon_system_id}]: building quantum states "
+                    f"(energy-cutoff Fock basis: {num_modes} mode(s), "
+                    f"sum n_i e_i <= {self.phonon_encut:g})"
+                )
+            else:
+                build_log(
+                    f"Phonon [{phonon_system_id}]: building quantum states "
+                    f"(constrained Fock basis: {num_modes} mode(s), sum n_i <= {order})"
+                )
 
-        # Basis + a† / a (adj) in one DFS: see build_constrained_fock_basis_and_ladder_operators.
-        built = build_constrained_fock_basis_and_ladder_operators(
-            num_modes,
-            order,
-            qm_nums_names,
-            subsystem_name=phonon_system_id,
-            use_sparse=use_sparse,
-        )
+        if self.phonon_encut is not None:
+            built = build_energy_cutoff_fock_basis_and_ladder_operators(
+                self.modes,
+                self.phonon_encut,
+                qm_nums_names,
+                subsystem_name=phonon_system_id,
+                use_sparse=use_sparse,
+            )
+        else:
+            built = build_constrained_fock_basis_and_ladder_operators(
+                num_modes,
+                order,
+                qm_nums_names,
+                subsystem_name=phonon_system_id,
+                use_sparse=use_sparse,
+            )
         self.calculation_bases = built.calculation_bases
         self.create_mx_ops = built.create_mx_ops
         self.annil_mx_ops = built.annil_mx_ops
