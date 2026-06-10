@@ -44,15 +44,7 @@ setup(
     entry_points={
         'console_scripts': [
             'Exe=jahn_teller_dynamics.Exe:main',
-            'LVC_spectrum=jahn_teller_dynamics.calculate_spectrum:main',
-            'LVC=jahn_teller_dynamics.LVC:main',
-            'vertical_excitation=jahn_teller_dynamics.vertical_excitation:main',
             'jtd_run=jahn_teller_dynamics.jtd_run:main',
-            'PVC=jahn_teller_dynamics.jtd_run:main',  # backward compatible
-            'planner=jahn_teller_dynamics.hamiltonian_planner:main',
-            'builder=jahn_teller_dynamics.hamiltonian_builder:main',
-            'eigensolver=jahn_teller_dynamics.eigensolver:main',
-            'aggregator=jahn_teller_dynamics.aggregate_hamiltonians:main',
         ],
     },
     classifiers=[
