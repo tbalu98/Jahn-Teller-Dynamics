@@ -16,6 +16,8 @@ __all__ = [
     'ParameterExtractor',
     'SectionTypeDetector',
     'FieldVectorParser',
+    'LVCConfigParser',
+    'LVCCalculation',
 ]
 
 # Lazy imports to avoid circular dependencies
@@ -39,5 +41,11 @@ def __getattr__(name):
     elif name == 'FieldVectorParser':
         from .field_parser import FieldVectorParser
         return FieldVectorParser
+    elif name == 'LVCConfigParser':
+        from .lvc_config import LVCConfigParser
+        return LVCConfigParser
+    elif name == 'LVCCalculation':
+        from .lvc_config import LVCCalculation
+        return LVCCalculation
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 

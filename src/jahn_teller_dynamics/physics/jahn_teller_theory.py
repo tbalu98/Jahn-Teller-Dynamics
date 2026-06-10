@@ -6,8 +6,8 @@ import jahn_teller_dynamics.io.file_io.vasp as V
 import copy
 from scipy.sparse.linalg import eigs
 import itertools
-import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 import pandas as pd
 import jahn_teller_dynamics.io.file_io.xml_parser
 # Lazy import to avoid circular dependency - only import when needed

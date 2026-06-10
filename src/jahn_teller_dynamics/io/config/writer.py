@@ -448,7 +448,7 @@ class ConfigWriter:
         Returns:
             List of basis vectors or None
         """
-        import jahn_teller_dynamics.math.maths as maths
+        import jahn_teller_dynamics.math_utils.maths as maths
         
         b1_coords = self.reader.get_splitted_strs(field_name, basis_vector_1_opt, float)
         b2_coords = self.reader.get_splitted_strs(field_name, basis_vector_2_opt, float)

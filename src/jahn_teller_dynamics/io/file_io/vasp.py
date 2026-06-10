@@ -5,7 +5,7 @@ import copy
 import pandas as pd
 from io import StringIO
 from typing import List
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 
 basis_vector_1_opt = 'basis_vector_1'
 basis_vector_2_opt = 'basis_vector_2'

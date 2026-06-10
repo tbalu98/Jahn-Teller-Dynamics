@@ -1,6 +1,17 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
+*.zip
+conftest.py
+mprofile_*.dat
+scripts/
+requirements-frozen.txt
 research_data.md
+docs/
+requirements-slepc.txt
+tests/
+Try_1/
+test_all_configs.sh
+test_generated_configs.sh
 acustic_phonons/
 Try_1/
 config_files/generated_config_files/
@@ -29,6 +40,7 @@ stash/
 tests/
 result_plots/
 results/
+results/*
 publications/
 books/
 .vscode/

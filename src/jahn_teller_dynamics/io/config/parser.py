@@ -114,6 +114,22 @@ class JTConfigParser:
         """Get maximum number of vibrational quanta."""
         return self.params.get_order()
     
+    def get_use_sparse(self) -> bool:
+        """
+        Get use_sparse setting from configuration.
+        
+        Reads from the 'essentials' section. If set to 'true', all calculations
+        (ground_state, excited_state, system_parameters) will use sparse matrices.
+        
+        If not specified, defaults to False (dense matrices) for backward compatibility.
+        
+        Returns:
+            bool: True if sparse matrices should be used, False otherwise
+        """
+        from jahn_teller_dynamics.io.config.constants import essentials_field, use_sparse_opt
+        # Check if option exists in essentials section and is set to 'true'
+        return self.reader.conditional_option(essentials_field, use_sparse_opt)
+    
     def get_F_coeff(self, section: str) -> float:
         """Get F coefficient."""
         return self.params.get_F_coeff(section)
