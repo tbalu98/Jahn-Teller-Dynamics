@@ -7,7 +7,7 @@ used in Jahn-Teller theory, such as p_factor, f_factor, and K_JT_factor.
 
 from typing import NamedTuple
 import jahn_teller_dynamics.physics.quantum_system as qs
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 
 
 class ReductionFactorsResult(NamedTuple):

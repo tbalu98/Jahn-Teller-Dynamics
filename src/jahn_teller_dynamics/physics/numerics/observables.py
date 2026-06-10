@@ -7,8 +7,8 @@ transition intensities and magnetic field-dependent eigenstates.
 
 from typing import List, Tuple, Optional, Dict, Any, Callable
 import jahn_teller_dynamics.physics.quantum_system as qs
-import jahn_teller_dynamics.math.matrix_mechanics as mm
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
 
 
 def compute_transition_intensities(

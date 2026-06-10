@@ -22,7 +22,7 @@ from jahn_teller_dynamics.io.visualization.plotter import Plotter
 from jahn_teller_dynamics.io.theory.calculator import calc_transition_energies
 from jahn_teller_dynamics.io.utils import create_directory
 from jahn_teller_dynamics.io.config.constants import single_case_section
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 
 
 class JTOrchestrator:
@@ -255,7 +255,7 @@ class JTOrchestrator:
         JT_int.add_spin_system()
         JT_int.create_one_mode_DJT_hamiltonian()
         JT_int.add_spin_orbit_coupling()
-        JT_int.calc_eigen_vals_vects()
+        eigen_space = JT_int.calc_eigen_vals_vects()
         
         # Calculate reduction factors
         JT_int.calc_reduction_factors()
@@ -277,7 +277,7 @@ class JTOrchestrator:
         
         if eigen_state_type == 'real':
             self.csv_writer.write_eigen_vectors_and_values_to_output(
-                JT_int.calc_eigen_vals_vects(),
+                eigen_space,
                 eigen_vec_suffix=section + '_eigen_vectors.csv',
                 eigen_val_suffix=section + '_eigen_values.csv'
             )

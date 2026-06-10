@@ -11,7 +11,15 @@ from jahn_teller_dynamics.io.config.reader import ConfigReader
 
 # Import constants
 from jahn_teller_dynamics.io.config.constants import (
-    essentials_field, out_folder_opt, in_folder_opt, out_prefix_opt
+    essentials_field,
+    in_folder_opt,
+    out_folder_opt,
+    out_prefix_opt,
+    spectrum_data_folder_opt,
+    spectrum_output_folder_opt,
+    spectrum_output_prefix_opt,
+    spectrum_results_folder_legacy_opt,
+    spectrum_section,
 )
 
 
@@ -113,14 +121,51 @@ class PathManager:
     def ensure_trailing_slash(self, path: str) -> str:
         """
         Ensure a path has a trailing slash.
-        
+
         Args:
             path: Path to process
-            
+
         Returns:
             str: Path with trailing slash
         """
-        if path and not path.endswith('/'):
-            return path + '/'
+        if path and not path.endswith("/"):
+            return path + "/"
         return path
+
+    # -------------------------------------------------------------------------
+    # Spectrum section ([spectrum])
+    # -------------------------------------------------------------------------
+
+    def get_option_from_section(self, section: str, option: str, default: str = "") -> str:
+        """
+        Get a string option from an arbitrary section.
+
+        Args:
+            section: Section name
+            option: Option name
+            default: Default value if option doesn't exist
+
+        Returns:
+            str: Option value, trimmed
+        """
+        if self.reader.has_option(section, option):
+            return str(self.reader.get_option_of_field(section, option, default)).strip()
+        return default
+
+    def get_spectrum_data_folder(self) -> str:
+        """Get data_folder from [spectrum] section."""
+        return self.get_option_from_section(spectrum_section, spectrum_data_folder_opt)
+
+    def get_spectrum_output_folder(self) -> str:
+        """Get output_folder from [spectrum] section; falls back to legacy results_folder."""
+        v = self.get_option_from_section(spectrum_section, spectrum_output_folder_opt)
+        if v:
+            return v
+        return self.get_option_from_section(
+            spectrum_section, spectrum_results_folder_legacy_opt
+        )
+
+    def get_spectrum_output_prefix(self) -> str:
+        """Get output_prefix from [spectrum] section."""
+        return self.get_option_from_section(spectrum_section, spectrum_output_prefix_opt, "spectrum")
 

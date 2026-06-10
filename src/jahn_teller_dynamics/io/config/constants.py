@@ -19,6 +19,19 @@ el_field = 'electric_field'
 strain_field = 'strain_field'
 atom_structure_field = 'atom_structure_parameters'
 
+# Spectrum section (LVC absorption spectrum)
+spectrum_section = "spectrum"
+spectrum_data_folder_opt = "data_folder"
+spectrum_output_folder_opt = "output_folder"
+spectrum_results_folder_legacy_opt = "results_folder"  # [spectrum] legacy key
+spectrum_output_prefix_opt = "output_prefix"
+
+# Smearing function section (optional, for spectrum broadening)
+smearing_function_section = "smearing_function"
+smearing_function_opt = "function"
+smearing_HWHM_opt = "HWHM"
+smearing_amplitude_opt = "amplitude"
+
 # State sections
 ex_state_field = 'excited_state_parameters'
 gnd_state_field = 'ground_state_parameters'
@@ -111,6 +124,9 @@ model_Hamiltonian_opt = 'model_Hamiltonian'
 save_raw_pars_opt = 'save_raw_parameters'
 save_model_Hamiltonian_cfg_opt = 'save_model_Hamiltonian_cfg'
 save_Taylor_coeffs_cfg_opt = 'save_taylor_coeffs_cfg'
+
+# Sparse matrix option
+use_sparse_opt = 'use_sparse'
 
 # ==================== CSV Column Names ====================
 

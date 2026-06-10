@@ -7,7 +7,7 @@ module to build JT theory from CSV files and parameters.
 """
 
 from typing import List, Optional
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 from jahn_teller_dynamics.io.config.reader import ConfigReader
 from jahn_teller_dynamics.io.config.parameter_extractor import ParameterExtractor
 from jahn_teller_dynamics.io.config.field_parser import FieldVectorParser

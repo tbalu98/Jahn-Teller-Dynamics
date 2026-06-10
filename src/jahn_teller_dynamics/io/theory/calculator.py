@@ -13,8 +13,8 @@ import os
 import pandas as pd
 import jahn_teller_dynamics.physics.quantum_physics as qmp
 import jahn_teller_dynamics.physics.jahn_teller_theory as jt
-import jahn_teller_dynamics.math.maths as maths
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 import jahn_teller_dynamics.io.file_io.csv_writer as csv_writer
 from jahn_teller_dynamics.io.config.parser import JTConfigParser
 from jahn_teller_dynamics.io.config.constants import mag_field_strength_csv_col
@@ -66,6 +66,7 @@ class JT_Calculator:
         order = JT_config_parser.get_order()
         intrincis_soc = JT_config_parser.get_spin_orbit_coupling(section_to_look_for)
         orbital_red_fact = JT_config_parser.get_gL_factor(section_to_look_for)
+        use_sparse = JT_config_parser.get_use_sparse()
 
         orientation_basis = JT_config_parser.get_system_orientation_basis()
 
@@ -77,14 +78,12 @@ class JT_Calculator:
         # create_electron_phonon_Exe_tree will check JT_theory.order_flag
         # and create minimal_Exe_tree if order_flag == 0 (model Hamiltonian)
         JT_int = qmp.Exe_tree.create_electron_phonon_Exe_tree(
-            JT_theory, order, intrincis_soc, orbital_red_fact, orientation_basis
+            JT_theory, order, intrincis_soc, orbital_red_fact, orientation_basis, use_sparse=use_sparse
         )
 
-        # Only add spin system and interactions for non-model Hamiltonians
-        if JT_theory.order_flag != 0 and intrincis_soc != 0.0:
-            JT_int.add_spin_system()
-            JT_int.create_one_mode_DJT_hamiltonian()
-            JT_int.add_spin_orbit_coupling()
+        # NOTE: Do NOT set up the Hamiltonian here (add_spin_system, create_one_mode_DJT_hamiltonian, add_spin_orbit_coupling)
+        # The Hamiltonian setup should be done in _process_with_soc() in the orchestrator to ensure
+        # proper workflow and avoid double setup. This also ensures eigenstates are computed at the right time.
 
         return cls(JT_int)
 
@@ -128,7 +127,7 @@ class JT_Calculator:
                 strain_fields.tolist()
             )
 
-        H_DJT_mag.calc_eigen_vals_vects()
+        #H_DJT_mag.calc_eigen_vals_vects()
 
         return H_DJT_mag
 
@@ -179,8 +178,8 @@ class JT_Calculator:
 
         for B_field in B_fields:
             H_DJT_mag = self._build_magnetic_hamiltonian(B_field, strain_fields)
-
-            for eig_ket, line_label in zip(H_DJT_mag.eigen_kets, energy_labels):
+            eigen_space = H_DJT_mag.calc_eigen_vals_vects()
+            for eig_ket, line_label in zip(eigen_space.eigen_kets, energy_labels):
                 JT_int_Es_dict[line_label].append(
                     maths.meV_to_GHz(eig_ket.eigen_val)
                 )
@@ -408,7 +407,7 @@ class JT_Calculator:
         4. Adds perturbation and calculates reduction factor
         5. Stores the reduction factor in JT_int.p_factor
         """
-        import jahn_teller_dynamics.math.matrix_mechanics as mm
+        import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
         import jahn_teller_dynamics.physics.quantum_system as qs
         
         JT_int = self.JT_int

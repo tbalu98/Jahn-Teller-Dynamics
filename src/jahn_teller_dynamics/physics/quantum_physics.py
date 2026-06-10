@@ -1,14 +1,14 @@
-import jahn_teller_dynamics.math.matrix_mechanics as mm
-import jahn_teller_dynamics.math.braket_formalism as bf
-from jahn_teller_dynamics.math.matrix_mechanics import MatrixOperator
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.braket_formalism as bf
+from jahn_teller_dynamics.math_utils.matrix_mechanics import MatrixOperator
 import numpy as np
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     import jahn_teller_dynamics.physics.jahn_teller_theory as jt
 else:
     import jahn_teller_dynamics.physics.jahn_teller_theory as jt
-import jahn_teller_dynamics.math.maths as maths
+import jahn_teller_dynamics.math_utils.maths as maths
 import jahn_teller_dynamics.physics.quantum_system as qs
 import copy
 import pandas as pd
@@ -80,14 +80,28 @@ class one_mode_phonon_sys(qs.quantum_system_node):
         return self.mx_op_builder.create_new_basis2(generator_ops, self.calc_order-1)
     
 
-    def __init__(self,mode,spatial_dim, order, qm_nums_names, phonon_sys_name = '', id = ''):
+    def __init__(
+        self,
+        mode,
+        spatial_dim,
+        order,
+        qm_nums_names,
+        phonon_sys_name="",
+        id="",
+        use_sparse: bool = False,
+        dimensionless_coordinates: bool = True,
+        null_point_vib: bool = True,
+    ):
         self.phonon_sys_name = phonon_sys_name
         self.mode = mode
         self.spatial_dim = spatial_dim
         self.order = order
-        self.calc_order = order +1 
+        self.calc_order = order + 1
         self.qm_nums_names = qm_nums_names
-        
+        self.use_sparse = use_sparse
+        self.dimensionless_coordinates = dimensionless_coordinates
+        self.null_point_vib = null_point_vib
+
         self.id = id
         self.children = []
         self.operators = {}
@@ -101,13 +115,12 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 
         self.names_dict = { name:num for name,num in zip(self.qm_nums_names , range(0, len(self.qm_nums_names))) }
-        self.mx_op_builder = mm.braket_to_matrix_formalism(self.calculation_bases)
+        self.mx_op_builder = mm.braket_to_matrix_formalism(self.calculation_bases, use_sparse=use_sparse)
 
 
         self.dim = self.calc_h_space_dim
         self.def_braket_create_qm_ops()
         self.def_braket_annil_qm_ops()
-
 
         self.calc_create_ops()
         self.calc_annil_ops()
@@ -124,18 +137,63 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
     def create_operators_dict(self):
         self.operators['K'] = self.get_H_op()
-    
-        self.operators['X'] = self.calc_pos_i_op('x')
-        self.operators['Y'] = self.calc_pos_i_op('y')
 
-        self.operators['XX'] = self.calc_pos_i_j_op('x','x')
-    
-        self.operators['YY'] = self.calc_pos_i_j_op('y','y')
+        # Create position operators for each spatial coordinate (qm_nums_names).
+        # Operators are stored by coordinate label (e.g. 'x', 'y') for expression parsing.
+        for label in self.qm_nums_names:
+            self.operators[label] = self.calc_pos_i_op(label)
 
-        self.operators['XY'] = self.calc_pos_i_j_op('x','y')
+        # Backward compatibility: 'X', 'Y' for first two coordinates (used by JT code).
+        if len(self.qm_nums_names) >= 1:
+            self.operators['X'] = self.operators[self.qm_nums_names[0]]
+        if len(self.qm_nums_names) >= 2:
+            self.operators['Y'] = self.operators[self.qm_nums_names[1]]
+        if len(self.qm_nums_names) == 1:
+            self.operators['XX'] = self.calc_pos_i_j_op(
+                self.qm_nums_names[0], self.qm_nums_names[0]
+            )
+        elif len(self.qm_nums_names) >= 2:
+            q0, q1 = self.qm_nums_names[0], self.qm_nums_names[1]
+            self.operators['XX'] = self.calc_pos_i_j_op(q0, q0)
+            self.operators['YY'] = self.calc_pos_i_j_op(q1, q1)
+            self.operators['XY'] = self.calc_pos_i_j_op(q0, q1)
+            self.operators['YX'] = self.calc_pos_i_j_op(q1, q0)
 
-        self.operators['YX'] = self.calc_pos_i_j_op('y','x')
+    def get_position_operator(self, coord: str) -> mm.MatrixOperator:
+        """
+        Get the position operator for a spatial coordinate by its label.
 
+        Args:
+            coord: Coordinate label (e.g. 'x', 'y', 'qx', 'qy') from qm_nums_names.
+                   Supports both short form (x, y) and expression form (qx, qy).
+
+        Returns:
+            MatrixOperator for that coordinate's position.
+        """
+        if coord in self.operators:
+            return self.operators[coord]
+        # Support qx -> x when expression uses q-prefixed form (e.g. qx*qy)
+        if coord.startswith("q") and len(coord) > 1 and coord[1:] in self.operators:
+            return self.operators[coord[1:]]
+        raise ValueError(
+            f"Coordinate '{coord}' not found in {self.id}. "
+            f"Available: {list(self.qm_nums_names)}"
+        )
+
+    def evaluate_position_expression(self, expr: str):
+        """
+        Parse and evaluate a position expression for this mode.
+
+        Expressions use coordinate labels (e.g. qx, qy) from qm_nums_names.
+        Examples: 'qx*qy^2', '2*(qx^2 + qy^2)', 'qx + qy'.
+
+        Returns:
+            MatrixOperator: The evaluated expression.
+        """
+        from jahn_teller_dynamics.physics.models.position_expr_parser import (
+            evaluate_position_expression as _eval,
+        )
+        return _eval(self, expr, allowed_coords=list(self.qm_nums_names))
 
     def get_qm_num(self, state, key):
         if isinstance(state,bf.ket_state) or isinstance(state,bf.bra_state):
@@ -149,10 +207,8 @@ class one_mode_phonon_sys(qs.quantum_system_node):
             self.creator_braket_ops.append(creator_braket_op)
 
     def def_braket_annil_qm_ops(self):
+        """Annihilator braket ops are the Hermitian adjoints of creators; no separate list."""
         self.annil_braket_ops = []
-        for key in self.names_dict.keys():
-            annil_braket_op = bf.annihilator_operator(self.names_dict[key],key)
-            self.annil_braket_ops.append(annil_braket_op)
 
     def calc_create_ops(self):
         self.create_mx_ops = {}
@@ -163,27 +219,35 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
     def calc_annil_ops(self):
         self.annil_mx_ops = {}
-        for annil_braket_op in self.annil_braket_ops:
-            mx_op =  self.mx_op_builder.create_MatrixOperator(annil_braket_op, subsys_name = self.phonon_sys_name)
-            self.annil_mx_ops[annil_braket_op.name] = mx_op
+        for key in self.create_mx_ops:
+            self.annil_mx_ops[key] = self.create_mx_ops[key].adjoint()
 
 
     def over_est_H_i_op(self, qm_num_name):
         return self.create_mx_ops[qm_num_name]*self.annil_mx_ops[qm_num_name]
 
+    def create_id_op(self, matrix_type = None):
+        """Override to use sparse matrices when use_sparse=True."""
+        if matrix_type is None:
+            matrix_type = maths.SparseMatrix if self.use_sparse else maths.Matrix
+        return super().create_id_op(matrix_type=matrix_type)
+
     def over_est_all_H_i_ops(self):
         self.H_i_ops = []
         for qm_nums_name in self.qm_nums_names:
-            self.H_i_ops.append(self.create_mx_ops[qm_nums_name]*self.annil_mx_ops[qm_nums_name] + 0.5*self.create_id_op())
-
+            n_op = self.create_mx_ops[qm_nums_name] * self.annil_mx_ops[qm_nums_name]
+            self.H_i_ops.append(n_op)
 
     def over_est_H_op(self):
         H = sum(self.H_i_ops)
         H.subsys_name = self.phonon_sys_name
         self.over_est_H = H.round(0).change_type(np.int16)
 
-    def get_H_op(self ) -> mm.MatrixOperator:
-        return self.mode*self.over_est_H.truncate_matrix(self.trunc_num)
+    def get_H_op(self) -> mm.MatrixOperator:
+        H = self.mode * self.over_est_H.truncate_matrix(self.trunc_num)
+        if self.null_point_vib:
+            H = H + self.spatial_dim*0.5 * self.mode * self.create_id_op()
+        return H
 
     def calc_trunc_num(self):
         return self.over_est_H.matrix.count_occurrences(self.calc_order)
@@ -196,8 +260,14 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
 
     def over_est_pos_i_op(self, qm_num_name) -> mm.MatrixOperator:
-        op = ((self.annil_mx_ops[qm_num_name] + self.create_mx_ops[qm_num_name])
-              / mm.SQRT_2)
+        """
+        Position operator: q = (a + a†) / √2 (dimensionless) or (a + a†) / (√2 ω^0.5) (dimensional).
+        """
+        if self.dimensionless_coordinates:
+            denom = mm.SQRT_2
+        else:
+            denom = mm.SQRT_2 * (self.mode) ** 0.5
+        op = (self.annil_mx_ops[qm_num_name] + self.create_mx_ops[qm_num_name]) / denom
         op.subsys_name = self.phonon_sys_name
         return op
 
@@ -218,6 +288,229 @@ class one_mode_phonon_sys(qs.quantum_system_node):
 
         return self.calc_pos_prefactor()**2*self.over_est_pos_i_j_op(qm_num_name_1, qm_num_name_2).truncate_matrix(self.trunc_num)
 
+
+def _hos_creator_dense_matrix(d_full: int) -> np.ndarray:
+    """Full number-basis matrix for a†, shape ``(d_full, d_full)`` (dense)."""
+    if d_full < 1:
+        raise ValueError("d_full must be at least 1")
+    mat = np.zeros((d_full, d_full), dtype=maths.complex_number_typ)
+    for n in range(d_full - 1):
+        mat[n + 1, n] = maths.complex_number_typ(np.sqrt(float(n + 1)))
+    return mat
+
+
+def _hos_creator_csr_matrix(d_full: int):
+    """Full ``a†`` as SciPy CSR: only entries (n+1, n) = √(n+1)."""
+    from scipy.sparse import csr_matrix as _csr_matrix
+
+    if d_full < 1:
+        raise ValueError("d_full must be at least 1")
+    if d_full <= 1:
+        return _csr_matrix((d_full, d_full), dtype=maths.complex_number_typ)
+    cols = np.arange(0, d_full - 1, dtype=np.int32)
+    rows = cols + 1
+    dat = np.sqrt(cols.astype(np.float64) + 1.0).astype(maths.complex_number_typ)
+    return _csr_matrix((dat, (rows, cols)), shape=(d_full, d_full), dtype=maths.complex_number_typ)
+
+
+class OneDimPhononSys(qs.quantum_system_node):
+    """
+    Single-mode harmonic oscillator with one spatial coordinate and Hilbert dimension ``dimension``.
+
+    The creation operator is assembled in the number-state convention
+    :math:`(a^\\dagger)_{n+1,n}=\\sqrt{n+1}`; the annihilator is its Hermitian conjugate.
+    With ``use_sparse=True`` (default), ladder operators are built as CSR :class:`~scipy.sparse.csr_matrix`
+    without densifying the full harmonic window; ``q``, ``N``, and ``K`` then stay sparse through
+    :class:`~jahn_teller_dynamics.math_utils.matrix_mechanics.MatrixOperator` arithmetic.
+    Position :math:`q` and phonon Hamiltonian follow the same formulas as ``one_mode_phonon_sys``.
+
+    If ``matching_phonon_order`` is set (same meaning as ``order`` in ``one_mode_phonon_sys``),
+    the basis is ``harm_osc_sys(1, matching_phonon_order + 1, …).reduce_space(dimension)`` —
+    identical ordering to the legacy one-mode truncation; ``XX`` matches
+    ``truncate(q_\\mathrm{full}^2)`` from that legacy build (not ``q_\\mathrm{trunc}^2``). If omitted,
+    states are exactly :math:`|0\\rangle,\\ldots,|{\\mathrm{dimension}-1}\\rangle` from
+    ``harm_osc_sys(1, dimension - 1, …)``, and ``XX = q^2`` on that basis.
+
+    For the same ``order`` as ``one_mode_phonon_sys``, use ``dimension = order + 1`` (single-coordinate
+    truncated active size). :class:`~jahn_teller_dynamics.physics.models.system_builder.MultiModePhononSystem`
+    uses this class for one-coordinate modes with that convention.
+    """
+
+    def __init__(
+        self,
+        mode: float,
+        dimension: int,
+        coord_name: str = "x",
+        phonon_sys_name: str = "",
+        id: str = "",
+        use_sparse: bool = True,
+        dimensionless_coordinates: bool = True,
+        null_point_vib: bool = True,
+        *,
+        matching_phonon_order: Optional[int] = None,
+    ) -> None:
+        if dimension < 1:
+            raise ValueError("dimension must be at least 1 (number of active oscillator states)")
+        self.phonon_sys_name = phonon_sys_name
+        self.mode = float(mode)
+        self.spatial_dim = 1
+        self.dimension = int(dimension)
+        self.coord_name = str(coord_name)
+        self.qm_nums_names = [self.coord_name]
+        self.use_sparse = use_sparse
+        self.dimensionless_coordinates = dimensionless_coordinates
+        self.null_point_vib = null_point_vib
+        self.matching_phonon_order = matching_phonon_order
+        self.id = id or phonon_sys_name
+        self.children = []
+
+        self.names_dict = {self.coord_name: 0}
+
+        full_bases_for_legacy_xx: Optional["mm.hilber_space_bases"] = None
+        if matching_phonon_order is not None:
+            calc_order = int(matching_phonon_order) + 1
+            full_bases = mm.hilber_space_bases().harm_osc_sys(
+                1, calc_order, self.qm_nums_names
+            )
+            full_bases_for_legacy_xx = full_bases
+            if self.dimension > full_bases.dim:
+                raise ValueError(
+                    f"dimension={self.dimension} exceeds full harmonic window "
+                    f"dim={full_bases.dim} for matching_phonon_order={matching_phonon_order}"
+                )
+            self.calculation_bases = full_bases.reduce_space(self.dimension)
+            if use_sparse:
+                c_full_csr = _hos_creator_csr_matrix(full_bases.dim)
+                creator_csr = c_full_csr[: self.dimension, : self.dimension].tocsr()
+                create_mat = maths.SparseMatrix(creator_csr)
+            else:
+                c_full_dense = _hos_creator_dense_matrix(full_bases.dim)
+                creator_block = c_full_dense[
+                    : self.dimension, : self.dimension
+                ].copy().astype(maths.complex_number_typ, copy=False)
+                create_mat = maths.Matrix(np.asmatrix(creator_block))
+        else:
+            ho_order = self.dimension - 1
+            full_bases = mm.hilber_space_bases().harm_osc_sys(
+                1, ho_order, self.qm_nums_names
+            )
+            self.calculation_bases = full_bases
+            if self.calculation_bases.dim != self.dimension:
+                raise AssertionError(
+                    f"Hilbert mismatch: dimension={self.dimension} "
+                    f"but harm_osc_sys gave dim={self.calculation_bases.dim}"
+                )
+            if use_sparse:
+                creator_csr = _hos_creator_csr_matrix(self.dimension)
+                create_mat = maths.SparseMatrix(creator_csr)
+            else:
+                create_mat = maths.Matrix(np.asmatrix(_hos_creator_dense_matrix(self.dimension)))
+
+        self.hilbert_space_bases = self.calculation_bases
+        self.base_states = self.calculation_bases
+        self.calc_h_space_dim = self.dimension
+        self.dim = self.dimension
+        self.trunc_num = 0
+        self.h_sp_dim = self.dimension
+        self.mx_op_builder = mm.braket_to_matrix_formalism(
+            self.calculation_bases, use_sparse=use_sparse
+        )
+        self.mx_op_builder.used_dimension = self.dimension
+
+        sub = phonon_sys_name or self.id or "phonon"
+
+        create_op = MatrixOperator(create_mat, name="a_dag", subsys_name=sub)
+        annil_op = create_op.adjoint()
+        annil_op.name = f"{coord_name}_a"
+        create_op.subsys_name = sub
+        annil_op.subsys_name = sub
+
+        self.create_mx_ops = {self.coord_name: create_op}
+        self.annil_mx_ops = {self.coord_name: annil_op}
+
+        if self.dimensionless_coordinates:
+            denom = mm.SQRT_2
+        else:
+            denom = mm.SQRT_2 * (self.mode ** 0.5)
+        pos_op = (
+            self.annil_mx_ops[self.coord_name] + self.create_mx_ops[self.coord_name]
+        ) / denom
+        pos_op.subsys_name = sub
+
+        n_op = self.create_mx_ops[self.coord_name] * self.annil_mx_ops[self.coord_name]
+        h_op = self.mode * n_op
+        if self.null_point_vib:
+            h_op = h_op + 0.5 * self.mode * float(self.spatial_dim) * self.create_id_op()
+        h_op.subsys_name = sub
+
+        # Match legacy ``one_mode_phonon_sys``: ``XX`` is ``truncate(q_full^2)``, not ``(truncate q)^2``.
+        if full_bases_for_legacy_xx is not None:
+            fbd = full_bases_for_legacy_xx.dim
+            trunc_xx = fbd - self.dimension
+            if use_sparse:
+                full_create_mat = maths.SparseMatrix(_hos_creator_csr_matrix(fbd))
+            else:
+                full_create_mat = maths.Matrix(
+                    np.asmatrix(_hos_creator_dense_matrix(fbd))
+                )
+            full_create = MatrixOperator(
+                full_create_mat, name="a_dag_full", subsys_name=sub
+            )
+            full_annih = full_create.adjoint()
+            q_full = (full_annih + full_create) / denom
+            q_full.subsys_name = sub
+            xx_op = (q_full * q_full).truncate_matrix(trunc_xx)
+            xx_op.subsys_name = sub
+        else:
+            xx_op = pos_op * pos_op
+
+        self.operators = {
+            "K": h_op,
+            self.coord_name: pos_op,
+            "X": pos_op,
+            "XX": xx_op,
+        }
+
+        super().__init__(
+            id,
+            base_states=self.base_states,
+            operators=self.operators,
+            dim=self.dimension,
+        )
+
+    def create_id_op(self, matrix_type=None) -> mm.MatrixOperator:
+        if matrix_type is None:
+            matrix_type = maths.SparseMatrix if self.use_sparse else maths.Matrix
+        return super().create_id_op(matrix_type=matrix_type)
+
+    def calc_pos_prefactor(self) -> float:
+        return 1.0
+
+    def get_position_operator(self, coord: str) -> MatrixOperator:
+        if coord in self.operators:
+            return self.operators[coord]
+        if (
+            coord.startswith("q")
+            and len(coord) > 1
+            and coord[1:] in self.operators
+        ):
+            return self.operators[coord[1:]]
+        raise ValueError(
+            f"Coordinate '{coord}' not found in {self.id}. "
+            f"Available: {list(self.qm_nums_names)}"
+        )
+
+    def evaluate_position_expression(self, expr: str):
+        from jahn_teller_dynamics.physics.models.position_expr_parser import (
+            evaluate_position_expression as _eval,
+        )
+
+        return _eval(self, expr, allowed_coords=list(self.qm_nums_names))
+
+    def get_qm_num(self, state, key):
+        if isinstance(state, bf.ket_state) or isinstance(state, bf.bra_state):
+            qm_num_index = self.names_dict[key]
+            return state.qm_state[qm_num_index]
 
 
 class Exe_tree:
@@ -250,7 +543,7 @@ class Exe_tree:
         return [self.basis_x.normalize(), self.basis_y.normalize(), self.basis_z.normalize()]
 
     @staticmethod
-    def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact, orientation_basis:list[maths.col_vector] = maths.cartesian_basis):
+    def create_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact, orientation_basis:list[maths.col_vector] = maths.cartesian_basis, use_sparse: bool = False):
         """
         Create an Exe_tree from JT_theory. If JT_theory.order_flag == 0 (model Hamiltonian),
         creates a minimal_Exe_tree instead of a regular Exe_tree.
@@ -261,6 +554,7 @@ class Exe_tree:
             intrinsic_soc: Intrinsic spin-orbit coupling
             orbital_red_fact: Orbital reduction factor
             orientation_basis: List of column vectors defining orientation
+            use_sparse: If True, use SparseMatrix instead of Matrix for operators
             
         Returns:
             Exe_tree or minimal_Exe_tree depending on JT_theory.order_flag
@@ -270,7 +564,7 @@ class Exe_tree:
             # Create minimal_Exe_tree for model Hamiltonian
             # Use orientation_basis from JT_theory if available, otherwise use provided one
             basis = getattr(JT_theory, 'orientation_basis', None) or orientation_basis
-            JT_int = minimal_Exe_tree(basis, JT_theory)
+            JT_int = minimal_Exe_tree(basis, JT_theory, use_sparse=use_sparse)
             
             # Set parameters from JT_theory
             JT_int.lambda_theory = JT_theory.lambda_DFT
@@ -287,10 +581,17 @@ class Exe_tree:
         # Regular Exe_tree creation for non-model Hamiltonians
         # Use system_builder module for system construction
         point_defect_tree = system_builder.build_electron_phonon_system(
-            JT_theory, order
+            JT_theory, order, use_sparse=use_sparse
         )
+        
+        # Store use_sparse in all nodes of the system tree
+        def set_use_sparse(node, value):
+            node.use_sparse = value
+            for child in node.children:
+                set_use_sparse(child, value)
+        set_use_sparse(point_defect_tree.root_node, use_sparse)
 
-        JT_int = Exe_tree(point_defect_tree, JT_theory, orientation_basis)
+        JT_int = Exe_tree(point_defect_tree, JT_theory, orientation_basis, use_sparse=use_sparse)
 
         JT_int.orbital_red_fact = orbital_red_fact
         JT_int.intrinsic_soc = intrinsic_soc
@@ -298,8 +599,23 @@ class Exe_tree:
         return JT_int
 
     def add_spin_system(self):
-        spin_sys = qs.quantum_system_node.create_spin_system_node()
+        # CRITICAL: Use the same matrix type (sparse/dense) as the rest of the system
+        # This ensures all operators (Lz, Sz, LzSz) have consistent matrix types
+        use_sparse = getattr(self, 'use_sparse', False)
+        spin_sys = qs.quantum_system_node.create_spin_system_node(use_sparse=use_sparse)
         self.system_tree.insert_node('electron_system', spin_sys)
+        
+        # CRITICAL: Ensure use_sparse is propagated to ALL nodes in the tree
+        # This is essential for create_operator to use the correct matrix type
+        def set_use_sparse_recursive(node, value):
+            node.use_sparse = value
+            for child in node.children:
+                set_use_sparse_recursive(child, value)
+        
+        if hasattr(self.system_tree.root_node, 'use_sparse'):
+            set_use_sparse_recursive(self.system_tree.root_node, self.system_tree.root_node.use_sparse)
+        else:
+            set_use_sparse_recursive(self.system_tree.root_node, use_sparse)
 
     @staticmethod
     def create_spin_electron_phonon_Exe_tree(JT_theory,order, intrinsic_soc, orbital_red_fact):
@@ -448,9 +764,10 @@ class Exe_tree:
         self.eig_vec_sys.save(eig_vec_fn, eig_val_fn)
 
 
-    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory, orientation_basis = maths.cartesian_basis):
+    def __init__(self, system_tree: qs.quantum_system_tree, jt_theory:jt.Jahn_Teller_Theory, orientation_basis = maths.cartesian_basis, use_sparse: bool = False):
         self.system_tree = system_tree
         self.JT_theory = jt_theory
+        self.use_sparse = use_sparse
         self.H_int: mm.MatrixOperator = None
         self.p_factor: float = None
         self.f_factor: float = None
@@ -522,6 +839,8 @@ class Exe_tree:
         Note: This returns just the operator structure, not the full Hamiltonian.
         For the full SOC Hamiltonian with strength, use get_spin_orbit_coupling_int_ham().
         """
+        # Use subsystem IDs - create_operator will handle tensor products correctly
+        # The identity operators will use the correct matrix type based on use_sparse
         Sz = self.system_tree.create_operator('Sz', 'spin_system')
         Lz = self.system_tree.create_operator('Lz', 'orbital_system')
         return Lz**Sz
@@ -832,11 +1151,28 @@ class Exe_tree:
             self.JT_theory
         )
         
-        # Calculate eigenvalues and store (preserve original behavior)
-        self.H_int.calc_eigen_vals_vects(
-            quantum_states_bases=self.system_tree.root_node.base_states
-        )
+        # CRITICAL: Ensure the solver matches the matrix type
+        # When H_int is created from operations, it might not have the correct solver
+        # Fix the solver based on matrix type to ensure block diagonalization works
+        if isinstance(self.H_int.matrix, maths.SparseMatrix):
+            from jahn_teller_dynamics.math_utils.eigen_solver import SparseEigenSolver
+            if not isinstance(self.H_int._eigen_solver, SparseEigenSolver):
+                # Set correct sparse solver with block diagonalization
+                self.H_int.set_eigen_solver(SparseEigenSolver(use_block_diagonalization=True))
+        elif isinstance(self.H_int.matrix, maths.Matrix):
+            from jahn_teller_dynamics.math_utils.eigen_solver import DenseEigenSolver
+            if not isinstance(self.H_int._eigen_solver, DenseEigenSolver):
+                # Set correct dense solver
+                self.H_int.set_eigen_solver(DenseEigenSolver())
+        
+        # Store H_DJT operator (without eigenstates - they'll be computed after SOC is added)
+        # H_DJT is only used as an operator (e.g., in compute_K_JT_factor), not for its eigenstates
+        # CRITICAL: Do NOT compute eigenstates here - they should only be computed after the full
+        # Hamiltonian (DJT + SOC) is ready. Computing them here causes inconsistencies with the eigensolver.
         self.system_tree.root_node.operators['H_DJT'] = copy.deepcopy(self.H_int)
+        # Clear any eigenstates from the copy since they're not needed and will be recomputed
+        if hasattr(self.system_tree.root_node.operators['H_DJT'], 'eigen_kets'):
+            self.system_tree.root_node.operators['H_DJT'].eigen_kets = None
 
 
 
@@ -846,10 +1182,21 @@ class minimal_Exe_tree(Exe_tree):
     
 
     @staticmethod
-    def from_cfg_data(energy_split, orientation_basis, gL, delta_f, f_factor, Yx, Yy):
+    def from_cfg_data(energy_split, orientation_basis, gL, delta_f, f_factor, Yx, Yy, use_sparse: bool = False):
+        """
+        Create minimal Exe_tree from configuration data.
         
-        
-        tree = minimal_Exe_tree(orientation_basis)
+        Args:
+            energy_split: Spin-orbit splitting energy
+            orientation_basis: List of orientation basis vectors
+            gL: Orbital reduction factor
+            delta_f: Delta f parameter
+            f_factor: f factor
+            Yx: Yx parameter
+            Yy: Yy parameter
+            use_sparse: If True, use SparseMatrix instead of Matrix for operators
+        """
+        tree = minimal_Exe_tree(orientation_basis, use_sparse=use_sparse)
         tree.Yx = Yx
         tree.Yy = Yy
         #tree.orbital_red_fact = orbital_red_fact
@@ -861,7 +1208,7 @@ class minimal_Exe_tree(Exe_tree):
         return tree
 
 
-    def __init__(self,orientation_basis: list[maths.col_vector], jt_theory = None):
+    def __init__(self,orientation_basis: list[maths.col_vector], jt_theory = None, use_sparse: bool = False):
         """
         Initialize minimal Exe_tree for four-state model Hamiltonian.
         
@@ -870,10 +1217,12 @@ class minimal_Exe_tree(Exe_tree):
         Args:
             orientation_basis: List of column vectors defining orientation
             jt_theory: Optional Jahn_Teller_Theory object
+            use_sparse: If True, use SparseMatrix instead of Matrix for operators
         """
         # Use system_builder module for system construction
-        self.system_tree = system_builder.build_minimal_model_system()
+        self.system_tree = system_builder.build_minimal_model_system(use_sparse=use_sparse)
         self.JT_theory = jt_theory
+        self.use_sparse = use_sparse
         self.H_int: mm.MatrixOperator = None
         self.p_factor: float = None
         self.f_factor: float = None

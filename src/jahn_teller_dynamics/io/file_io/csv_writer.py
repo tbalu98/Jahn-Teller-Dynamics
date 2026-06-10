@@ -18,7 +18,8 @@ import os
 
 import jahn_teller_dynamics.physics.quantum_physics as qmp
 import jahn_teller_dynamics.io.file_io.vasp as V
-import jahn_teller_dynamics.math.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
+import jahn_teller_dynamics.math_utils.maths as maths
 # Lazy import to avoid circular dependencies
 # results_formatter is imported inside functions that need it
 
@@ -113,6 +114,41 @@ class CSVWriter:
         return suffix.lstrip('_') if suffix.startswith('_') else suffix
     
     # ==================== Eigen Vectors and Values ====================
+
+    # ==================== Generic MatrixOperator Writer ====================
+
+    def write_matrix_operator(
+        self,
+        op: mm.MatrixOperator,
+        filepath: str,
+        *,
+        basis: mm.hilber_space_bases,
+    ) -> None:
+        """
+        Write a MatrixOperator's matrix to CSV.
+
+        This is a convenience utility for exporting operator matrices (dense or sparse)
+        in a consistent CSV format across the codebase.
+
+        Args:
+            op: MatrixOperator to write.
+            filepath: Output CSV path.
+            basis: Hilbert space basis. Rows are labeled by bra states (e.g. '<11|')
+                and columns by ket states (e.g. '|11>').
+        """
+        row_labels = [str(b) for b in basis._bra_states]
+        col_labels = [str(k) for k in basis._ket_states]
+
+        # Convert to a dense array for writing (operators are typically small/medium here)
+        if isinstance(op.matrix, maths.SparseMatrix):
+            arr = op.matrix.matrix.toarray()
+        else:
+            arr = np.array(op.matrix.matrix)
+
+        df = pd.DataFrame(arr, index=row_labels, columns=col_labels)
+        # Ensure the top-left (0,0) CSV cell contains a clear label for the index column
+        df.index.name = "quantum_state"
+        df.to_csv(filepath, sep=self.separator, index=self.index)
     
     def write_eigen_vectors_and_values(
         self,
