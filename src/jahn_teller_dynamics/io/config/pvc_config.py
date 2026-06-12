@@ -106,6 +106,7 @@ class PVCCalculation:
 
     Electron-state labels: ``electron_energies.csv`` ``el_state`` values may be arbitrary
     non-empty strings (e.g. ``ground``, ``T2``). Coupling CSV ``el_state_1`` / ``el_state_2``
+    (aliases ``el_state_n`` / ``el_state_m``)
     use those same labels; legacy numeric 1-based indices are still accepted.
 
     Coupling CSV coefficient scaling (after ``el_state_1`` / ``el_state_2`` are resolved to the
