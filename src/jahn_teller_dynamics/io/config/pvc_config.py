@@ -81,7 +81,8 @@ class PVCCalculation:
       parallel build is **on** by default; set ``parallel_lined_coupling = false`` to disable.
       Keys: ``lined_coupling_pool``, ``lined_coupling_batches``, ``lined_coupling_workers``,
       plus split-job options (``load_coupling_rows``, chunk indices, ``save_bare_hamiltonian``, …).
-    - ``[eigensolver]`` — diagonalization backend and spectral options.
+    - ``[eigensolver]`` — diagonalization backend, spectral options, and result I/O
+      (``save_npz``, ``save_csv``, ``separator``, ``npz_filename``; override ``[essentials]``).
 
     Legacy ``[PVC]`` is treated as an alias for ``[model]`` (deprecated). Eigensolver keys in
     ``[eigensolver]`` override the same keys in legacy ``[PVC]`` / ``[essentials]``.
@@ -103,6 +104,11 @@ class PVCCalculation:
     - ``use_block_diagonalization`` — sparse solver block structure (default ``true``).
     - ``require_hermitian`` — if ``false``, diagonalize non-Hermitian ``H`` with ``eigs`` / SLEPc
       NHEP instead of aborting (default ``true``). Alias: ``allow_non_hermitian``.
+    - ``save_npz`` — if ``true``, write eigenvalues/eigenvectors to ``npz_filename`` (default
+      ``eigenstates.npz`` under ``output_folder``).
+    - ``save_csv`` — if ``true``, write ``eigenvalues.csv`` and ``eigenvectors.csv``.
+    - ``separator`` — CSV field separator for saved result files.
+    - ``npz_filename`` — output NPZ name or path (default ``eigenstates.npz``).
 
     Electron-state labels: ``electron_energies.csv`` ``el_state`` values may be arbitrary
     non-empty strings (e.g. ``ground``, ``T2``). Coupling CSV ``el_state_1`` / ``el_state_2``
@@ -188,10 +194,11 @@ class PVCCalculation:
     load_hamiltonians: str = ""
     # Output file for :meth:`resolve_hamiltonian_save_path` (bare name → under ``out_dir``).
     hamiltonian_filename: str = "hamiltonian.npz"
-    # Filename (or path) used when saving eigenvectors as NPZ. A bare filename
+    # Filename (or path) used when saving eigenstates as NPZ. A bare filename
     # is resolved under ``out_dir``; an absolute / explicit relative path is
-    # used as given. ``.npz`` is appended if missing.
-    npz_filename: str = "eigenvectors.npz"
+    # used as given. ``.npz`` is appended if missing. Array key inside the
+    # file remains ``eigenvectors`` (historical name).
+    npz_filename: str = "eigenstates.npz"
 
     tune_tuning: float = 1.0
     tune_coupling: float = 1.0
@@ -305,17 +312,17 @@ class PVCCalculation:
 
     def resolve_npz_path(self, run_dir: Optional[Path] = None) -> Path:
         """
-        Resolve the absolute path of the eigenvectors NPZ output file.
+        Resolve the absolute path of the eigenstates NPZ output file.
 
-        A bare filename (e.g. ``"eigenvectors_excited_1eV.npz"``) is placed
+        A bare filename (e.g. ``"eigenstates_excited_1eV.npz"``) is placed
         under :meth:`resolve_out_dir`; a relative path is joined to
         ``run_dir``; an absolute path is used as-is. A ``.npz`` suffix is
         appended if missing.
         """
         rd = run_dir or get_run_dir()
-        name = (self.npz_filename or "eigenvectors.npz").strip()
+        name = (self.npz_filename or "eigenstates.npz").strip()
         if not name:
-            name = "eigenvectors.npz"
+            name = "eigenstates.npz"
         if not name.lower().endswith(".npz"):
             name = name + ".npz"
         p = Path(name).expanduser()
@@ -671,6 +678,24 @@ class PVCConfigParser:
         if (v := self._first_bool("allow_non_hermitian")) is not None:
             calc.require_hermitian = not v
 
+        if (v := self._first_bool("save_npz")) is not None:
+            calc.save_npz = v
+        if (v := self._first_bool("save_csv")) is not None:
+            calc.save_csv = v
+        sep = self._first_nonempty_str("separator")
+        if sep:
+            calc.separator = sep
+        for key in (
+            "npz_filename",
+            "eigenstates_npz_filename",
+            "eigenvectors_npz_filename",
+            "output_npz_filename",
+        ):
+            val = self._first_nonempty_str(key)
+            if val:
+                calc.npz_filename = val
+                break
+
     def _apply_essentials(self, calc: PVCCalculation) -> None:
         ess = self._essentials_sections()
         if self._essentials_section is not None:
@@ -723,7 +748,12 @@ class PVCConfigParser:
                 calc.hamiltonian_filename = v
                 break
 
-        for key in ("npz_filename", "eigenvectors_npz_filename", "output_npz_filename"):
+        for key in (
+            "npz_filename",
+            "eigenstates_npz_filename",
+            "eigenvectors_npz_filename",
+            "output_npz_filename",
+        ):
             v = self._get_str_in(ess, key)
             if v:
                 calc.npz_filename = v

@@ -270,7 +270,7 @@ def _args_to_calculation(args: argparse.Namespace, run_dir: Path) -> PVCCalculat
         eigensolver_max_it=getattr(args, "eigensolver_max_it", None),
         eigensolver_ncv=getattr(args, "eigensolver_ncv", None),
         exp_approximation_order=getattr(args, "exp_approximation_order", None),
-        npz_filename=str(getattr(args, "npz_filename", "") or "eigenvectors.npz"),
+        npz_filename=str(getattr(args, "npz_filename", "") or "eigenstates.npz"),
         tune_tuning=float(getattr(args, "tune_tuning", 1.0)),
         tune_coupling=float(getattr(args, "tune_coupling", 1.0)),
         hermitian_completion=bool(getattr(args, "hermitian_completion", True)),
@@ -669,19 +669,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="save_npz",
         action="store_true",
         default=False,
-        help="Save eigenvectors and eigenvalues in compressed NPZ format.",
+        help="Save eigenstates (eigenvectors and eigenvalues) in compressed NPZ format.",
     )
     p.add_argument(
         "--npz-filename",
         dest="npz_filename",
         type=str,
-        default="eigenvectors.npz",
+        default="eigenstates.npz",
         metavar="NAME",
         help=(
-            "Filename (or path) for the saved eigenvectors NPZ. A bare "
+            "Filename (or path) for the saved eigenstates NPZ. A bare "
             "filename is placed under out_dir; absolute or relative paths "
             "are used as-is. '.npz' is appended if missing. "
-            "Default: eigenvectors.npz."
+            "Default: eigenstates.npz."
         ),
     )
     p.add_argument(

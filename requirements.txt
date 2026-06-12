@@ -3,16 +3,13 @@ cycler==0.12.1
 e==1.4.5
 fonttools==4.62.1
 iniconfig==2.3.0
--e git+https://github.com/tbalu98/DJT.git@8f5da2616d259f183af944a4ef2d096da01db0d8#egg=jahn_teller_dynamics
 kiwisolver==1.5.0
 matplotlib==3.10.9
 memory-profiler==0.61.0
-mpi4py @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_mpi4py_1771830511/work
 networkx==3.6.1
 numpy==2.4.4
 packaging==26.0
 pandas==3.0.2
-petsc4py @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_petsc4py_1778050266/work
 pillow==12.2.0
 pluggy==1.6.0
 psutil==7.2.2
@@ -23,5 +20,4 @@ python-dateutil==2.9.0.post0
 pytz==2026.1.post1
 scipy==1.17.1
 six==1.17.0
-slepc4py @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_slepc4py_1778052786/work
 tzdata==2026.2

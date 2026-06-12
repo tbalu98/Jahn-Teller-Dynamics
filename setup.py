@@ -29,7 +29,7 @@ def read_requirements():
 
 setup(
     name='jahn_teller_dynamics',
-    version='1.5.7',  # Update this as needed
+    version='1.6.0',  # Update this as needed
     description='Dynamic Jahn-Teller Effect Calculator',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
