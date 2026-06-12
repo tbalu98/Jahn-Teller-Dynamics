@@ -60,6 +60,18 @@ import jahn_teller_dynamics.math_utils.maths as maths
 import jahn_teller_dynamics.math_utils.matrix_mechanics as mm
 
 
+def _normalize_pvc_coupling_state_columns(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Map ``el_state_n`` / ``el_state_m`` aliases to ``el_state_1`` / ``el_state_2``."""
+    renames: dict[str, str] = {}
+    if "el_state_1" not in df.columns and "el_state_n" in df.columns:
+        renames["el_state_n"] = "el_state_1"
+    if "el_state_2" not in df.columns and "el_state_m" in df.columns:
+        renames["el_state_m"] = "el_state_2"
+    if renames:
+        df = df.rename(columns=renames)
+    return df
+
+
 @dataclass(frozen=True)
 class ModesFromCsv:
     """
@@ -512,25 +524,29 @@ class CSVReader:
         """
         PVC coupling table: ``el_state_1``, ``el_state_2``, coupling expression, ``coeff``.
 
+        State columns may also be named ``el_state_n`` / ``el_state_m`` (aliases for
+        ``el_state_1`` / ``el_state_2``).
+
         ``coeff`` may be real or complex (e.g. ``1.0``, ``1.0+2.0i``, ``3.0i``).
 
         The expression column may be named ``expression`` (preferred), ``polinom``, or
         ``polynomial`` (exactly one of these must be present).
         """
         df = self.read_df_auto(path)
+        df = _normalize_pvc_coupling_state_columns(df)
         expr_col = next(
             (c for c in ("expression", "polinom", "polynomial") if c in df.columns),
             "",
         )
         if not expr_col:
             raise ValueError(
-                "PVC coupling CSV must contain el_state_1, el_state_2, "
+                "PVC coupling CSV must contain el_state_1/el_state_n, el_state_2/el_state_m, "
                 f"expression or polinom or polynomial, coeff; got {list(df.columns)}"
             )
         required = {"el_state_1", "el_state_2", expr_col, "coeff"}
         if not required.issubset(df.columns):
             raise ValueError(
-                "PVC coupling CSV must contain el_state_1, el_state_2, "
+                "PVC coupling CSV must contain el_state_1/el_state_n, el_state_2/el_state_m, "
                 f"a coupling column ({expr_col}), and coeff; got {list(df.columns)}"
             )
         out = df[["el_state_1", "el_state_2", expr_col, "coeff"]].copy()
