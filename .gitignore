@@ -1,6 +1,7 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode
 *.zip
+src/jahn_teller_dynamics/vertical_excitation.py
 conftest.py
 mprofile_*.dat
 scripts/
